@@ -25,11 +25,12 @@ export type DefaultAccountKey =
   | 'vatOutput'
   | 'vatInput'
   | 'retainedEarnings'
-  | 'capital';
+  | 'capital'
+  | 'inventoryAdjustment';
 
 export const DEFAULT_ACCOUNT_KEYS: DefaultAccountKey[] = [
   'cash', 'bank', 'receivable', 'payable', 'sales', 'services', 'purchases',
-  'inventory', 'cogs', 'vatOutput', 'vatInput', 'retainedEarnings', 'capital',
+  'inventory', 'cogs', 'vatOutput', 'vatInput', 'retainedEarnings', 'capital', 'inventoryAdjustment',
 ];
 
 /** A clean, IFRS-friendly starter chart, bilingual. */
@@ -102,6 +103,7 @@ export const STANDARD_CHART: TemplateAccount[] = [
     children: [
       { code: '5100', en: 'Cost of Goods Sold', ar: 'تكلفة البضاعة المباعة', type: 'expense', subtype: 'cogs', role: 'cogs' },
       { code: '5150', en: 'Purchases', ar: 'المشتريات', type: 'expense', subtype: 'cogs', role: 'purchases' },
+      { code: '5160', en: 'Inventory Adjustments', ar: 'تسويات المخزون', type: 'expense', subtype: 'cogs', role: 'inventoryAdjustment' },
       {
         code: '52', en: 'Operating Expenses', ar: 'المصروفات التشغيلية', type: 'expense', subtype: 'operating_expense', group: true,
         children: [
@@ -137,4 +139,5 @@ export const MINIMAL_CHART: TemplateAccount[] = [
   { code: '4200', en: 'Service Revenue', ar: 'إيرادات الخدمات', type: 'income', subtype: 'operating_income', role: 'services' },
   { code: '5100', en: 'Cost of Goods Sold', ar: 'تكلفة البضاعة المباعة', type: 'expense', subtype: 'cogs', role: 'cogs' },
   { code: '5150', en: 'Purchases', ar: 'المشتريات', type: 'expense', subtype: 'cogs', role: 'purchases' },
+  { code: '5160', en: 'Inventory Adjustments', ar: 'تسويات المخزون', type: 'expense', subtype: 'cogs', role: 'inventoryAdjustment' },
 ];

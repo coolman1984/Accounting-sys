@@ -108,4 +108,20 @@ export const migrations: Migration[] = [
       BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
     `,
   },
+  {
+    // Where goods come from / go to. Validated by the inventory module when it is installed.
+    id: '002_warehouses',
+    up: `
+      ALTER TABLE documents ADD COLUMN warehouse_id INTEGER;
+      ALTER TABLE document_lines ADD COLUMN warehouse_id INTEGER;
+
+      DROP TRIGGER documents_posted_frozen;
+      CREATE TRIGGER documents_posted_frozen BEFORE UPDATE ON documents
+      WHEN OLD.status <> 'draft' AND (
+           NEW.party_id IS NOT OLD.party_id OR NEW.date IS NOT OLD.date OR NEW.total IS NOT OLD.total
+        OR NEW.number IS NOT OLD.number OR NEW.kind IS NOT OLD.kind OR NEW.journal_entry_id IS NOT OLD.journal_entry_id
+        OR NEW.warehouse_id IS NOT OLD.warehouse_id OR (OLD.status = 'void'))
+      BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
+    `,
+  },
 ];

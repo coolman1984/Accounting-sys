@@ -31,11 +31,22 @@ export interface Item {
   purchase_tax_id: number | null;
   description: string | null;
   is_active: number;
+  barcode: string | null;
+  category_id: number | null;
+  /** Products are stock-tracked unless this is 0 (consumables). */
+  track_stock: number;
+  inventory_account_id: number | null;
+  cogs_account_id: number | null;
+  /** x1000, like every quantity. */
+  reorder_level: number;
+  reorder_qty: number;
 }
 
 export interface CatalogService {
   tax(id: number): Tax;
   item(id: number): Item;
+  /** Does this item carry a stock balance? */
+  isStockItem(item: Item): boolean;
 }
 
 declare module '../../kernel/services.js' {
@@ -69,12 +80,25 @@ const zItem = z.object({
   purchaseTaxId: zOptId.transform((v) => v ?? null),
   description: zOptText(1000),
   isActive: z.boolean().default(true),
+  barcode: zOptText(64),
+  categoryId: zOptId.transform((v) => v ?? null),
+  trackStock: z.boolean().default(true),
+  inventoryAccountId: zOptId.transform((v) => v ?? null),
+  cogsAccountId: zOptId.transform((v) => v ?? null),
+  reorderLevel: z.number().int().min(0).default(0),
+  reorderQty: z.number().int().min(0).default(0),
+});
+
+const zCategory = z.object({
+  nameEn: z.string().trim().min(1).max(100),
+  nameAr: z.string().trim().min(1).max(100),
 });
 
 function createCatalog({ db }: ModuleContext): CatalogService {
   return {
     tax: (id) => db.get<Tax>('SELECT * FROM taxes WHERE id = ?', [id]) ?? notFound('tax', id),
     item: (id) => db.get<Item>('SELECT * FROM items WHERE id = ?', [id]) ?? notFound('item', id),
+    isStockItem: (item) => item.kind === 'product' && item.track_stock === 1,
   };
 }
 
@@ -117,6 +141,26 @@ export const catalogModule: AppModule = {
           created_at         TEXT NOT NULL
         );
         CREATE INDEX items_name ON items(name_en);
+      `,
+    },
+    {
+      id: '002_item_master',
+      up: `
+        CREATE TABLE item_categories (
+          id         INTEGER PRIMARY KEY,
+          name_en    TEXT NOT NULL,
+          name_ar    TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        ALTER TABLE items ADD COLUMN barcode TEXT;
+        ALTER TABLE items ADD COLUMN category_id INTEGER REFERENCES item_categories(id);
+        ALTER TABLE items ADD COLUMN track_stock INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE items ADD COLUMN inventory_account_id INTEGER REFERENCES accounts(id);
+        ALTER TABLE items ADD COLUMN cogs_account_id INTEGER REFERENCES accounts(id);
+        ALTER TABLE items ADD COLUMN reorder_level INTEGER NOT NULL DEFAULT 0;   -- x1000
+        ALTER TABLE items ADD COLUMN reorder_qty INTEGER NOT NULL DEFAULT 0;     -- x1000
+        CREATE UNIQUE INDEX items_barcode ON items(barcode) WHERE barcode IS NOT NULL;
+        CREATE INDEX items_category ON items(category_id);
       `,
     },
   ],
@@ -201,13 +245,59 @@ export const catalogModule: AppModule = {
     // -------------------------------------------------------------- items
     r.get('/items', 'catalog.read', ({ query }) => {
       const where: string[] = [];
-      const p: Record<string, string> = {};
-      if (query.active === '1') where.push('is_active = 1');
+      const p: Record<string, string | number> = {};
+      if (query.active === '1') where.push('i.is_active = 1');
+      if (query.categoryId) (where.push('i.category_id = :cat'), (p.cat = Number(query.categoryId)));
+      if (query.stock === '1') where.push("i.kind = 'product' AND i.track_stock = 1");
       if (query.q) {
-        where.push('(sku LIKE :q OR name_en LIKE :q OR name_ar LIKE :q)');
+        where.push('(i.sku LIKE :q OR i.name_en LIKE :q OR i.name_ar LIKE :q OR i.barcode = :exact)');
         p.q = `%${query.q}%`;
+        p.exact = query.q;
       }
-      return db.all<Item>(`SELECT * FROM items ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY sku LIMIT 1000`, p);
+      return db.all<Item>(
+        `SELECT i.*, c.name_en AS category_name_en, c.name_ar AS category_name_ar
+         FROM items i LEFT JOIN item_categories c ON c.id = i.category_id
+         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY i.sku LIMIT 5000`,
+        p,
+      );
+    });
+
+    // ------------------------------------------------------------ categories
+    r.get('/item-categories', 'catalog.read', () =>
+      db.all(
+        `SELECT c.*, (SELECT COUNT(*) FROM items i WHERE i.category_id = c.id) AS items
+         FROM item_categories c ORDER BY c.name_en`,
+      ),
+    );
+
+    r.post('/item-categories', 'catalog.write', ({ body, user }) => {
+      const input = parse(zCategory, body);
+      return db.tx(() => {
+        const id = db.insert('item_categories', { name_en: input.nameEn, name_ar: input.nameAr, created_at: nowIso() });
+        audit.log({ userId: user.id, action: 'create', entity: 'item_category', entityId: id, summary: input.nameEn });
+        return { id };
+      });
+    });
+
+    r.put('/item-categories/:id', 'catalog.write', ({ params, body, user }) => {
+      const id = Number(params.id);
+      const input = parse(zCategory, body);
+      if (!db.get('SELECT 1 FROM item_categories WHERE id = ?', [id])) notFound('item_category', id);
+      db.tx(() => {
+        db.update('item_categories', id, { name_en: input.nameEn, name_ar: input.nameAr });
+        audit.log({ userId: user.id, action: 'update', entity: 'item_category', entityId: id, data: input });
+      });
+      return { ok: true };
+    });
+
+    r.delete('/item-categories/:id', 'catalog.write', ({ params, user }) => {
+      const id = Number(params.id);
+      if (db.get('SELECT 1 FROM items WHERE category_id = ?', [id])) conflict('category.in_use', 'Move the items to another category first');
+      db.tx(() => {
+        db.run('DELETE FROM item_categories WHERE id = ?', [id]);
+        audit.log({ userId: user.id, action: 'delete', entity: 'item_category', entityId: id });
+      });
+      return { ok: true };
     });
 
     const itemRow = (i: z.infer<typeof zItem>) => ({
@@ -224,11 +314,36 @@ export const catalogModule: AppModule = {
       purchase_tax_id: i.purchaseTaxId,
       description: i.description,
       is_active: i.isActive,
+      barcode: i.barcode,
+      category_id: i.categoryId,
+      track_stock: i.trackStock,
+      inventory_account_id: i.inventoryAccountId,
+      cogs_account_id: i.cogsAccountId,
+      reorder_level: i.reorderLevel,
+      reorder_qty: i.reorderQty,
     });
 
-    const checkItem = (i: z.infer<typeof zItem>) => {
+    const checkItem = (i: z.infer<typeof zItem>, current?: Item) => {
       postable(i.incomeAccountId, 'Income account');
       postable(i.expenseAccountId, 'Expense account');
+      postable(i.cogsAccountId, 'Cost of sales account');
+      if (i.inventoryAccountId && ledger.account(i.inventoryAccountId).subtype !== 'inventory') {
+        fail('item.inventory_account', 'The inventory account must be an Inventory account');
+      }
+      if (i.categoryId && !db.get('SELECT 1 FROM item_categories WHERE id = ?', [i.categoryId])) notFound('item_category', i.categoryId);
+      if (i.barcode) {
+        const dup = db.get<{ id: number }>('SELECT id FROM items WHERE barcode = ?', [i.barcode]);
+        if (dup && dup.id !== current?.id) conflict('item.duplicate_barcode', 'This barcode is already used by another item');
+      }
+      // Once stock has moved, an item cannot stop (or start) being a stock item: its history would no longer add up.
+      if (current && services.has('inventory') && services.get('inventory').hasMoves(current.id)) {
+        const wasStock = current.kind === 'product' && current.track_stock === 1;
+        const isStock = i.kind === 'product' && i.trackStock;
+        if (wasStock !== isStock) fail('item.stock_locked', 'This item has stock movements; its stock tracking cannot change');
+        if ((current.inventory_account_id ?? null) !== i.inventoryAccountId) {
+          fail('item.stock_locked', 'This item has stock movements; its inventory account cannot change');
+        }
+      }
       if (i.salesTaxId) services.get('catalog').tax(i.salesTaxId);
       if (i.purchaseTaxId) services.get('catalog').tax(i.purchaseTaxId);
     };
@@ -248,7 +363,7 @@ export const catalogModule: AppModule = {
       const id = Number(params.id);
       const cur = services.get('catalog').item(id);
       const input = parse(zItem, body);
-      checkItem(input);
+      checkItem(input, cur);
       const dup = db.get<{ id: number }>('SELECT id FROM items WHERE sku = ?', [input.sku]);
       if (dup && dup.id !== id) conflict('item.duplicate_sku', 'SKU already exists');
       db.tx(() => {

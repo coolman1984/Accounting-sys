@@ -21,6 +21,7 @@ const zLine = z.object({
   discountBp: zBp.default(0),
   accountId: zOptId.transform((v) => v ?? null),
   taxId: zOptId.transform((v) => v ?? null),
+  warehouseId: zOptId.transform((v) => v ?? null),
 });
 
 const zDoc = z.object({
@@ -32,6 +33,7 @@ const zDoc = z.object({
   notes: zOptText(2000),
   taxInclusive: z.boolean().default(false),
   againstDocumentId: zOptId.transform((v) => v ?? null),
+  warehouseId: zOptId.transform((v) => v ?? null),
   lines: z.array(zLine).min(1).max(500),
   post: z.boolean().default(false),
 });

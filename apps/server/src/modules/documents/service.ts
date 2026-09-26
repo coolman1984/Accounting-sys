@@ -14,6 +14,8 @@ export interface DocLineInput {
   discountBp?: number;
   accountId?: number | null;
   taxId?: number | null;
+  /** Overrides the document's warehouse for this line. */
+  warehouseId?: number | null;
 }
 
 export interface DocInput {
@@ -25,6 +27,8 @@ export interface DocInput {
   notes?: string | null;
   taxInclusive?: boolean;
   againstDocumentId?: number | null;
+  /** Default warehouse for stock lines. */
+  warehouseId?: number | null;
   lines: DocLineInput[];
 }
 
@@ -48,6 +52,7 @@ export interface Document {
   against_document_id: number | null;
   journal_entry_id: number | null;
   void_entry_id: number | null;
+  warehouse_id: number | null;
   created_at: string;
   posted_at: string | null;
 }
@@ -61,6 +66,7 @@ export interface ComputedLine {
   account_id: number;
   tax_id: number | null;
   tax_rate_bp: number;
+  warehouse_id: number | null;
   gross: number;
   discount: number;
   net: number;
@@ -102,11 +108,15 @@ export function createDocuments({ db, services, events }: ModuleContext) {
       if (!Number.isSafeInteger(l.quantity) || l.quantity <= 0) fail('document.line_quantity', `Line ${n}: quantity must be positive`, { line: n });
       if (!Number.isSafeInteger(l.unitPrice) || l.unitPrice < 0) fail('document.line_price', `Line ${n}: invalid price`, { line: n });
 
+      // Stock items are bought into the inventory asset, everything else into an expense.
+      const stock = item ? catalog().isStockItem(item) : false;
       const accountId =
         l.accountId ??
         (side === 'sales'
           ? item?.income_account_id ?? ledger().defaultAccount(item?.kind === 'service' ? 'services' : 'sales')
-          : item?.expense_account_id ?? ledger().defaultAccount('purchases'));
+          : stock
+            ? item!.inventory_account_id ?? ledger().defaultAccount('inventory')
+            : item?.expense_account_id ?? ledger().defaultAccount('purchases'));
       const acc = ledger().account(accountId);
       if (acc.is_group || !acc.is_active) fail('document.line_account', `Line ${n}: ${acc.code} cannot be used`, { line: n });
       if (acc.subtype === 'receivable' || acc.subtype === 'payable') {
@@ -133,6 +143,7 @@ export function createDocuments({ db, services, events }: ModuleContext) {
         account_id: accountId,
         tax_id: taxId,
         tax_rate_bp: rate,
+        warehouse_id: l.warehouseId ?? null,
         ...c,
       };
     });
@@ -175,6 +186,7 @@ export function createDocuments({ db, services, events }: ModuleContext) {
       notes: input.notes ?? null,
       tax_inclusive: !!input.taxInclusive,
       against_document_id: input.againstDocumentId ?? null,
+      warehouse_id: input.warehouseId ?? null,
       ...totals,
       updated_at: nowIso(),
     };
@@ -293,7 +305,7 @@ export function createDocuments({ db, services, events }: ModuleContext) {
         }
       }
       audit().log({ userId, action: 'post', entity: 'document', entityId: id, summary: number });
-      events.emit('document.posted', { documentId: id, kind: doc.kind });
+      events.emit('document.posted', { documentId: id, kind: doc.kind, userId });
     });
   }
 
@@ -316,7 +328,7 @@ export function createDocuments({ db, services, events }: ModuleContext) {
         id,
       ]);
       audit().log({ userId, action: 'void', entity: 'document', entityId: id, summary: doc.number });
-      events.emit('document.voided', { documentId: id, kind: doc.kind });
+      events.emit('document.voided', { documentId: id, kind: doc.kind, date: opts.date ?? doc.date, userId });
     });
   }
 

@@ -8,8 +8,8 @@
 export interface EventMap {
   'journal.posted': { entryId: number };
   'journal.reversed': { entryId: number; reversalId: number };
-  'document.posted': { documentId: number; kind: string };
-  'document.voided': { documentId: number; kind: string };
+  'document.posted': { documentId: number; kind: string; userId: number | null };
+  'document.voided': { documentId: number; kind: string; date: string; userId: number | null };
   'payment.posted': { paymentId: number };
   'payment.voided': { paymentId: number };
   'fiscalYear.closed': { fiscalYearId: number };
