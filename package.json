@@ -1,0 +1,23 @@
+{
+  "name": "mizan-accounting",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mizan — modular, local-network double-entry accounting system (English / Arabic).",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm:dev -w apps/server\" \"npm:dev -w apps/web\"",
+    "build": "npm run build -w apps/web && npm run build -w apps/server",
+    "start": "npm run start -w apps/server",
+    "test": "npm test -w apps/server",
+    "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/web"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
