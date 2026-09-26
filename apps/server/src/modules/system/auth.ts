@@ -7,7 +7,7 @@ export type Role = 'admin' | 'accountant' | 'viewer';
 export const ROLES: Role[] = ['admin', 'accountant', 'viewer'];
 
 /** Permissions only administrators get. */
-const ADMIN_ONLY = new Set(['users.manage', 'settings.manage', 'system.backup']);
+const ADMIN_ONLY = new Set(['users.manage', 'settings.manage', 'system.backup', 'pricing.override']);
 
 export function permissionsFor(role: string, all: readonly string[]): Set<string> {
   if (role === 'admin') return new Set(all);
@@ -52,6 +52,8 @@ export interface AccessService {
   can(user: SessionUser, permission: string): boolean;
   /** Drop every session of a user (password change, deactivation). */
   revokeAll(userId: number): void;
+  /** Permission check by user id (for code that only knows who acted, e.g. event listeners). */
+  userCan(userId: number | null, permission: string): boolean;
   allPermissions(): string[];
 }
 
@@ -120,6 +122,12 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
 
     revokeAll(userId) {
       db.run('DELETE FROM sessions WHERE user_id = ?', [userId]);
+    },
+
+    userCan(userId, permission) {
+      if (userId == null) return false;
+      const u = db.get<{ role: string; is_active: number }>('SELECT role, is_active FROM users WHERE id = ?', [userId]);
+      return !!u && !!u.is_active && permissionsFor(u.role, all).has(permission);
     },
 
     allPermissions: () => [...all],

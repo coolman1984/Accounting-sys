@@ -40,6 +40,24 @@ export interface Item {
   /** x1000, like every quantity. */
   reorder_level: number;
   reorder_qty: number;
+  /** none | batch (lots, optional expiry) | serial (one unit per number). */
+  tracking: 'none' | 'batch' | 'serial';
+  requires_expiry: number;
+  /** Lowest allowed net selling price per base unit (0 = no guard). */
+  min_sale_price: number;
+}
+
+/** An alternative unit of measure: 1 unit = factor/1000 base units (a box of 12 => 12000). */
+export interface ItemUnit {
+  id: number;
+  item_id: number;
+  name_en: string;
+  name_ar: string;
+  factor: number;
+  barcode: string | null;
+  sale_price: number | null;
+  purchase_price: number | null;
+  is_active: number;
 }
 
 export interface CatalogService {
@@ -47,6 +65,10 @@ export interface CatalogService {
   item(id: number): Item;
   /** Does this item carry a stock balance? */
   isStockItem(item: Item): boolean;
+  unit(id: number): ItemUnit;
+  units(itemId: number): ItemUnit[];
+  /** Conversion factor (x1000) of a unit for an item; null unit = base unit (1000). */
+  unitFactor(item: Item, unitId: number | null | undefined): number;
 }
 
 declare module '../../kernel/services.js' {
@@ -87,6 +109,24 @@ const zItem = z.object({
   cogsAccountId: zOptId.transform((v) => v ?? null),
   reorderLevel: z.number().int().min(0).default(0),
   reorderQty: z.number().int().min(0).default(0),
+  tracking: z.enum(['none', 'batch', 'serial']).default('none'),
+  requiresExpiry: z.boolean().default(false),
+  minSalePrice: z.number().int().min(0).default(0),
+  units: z
+    .array(
+      z.object({
+        id: zOptId,
+        nameEn: z.string().trim().min(1).max(40),
+        nameAr: z.string().trim().min(1).max(40),
+        factor: z.number().int().positive().max(1_000_000_000),
+        barcode: zOptText(64),
+        salePrice: z.number().int().min(0).nullish().transform((v) => v ?? null),
+        purchasePrice: z.number().int().min(0).nullish().transform((v) => v ?? null),
+        isActive: z.boolean().default(true),
+      }),
+    )
+    .max(20)
+    .default([]),
 });
 
 const zCategory = z.object({
@@ -99,6 +139,15 @@ function createCatalog({ db }: ModuleContext): CatalogService {
     tax: (id) => db.get<Tax>('SELECT * FROM taxes WHERE id = ?', [id]) ?? notFound('tax', id),
     item: (id) => db.get<Item>('SELECT * FROM items WHERE id = ?', [id]) ?? notFound('item', id),
     isStockItem: (item) => item.kind === 'product' && item.track_stock === 1,
+    unit: (id) => db.get<ItemUnit>('SELECT * FROM item_units WHERE id = ?', [id]) ?? notFound('item_unit', id),
+    units: (itemId) => db.all<ItemUnit>('SELECT * FROM item_units WHERE item_id = ? ORDER BY factor', [itemId]),
+    unitFactor(item, unitId) {
+      if (!unitId) return 1000;
+      const u = db.get<ItemUnit>('SELECT * FROM item_units WHERE id = ?', [unitId]);
+      if (!u || u.item_id !== item.id) return fail('item.unit_mismatch', `This unit does not belong to ${item.sku}`, { sku: item.sku });
+      if (!u.is_active) fail('item.unit_inactive', `Unit ${u.name_en} of ${item.sku} is inactive`, { sku: item.sku });
+      return u.factor;
+    },
   };
 }
 
@@ -161,6 +210,28 @@ export const catalogModule: AppModule = {
         ALTER TABLE items ADD COLUMN reorder_qty INTEGER NOT NULL DEFAULT 0;     -- x1000
         CREATE UNIQUE INDEX items_barcode ON items(barcode) WHERE barcode IS NOT NULL;
         CREATE INDEX items_category ON items(category_id);
+      `,
+    },
+    {
+      id: '003_units_tracking',
+      up: `
+        CREATE TABLE item_units (
+          id             INTEGER PRIMARY KEY,
+          item_id        INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+          name_en        TEXT NOT NULL,
+          name_ar        TEXT NOT NULL,
+          factor         INTEGER NOT NULL CHECK (factor > 0),   -- base units x1000 in one of this unit
+          barcode        TEXT,
+          sale_price     INTEGER,                                -- NULL = base price x factor
+          purchase_price INTEGER,
+          is_active      INTEGER NOT NULL DEFAULT 1,
+          created_at     TEXT NOT NULL
+        );
+        CREATE INDEX item_units_item ON item_units(item_id);
+        CREATE UNIQUE INDEX item_units_barcode ON item_units(barcode) WHERE barcode IS NOT NULL;
+        ALTER TABLE items ADD COLUMN tracking TEXT NOT NULL DEFAULT 'none' CHECK (tracking IN ('none', 'batch', 'serial'));
+        ALTER TABLE items ADD COLUMN requires_expiry INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE items ADD COLUMN min_sale_price INTEGER NOT NULL DEFAULT 0;   -- per base unit
       `,
     },
   ],
@@ -250,16 +321,29 @@ export const catalogModule: AppModule = {
       if (query.categoryId) (where.push('i.category_id = :cat'), (p.cat = Number(query.categoryId)));
       if (query.stock === '1') where.push("i.kind = 'product' AND i.track_stock = 1");
       if (query.q) {
-        where.push('(i.sku LIKE :q OR i.name_en LIKE :q OR i.name_ar LIKE :q OR i.barcode = :exact)');
+        where.push('(i.sku LIKE :q OR i.name_en LIKE :q OR i.name_ar LIKE :q OR i.barcode = :exact OR i.id IN (SELECT item_id FROM item_units WHERE barcode = :exact))');
         p.q = `%${query.q}%`;
         p.exact = query.q;
       }
-      return db.all<Item>(
+      const rows = db.all<Item>(
         `SELECT i.*, c.name_en AS category_name_en, c.name_ar AS category_name_ar
          FROM items i LEFT JOIN item_categories c ON c.id = i.category_id
          ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY i.sku LIMIT 5000`,
         p,
       );
+      const units = new Map<number, ItemUnit[]>();
+      for (const u of db.all<ItemUnit>('SELECT * FROM item_units ORDER BY factor')) units.set(u.item_id, [...(units.get(u.item_id) ?? []), u]);
+      return rows.map((i) => ({ ...i, units: units.get(i.id) ?? [] }));
+    });
+
+    /** Barcode scanner lookup: an item's own barcode or one of its units'. */
+    r.get('/items/lookup', 'catalog.read', ({ query }) => {
+      const code = String(query.barcode ?? '');
+      const item = db.get<Item>('SELECT * FROM items WHERE barcode = ?', [code]);
+      if (item) return { item, unit: null };
+      const unit = db.get<ItemUnit>('SELECT * FROM item_units WHERE barcode = ? AND is_active = 1', [code]);
+      if (unit) return { item: services.get('catalog').item(unit.item_id), unit };
+      return notFound('barcode', code);
     });
 
     // ------------------------------------------------------------ categories
@@ -321,7 +405,39 @@ export const catalogModule: AppModule = {
       cogs_account_id: i.cogsAccountId,
       reorder_level: i.reorderLevel,
       reorder_qty: i.reorderQty,
+      tracking: i.kind === 'product' && i.trackStock ? i.tracking : 'none',
+      requires_expiry: i.kind === 'product' && i.trackStock && i.tracking === 'batch' && i.requiresExpiry,
+      min_sale_price: i.minSalePrice,
     });
+
+    /** Upsert the item's units; units removed from the list are deactivated, never deleted (documents reference them). */
+    const writeUnits = (itemId: number, units: z.infer<typeof zItem>['units']) => {
+      const existing = db.all<ItemUnit>('SELECT * FROM item_units WHERE item_id = ?', [itemId]);
+      const keep = new Set<number>();
+      for (const u of units) {
+        const row = {
+          name_en: u.nameEn,
+          name_ar: u.nameAr,
+          factor: u.factor,
+          barcode: u.barcode,
+          sale_price: u.salePrice,
+          purchase_price: u.purchasePrice,
+          is_active: u.isActive,
+        };
+        const cur = u.id ? existing.find((e) => e.id === u.id) : undefined;
+        if (u.id && !cur) notFound('item_unit', u.id);
+        if (cur) {
+          if (cur.factor !== u.factor && unitUsed(cur.id)) fail('item.unit_locked', `Unit ${cur.name_en} is used on documents; its size cannot change`);
+          db.update('item_units', cur.id, row);
+          keep.add(cur.id);
+        } else keep.add(db.insert('item_units', { ...row, item_id: itemId, created_at: nowIso() }));
+      }
+      for (const e of existing) if (!keep.has(e.id)) db.run('UPDATE item_units SET is_active = 0 WHERE id = ?', [e.id]);
+    };
+
+    const unitUsed = (unitId: number) =>
+      !!db.get('SELECT 1 FROM document_lines WHERE unit_id = ? LIMIT 1', [unitId]) ||
+      (services.has('inventory') && services.get('inventory').unitUsed(unitId));
 
     const checkItem = (i: z.infer<typeof zItem>, current?: Item) => {
       postable(i.incomeAccountId, 'Income account');
@@ -331,15 +447,24 @@ export const catalogModule: AppModule = {
         fail('item.inventory_account', 'The inventory account must be an Inventory account');
       }
       if (i.categoryId && !db.get('SELECT 1 FROM item_categories WHERE id = ?', [i.categoryId])) notFound('item_category', i.categoryId);
-      if (i.barcode) {
-        const dup = db.get<{ id: number }>('SELECT id FROM items WHERE barcode = ?', [i.barcode]);
-        if (dup && dup.id !== current?.id) conflict('item.duplicate_barcode', 'This barcode is already used by another item');
+      // Barcodes are unique across items and their units, so a scan always finds exactly one thing.
+      const codes = [i.barcode, ...i.units.map((u) => u.barcode)].filter((b): b is string => !!b);
+      if (new Set(codes).size !== codes.length) conflict('item.duplicate_barcode', 'The same barcode is used twice');
+      for (const code of codes) {
+        const onItem = db.get<{ id: number }>('SELECT id FROM items WHERE barcode = ?', [code]);
+        const onUnit = db.get<{ item_id: number }>('SELECT item_id FROM item_units WHERE barcode = ?', [code]);
+        if ((onItem && onItem.id !== current?.id) || (onUnit && onUnit.item_id !== current?.id)) {
+          conflict('item.duplicate_barcode', `Barcode ${code} is already used by another item`, { barcode: code });
+        }
       }
+      if (i.units.some((u) => u.factor === 1000)) fail('item.unit_factor', 'An extra unit cannot equal the base unit');
+      if (i.tracking === 'serial' && i.units.length) fail('item.serial_units', 'Serial-numbered items are counted one by one (no extra units)');
       // Once stock has moved, an item cannot stop (or start) being a stock item: its history would no longer add up.
       if (current && services.has('inventory') && services.get('inventory').hasMoves(current.id)) {
         const wasStock = current.kind === 'product' && current.track_stock === 1;
         const isStock = i.kind === 'product' && i.trackStock;
         if (wasStock !== isStock) fail('item.stock_locked', 'This item has stock movements; its stock tracking cannot change');
+        if (current.tracking !== (isStock ? i.tracking : 'none')) fail('item.stock_locked', 'This item has stock movements; its lot/serial tracking cannot change');
         if ((current.inventory_account_id ?? null) !== i.inventoryAccountId) {
           fail('item.stock_locked', 'This item has stock movements; its inventory account cannot change');
         }
@@ -354,6 +479,7 @@ export const catalogModule: AppModule = {
       if (db.get('SELECT 1 FROM items WHERE sku = ?', [input.sku])) conflict('item.duplicate_sku', 'SKU already exists');
       return db.tx(() => {
         const id = db.insert('items', { ...itemRow(input), created_at: nowIso() });
+        writeUnits(id, input.units);
         audit.log({ userId: user.id, action: 'create', entity: 'item', entityId: id, summary: input.sku });
         return { id };
       });
@@ -368,6 +494,7 @@ export const catalogModule: AppModule = {
       if (dup && dup.id !== id) conflict('item.duplicate_sku', 'SKU already exists');
       db.tx(() => {
         db.update('items', id, itemRow(input));
+        writeUnits(id, input.units);
         audit.log({ userId: user.id, action: 'update', entity: 'item', entityId: id, data: { before: cur, after: input } });
       });
       return { ok: true };

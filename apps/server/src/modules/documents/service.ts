@@ -1,7 +1,7 @@
 import type { ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, nowIso } from '../../kernel/dates.js';
-import { applyRate, lineAmount, netOfInclusive, sum } from '../../kernel/money.js';
+import { applyRate, divRound, lineAmount, netOfInclusive, sum } from '../../kernel/money.js';
 import type { JournalLineInput } from '../ledger/service.js';
 import { KIND_INFO, type DocKind } from './schema.js';
 
@@ -16,6 +16,13 @@ export interface DocLineInput {
   taxId?: number | null;
   /** Overrides the document's warehouse for this line. */
   warehouseId?: number | null;
+  /** Alternative unit of measure (null = the item's base unit); quantity and price are in this unit. */
+  unitId?: number | null;
+  /**
+   * Extension data other modules attach to a line (lots/serials, links to goods
+   * receipts or purchase orders). Stored as-is; the owning module validates it.
+   */
+  ext?: Record<string, unknown> | null;
 }
 
 export interface DocInput {
@@ -67,6 +74,11 @@ export interface ComputedLine {
   tax_id: number | null;
   tax_rate_bp: number;
   warehouse_id: number | null;
+  unit_id: number | null;
+  unit_factor: number;
+  /** Quantity in the item's base unit (x1000) — what stock moves use. */
+  base_quantity: number;
+  ext: string | null;
   gross: number;
   discount: number;
   net: number;
@@ -108,10 +120,20 @@ export function createDocuments({ db, services, events }: ModuleContext) {
       if (!Number.isSafeInteger(l.quantity) || l.quantity <= 0) fail('document.line_quantity', `Line ${n}: quantity must be positive`, { line: n });
       if (!Number.isSafeInteger(l.unitPrice) || l.unitPrice < 0) fail('document.line_price', `Line ${n}: invalid price`, { line: n });
 
+      const factor = item ? catalog().unitFactor(item, l.unitId) : l.unitId ? fail('document.unit_without_item', `Line ${n}: a unit needs an item`, { line: n }) : 1000;
+      const baseQty = Number(divRound(BigInt(l.quantity) * BigInt(factor), 1000n));
+      if (baseQty <= 0) fail('document.line_quantity', `Line ${n}: quantity is too small for this unit`, { line: n });
+      const ext = l.ext && Object.keys(l.ext).length ? JSON.stringify(l.ext) : null;
+      if (ext && ext.length > 200_000) fail('document.ext_too_large', `Line ${n}: too much detail`, { line: n });
+
       // Stock items are bought into the inventory asset, everything else into an expense.
+      // When inventory is installed it may redirect a stock line (e.g. goods already received => GRNI).
       const stock = item ? catalog().isStockItem(item) : false;
+      const hooked =
+        side === 'purchases' && stock && services.has('inventory') ? services.get('inventory').purchaseLineAccount(item!, l.ext ?? null) : null;
       const accountId =
         l.accountId ??
+        hooked ??
         (side === 'sales'
           ? item?.income_account_id ?? ledger().defaultAccount(item?.kind === 'service' ? 'services' : 'sales')
           : stock
@@ -144,6 +166,10 @@ export function createDocuments({ db, services, events }: ModuleContext) {
         tax_id: taxId,
         tax_rate_bp: rate,
         warehouse_id: l.warehouseId ?? null,
+        unit_id: l.unitId ?? null,
+        unit_factor: factor,
+        base_quantity: baseQty,
+        ext,
         ...c,
       };
     });

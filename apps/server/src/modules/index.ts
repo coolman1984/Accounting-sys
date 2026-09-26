@@ -7,6 +7,8 @@ import { documentsModule } from './documents/index.js';
 import { paymentsModule } from './payments/index.js';
 import { reportsModule } from './reports/index.js';
 import { inventoryModule } from './inventory/index.js';
+import { purchasingModule } from './purchasing/index.js';
+import { pricingModule } from './pricing/index.js';
 
 /**
  * The installed modules. Order does not matter — the kernel sorts them by
@@ -21,5 +23,7 @@ export const modules: AppModule[] = [
   documentsModule,
   paymentsModule,
   inventoryModule,
+  purchasingModule,
+  pricingModule,
   reportsModule,
 ];

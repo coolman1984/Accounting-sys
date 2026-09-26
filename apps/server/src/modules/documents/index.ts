@@ -22,6 +22,8 @@ const zLine = z.object({
   accountId: zOptId.transform((v) => v ?? null),
   taxId: zOptId.transform((v) => v ?? null),
   warehouseId: zOptId.transform((v) => v ?? null),
+  unitId: zOptId.transform((v) => v ?? null),
+  ext: z.record(z.string(), z.unknown()).nullish().transform((v) => v ?? null),
 });
 
 const zDoc = z.object({
@@ -103,14 +105,15 @@ export const documentsModule: AppModule = {
       const party = services.get('parties').get(d.party_id);
       const lines = db.all(
         `SELECT l.*, a.code AS account_code, a.name_en AS account_name_en, a.name_ar AS account_name_ar,
-                i.sku AS item_sku, t.code AS tax_code
+                i.sku AS item_sku, i.unit AS base_unit, u.name_en AS unit_name_en, u.name_ar AS unit_name_ar, t.code AS tax_code
          FROM document_lines l
          JOIN accounts a ON a.id = l.account_id
          LEFT JOIN items i ON i.id = l.item_id
+         LEFT JOIN item_units u ON u.id = l.unit_id
          LEFT JOIN taxes t ON t.id = l.tax_id
          WHERE l.document_id = ? ORDER BY l.line_no`,
         [d.id],
-      );
+      ).map((l: any) => ({ ...l, ext: l.ext ? JSON.parse(l.ext) : null }));
       // Where the money came from (payments / credit notes applied to this document) …
       const settlements = db.all(
         'SELECT id, source_type, source_id, source_number, amount, date FROM settlements WHERE document_id = ? ORDER BY date, id',

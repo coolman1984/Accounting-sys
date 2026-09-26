@@ -18,7 +18,7 @@ export const FY_START = '2026-01-01';
 
 /** A fresh, fully set-up company in an in-memory database. */
 export async function setupCompany(opts: { vatRateBp?: number | null } = {}): Promise<TestClient> {
-  const app = await buildApp(loadConfig({ dbFile: ':memory:', dataDir: '/tmp/mizan-test', logLevel: 'silent', webDir: null }));
+  const app = await buildApp(loadConfig({ dbFile: ':memory:', dataDir: '/tmp/mizan-test', logLevel: process.env.TLOG ?? "silent", webDir: null }));
   const raw = async (method: string, url: string, body?: unknown, cookie?: string) => {
     const res = await app.http.inject({
       method: method as 'GET',

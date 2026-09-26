@@ -124,4 +124,20 @@ export const migrations: Migration[] = [
       BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
     `,
   },
+  {
+    id: '003_units_ext',
+    up: `
+      ALTER TABLE document_lines ADD COLUMN unit_id INTEGER REFERENCES item_units(id);
+      ALTER TABLE document_lines ADD COLUMN unit_factor INTEGER NOT NULL DEFAULT 1000;
+      ALTER TABLE document_lines ADD COLUMN base_quantity INTEGER;          -- x1000, in the item's base unit
+      ALTER TABLE document_lines ADD COLUMN ext TEXT;                       -- JSON extension data (lots, links)
+
+      -- Back-fill existing lines (the freeze trigger is lifted only for this one-off, same transaction).
+      DROP TRIGGER document_lines_frozen_upd;
+      UPDATE document_lines SET base_quantity = quantity;
+      CREATE TRIGGER document_lines_frozen_upd BEFORE UPDATE ON document_lines
+      WHEN (SELECT status FROM documents WHERE id = OLD.document_id) <> 'draft'
+      BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
+    `,
+  },
 ];

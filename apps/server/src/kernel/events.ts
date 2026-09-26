@@ -13,6 +13,9 @@ export interface EventMap {
   'payment.posted': { paymentId: number };
   'payment.voided': { paymentId: number };
   'fiscalYear.closed': { fiscalYearId: number };
+  /** Goods receipt notes (inventory) — purchasing follows them to update purchase orders. */
+  'stock.receipt.posted': { receiptId: number; userId: number | null };
+  'stock.receipt.voided': { receiptId: number; userId: number | null };
   /** First-run setup; modules seed their defaults (chart of accounts, taxes …). */
   'system.setup': SetupPayload;
 }

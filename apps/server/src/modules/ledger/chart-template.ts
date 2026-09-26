@@ -26,11 +26,12 @@ export type DefaultAccountKey =
   | 'vatInput'
   | 'retainedEarnings'
   | 'capital'
-  | 'inventoryAdjustment';
+  | 'inventoryAdjustment'
+  | 'grni';
 
 export const DEFAULT_ACCOUNT_KEYS: DefaultAccountKey[] = [
   'cash', 'bank', 'receivable', 'payable', 'sales', 'services', 'purchases',
-  'inventory', 'cogs', 'vatOutput', 'vatInput', 'retainedEarnings', 'capital', 'inventoryAdjustment',
+  'inventory', 'cogs', 'vatOutput', 'vatInput', 'retainedEarnings', 'capital', 'inventoryAdjustment', 'grni',
 ];
 
 /** A clean, IFRS-friendly starter chart, bilingual. */
@@ -72,6 +73,7 @@ export const STANDARD_CHART: TemplateAccount[] = [
           { code: '2130', en: 'Accrued Expenses', ar: 'مصروفات مستحقة', type: 'liability', subtype: 'current_liability' },
           { code: '2140', en: 'Salaries Payable', ar: 'رواتب مستحقة', type: 'liability', subtype: 'current_liability' },
           { code: '2150', en: 'Customer Advances', ar: 'دفعات مقدمة من العملاء', type: 'liability', subtype: 'current_liability' },
+          { code: '2160', en: 'Goods Received Not Invoiced', ar: 'بضاعة مستلمة لم تصل فواتيرها', type: 'liability', subtype: 'current_liability', role: 'grni' },
         ],
       },
       {

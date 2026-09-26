@@ -22,6 +22,47 @@ const zWarehouse = z.object({
   isDefault: z.boolean().default(false),
 });
 
+const zLots = z
+  .array(z.object({ lotNo: z.string().trim().min(1).max(64), expiry: zDate.nullish().transform((v) => v ?? null), qty: z.number().int().positive() }))
+  .max(5000)
+  .nullish()
+  .transform((v) => v ?? null);
+
+const zReceipt = z.object({
+  supplierId: zId,
+  poId: zOptId.transform((v) => v ?? null),
+  date: zDate,
+  warehouseId: zId,
+  reference: zOptText(100),
+  notes: zOptText(2000),
+  lines: z
+    .array(
+      z.object({
+        itemId: zId,
+        description: zOptText(300),
+        unitId: zOptId.transform((v) => v ?? null),
+        quantity: z.number().int().positive(),
+        unitCost: z.number().int().min(0),
+        poLineId: zOptId.transform((v) => v ?? null),
+        lots: zLots,
+      }),
+    )
+    .min(1)
+    .max(1000),
+  post: z.boolean().default(false),
+});
+
+const zLanded = z.object({
+  date: zDate,
+  counterAccountId: zId,
+  amount: z.number().int().positive(),
+  method: z.enum(['value', 'qty']).default('value'),
+  reference: zOptText(100),
+  memo: zOptText(1000),
+  targets: z.array(z.object({ sourceType: z.enum(['purchase_bill', 'goods_receipt']), sourceId: zId })).min(1).max(100),
+  post: z.boolean().default(false),
+});
+
 const zStockDoc = z.object({
   kind: z.enum(STOCK_DOC_KINDS),
   date: zDate,
@@ -37,6 +78,8 @@ const zStockDoc = z.object({
         qty: z.number().int(),
         unitCost: z.number().int().min(0).nullish().transform((v) => v ?? null),
         note: zOptText(300),
+        unitId: zOptId.transform((v) => v ?? null),
+        lots: zLots,
       }),
     )
     .min(1)
@@ -62,7 +105,7 @@ export const inventoryModule: AppModule = {
     ctx.events.on('document.posted', (e) => inv.onDocumentPosted(e.documentId, e.userId));
     ctx.events.on('document.voided', (e) => inv.onDocumentVoided(e.documentId, e.date, e.userId));
     // Idempotent: also covers companies created before this module existed.
-    for (const [key, prefix] of Object.values(STOCK_SEQ)) {
+    for (const [key, prefix] of [...Object.values(STOCK_SEQ), ['goods_receipt', 'GRN-'], ['landed_cost', 'LC-']]) {
       ctx.db.run('INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES (?, ?, 1, 5)', [key, prefix]);
     }
   },
@@ -194,8 +237,16 @@ export const inventoryModule: AppModule = {
          WHERE w.is_active = 1 OR l.qty > 0 ORDER BY w.is_default DESC, w.code`,
         [item.id],
       );
+      const lots = db.all(
+        `SELECT l.id, l.lot_no, l.expiry_date, w.code AS warehouse_code, ll.warehouse_id, ll.qty
+         FROM lot_levels ll JOIN stock_lots l ON l.id = ll.lot_id JOIN warehouses w ON w.id = ll.warehouse_id
+         WHERE l.item_id = ? AND ll.qty > 0 ORDER BY (l.expiry_date IS NULL), l.expiry_date, l.lot_no`,
+        [item.id],
+      );
       return {
         item,
+        units: services.get('catalog').units(item.id),
+        lots,
         qty: p.qty,
         value: p.value,
         avg_cost: unitCost(p.qty, p.value),
@@ -222,14 +273,19 @@ export const inventoryModule: AppModule = {
       if (q.from) (where.push('m.date >= :from'), (prm.from = q.from));
       if (q.to) (where.push('m.date <= :to'), (prm.to = q.to));
       const moves = db.all<any>(
-        `SELECT m.*, w.code AS warehouse_code, je.number AS journal_number,
-                COALESCE(d.number, sd.number) AS source_number,
-                COALESCE(pa.name, NULL) AS party_name
+        `SELECT m.*, w.code AS warehouse_code, je.number AS journal_number, lot.lot_no, lot.expiry_date,
+                COALESCE(d.number, sd.number, gr.number, lc.number) AS source_number,
+                COALESCE(pa.name, sup.name) AS party_name
          FROM stock_moves m JOIN warehouses w ON w.id = m.warehouse_id
          LEFT JOIN journal_entries je ON je.id = m.journal_entry_id
          LEFT JOIN documents d ON m.source_type IN ('sales_invoice', 'sales_credit', 'purchase_bill', 'purchase_credit') AND d.id = m.source_id
          LEFT JOIN parties pa ON pa.id = d.party_id
+         LEFT JOIN goods_receipts gr2 ON m.source_type = 'goods_receipt' AND gr2.id = m.source_id
+         LEFT JOIN parties sup ON sup.id = gr2.supplier_id
          LEFT JOIN stock_docs sd ON m.source_type IN ('adjustment', 'opening', 'count', 'transfer') AND sd.id = m.source_id
+         LEFT JOIN goods_receipts gr ON m.source_type = 'goods_receipt' AND gr.id = m.source_id
+         LEFT JOIN landed_costs lc ON m.source_type = 'landed_cost' AND lc.id = m.source_id
+         LEFT JOIN stock_lots lot ON lot.id = m.lot_id
          WHERE ${where.join(' AND ')} ORDER BY m.date, m.id`,
         prm,
       );
@@ -258,11 +314,14 @@ export const inventoryModule: AppModule = {
       const q = parse(z.object({ type: z.string(), id: zId }), query);
       return db.all(
         `SELECT m.id, m.date, m.qty, m.value, m.is_reversal, m.item_id, i.sku, i.name_en, i.name_ar, w.code AS warehouse_code,
-                m.journal_entry_id, je.number AS journal_number
+                m.journal_entry_id, je.number AS journal_number, lot.lot_no, lot.expiry_date, m.source_type
          FROM stock_moves m JOIN items i ON i.id = m.item_id JOIN warehouses w ON w.id = m.warehouse_id
          LEFT JOIN journal_entries je ON je.id = m.journal_entry_id
-         WHERE m.source_type = ? AND m.source_id = ? ORDER BY m.id`,
-        [q.type, q.id],
+         LEFT JOIN stock_lots lot ON lot.id = m.lot_id
+         WHERE (m.source_type = ? AND m.source_id = ?)
+            OR (? IN ('purchase_bill', 'sales_invoice', 'sales_credit', 'purchase_credit') AND m.source_type = 'grn_variance' AND m.source_id = ?)
+         ORDER BY m.id`,
+        [q.type, q.id, q.type, q.id],
       );
     });
 
@@ -292,13 +351,14 @@ export const inventoryModule: AppModule = {
     r.get('/inventory/operations/:id', 'inventory.read', ({ params }) => {
       const d = inv.stockDoc(Number(params.id));
       const lines = db.all(
-        `SELECT l.*, i.sku, i.name_en, i.name_ar, i.unit,
+        `SELECT l.*, i.sku, i.name_en, i.name_ar, i.unit, i.tracking, u.name_en AS unit_name_en, u.name_ar AS unit_name_ar,
                 (SELECT COALESCE(SUM(m.value), 0) FROM stock_moves m
                  WHERE m.source_type = :kind AND m.source_id = :id AND m.source_line_id = l.id AND m.is_reversal = 0
                    AND (:kind <> 'transfer' OR m.qty > 0)) AS value
-         FROM stock_doc_lines l JOIN items i ON i.id = l.item_id WHERE l.doc_id = :id ORDER BY l.line_no`,
+         FROM stock_doc_lines l JOIN items i ON i.id = l.item_id LEFT JOIN item_units u ON u.id = l.unit_id
+         WHERE l.doc_id = :id ORDER BY l.line_no`,
         { id: d.id, kind: d.kind },
-      );
+      ).map((l: any) => ({ ...l, lots: l.lots ? JSON.parse(l.lots) : null }));
       const je = (id: number | null) => (id ? db.get<{ number: string }>('SELECT number FROM journal_entries WHERE id = ?', [id])?.number : null);
       return {
         ...d,
@@ -402,7 +462,8 @@ export const inventoryModule: AppModule = {
                 SUM(CASE WHEN m.date BETWEEN :from AND :to AND m.qty > 0 THEN m.qty ELSE 0 END) AS in_qty,
                 SUM(CASE WHEN m.date BETWEEN :from AND :to AND m.qty > 0 THEN m.value ELSE 0 END) AS in_value,
                 -SUM(CASE WHEN m.date BETWEEN :from AND :to AND m.qty < 0 THEN m.qty ELSE 0 END) AS out_qty,
-                -SUM(CASE WHEN m.date BETWEEN :from AND :to AND m.qty < 0 THEN m.value ELSE 0 END) AS out_value
+                -SUM(CASE WHEN m.date BETWEEN :from AND :to AND m.qty < 0 THEN m.value ELSE 0 END) AS out_value,
+                SUM(CASE WHEN m.date BETWEEN :from AND :to AND m.qty = 0 THEN m.value ELSE 0 END) AS adj_value
          FROM stock_moves m JOIN items i ON i.id = m.item_id
          WHERE m.date <= :to ${wh} GROUP BY i.id ORDER BY i.sku`,
         prm,
@@ -411,10 +472,10 @@ export const inventoryModule: AppModule = {
         .map((x) => ({
           ...x,
           closing_qty: x.opening_qty + x.in_qty - x.out_qty,
-          closing_value: q.warehouseId ? null : x.opening_value + x.in_value - x.out_value,
+          closing_value: q.warehouseId ? null : x.opening_value + x.in_value - x.out_value + x.adj_value,
           opening_value: q.warehouseId ? null : x.opening_value,
         }))
-        .filter((x) => x.opening_qty || x.in_qty || x.out_qty);
+        .filter((x) => x.opening_qty || x.in_qty || x.out_qty || x.adj_value);
       return { ...q, rows: out };
     });
 
@@ -444,7 +505,7 @@ export const inventoryModule: AppModule = {
       const q = parse(z.object({ from: zDate.default(`${y}-01-01`), to: zDate.default(`${y}-12-31`) }), query);
       const sales = db.all<{ item_id: number; qty: number; revenue: number }>(
         `SELECT l.item_id,
-                SUM(CASE WHEN d.kind = 'sales_invoice' THEN l.quantity ELSE -l.quantity END) qty,
+                SUM(CASE WHEN d.kind = 'sales_invoice' THEN l.base_quantity ELSE -l.base_quantity END) qty,
                 SUM(CASE WHEN d.kind = 'sales_invoice' THEN l.net ELSE -l.net END) revenue
          FROM document_lines l JOIN documents d ON d.id = l.document_id
          WHERE d.kind IN ('sales_invoice', 'sales_credit') AND d.status = 'posted' AND l.item_id IS NOT NULL
@@ -480,6 +541,278 @@ export const inventoryModule: AppModule = {
         .sort((a, b) => b.profit - a.profit);
       const totals = rows.reduce((t, x) => ({ revenue: t.revenue + x.revenue, cost: t.cost + x.cost, profit: t.profit + x.profit }), { revenue: 0, cost: 0, profit: 0 });
       return { ...q, rows, totals };
+    });
+
+    // ------------------------------------------------------ lots & serials
+    /** Lots in stock (optionally for one item / warehouse) — used by lot pickers. */
+    r.get('/inventory/lots', 'inventory.read', ({ query }) => {
+      const where = ['ll.qty > 0'];
+      const p: Record<string, string | number> = {};
+      if (query.itemId) (where.push('l.item_id = :item'), (p.item = Number(query.itemId)));
+      if (query.warehouseId) (where.push('ll.warehouse_id = :wh'), (p.wh = Number(query.warehouseId)));
+      return db.all(
+        `SELECT l.id, l.item_id, l.lot_no, l.expiry_date, ll.warehouse_id, w.code AS warehouse_code, ll.qty
+         FROM lot_levels ll JOIN stock_lots l ON l.id = ll.lot_id JOIN warehouses w ON w.id = ll.warehouse_id
+         WHERE ${where.join(' AND ')} ORDER BY (l.expiry_date IS NULL), l.expiry_date, l.id LIMIT 5000`,
+        p,
+      );
+    });
+
+    /** Near-expiry and expired stock, valued at average cost. */
+    r.get('/inventory/reports/expiry', 'inventory.read', ({ query }) => {
+      const days = Math.min(Math.max(Number(query.days ?? 90) || 90, 0), 3650);
+      const t = today();
+      const until = addDays(t, days);
+      const p: Record<string, string | number> = { until };
+      let wh = '';
+      if (query.warehouseId) (wh = 'AND ll.warehouse_id = :wh'), (p.wh = Number(query.warehouseId));
+      const rows = db.all<any>(
+        `SELECT l.id, l.lot_no, l.expiry_date, i.id AS item_id, i.sku, i.name_en, i.name_ar, i.unit, w.code AS warehouse_code, ll.qty,
+                COALESCE(v.qty, 0) AS pool_qty, COALESCE(v.value, 0) AS pool_value
+         FROM lot_levels ll JOIN stock_lots l ON l.id = ll.lot_id JOIN items i ON i.id = l.item_id
+         JOIN warehouses w ON w.id = ll.warehouse_id LEFT JOIN stock_values v ON v.item_id = i.id
+         WHERE ll.qty > 0 AND l.expiry_date IS NOT NULL AND l.expiry_date <= :until ${wh}
+         ORDER BY l.expiry_date, i.sku`,
+        p,
+      );
+      const out = rows.map((x) => ({
+        ...x,
+        value: valueOf(x.qty, x.pool_qty, x.pool_value),
+        days_left: Math.round((Date.parse(x.expiry_date) - Date.parse(t)) / 86_400_000),
+        status: x.expiry_date < t ? 'expired' : 'expiring',
+      }));
+      return {
+        days,
+        rows: out,
+        expiredValue: out.filter((x) => x.status === 'expired').reduce((s, x) => s + x.value, 0),
+        expiringValue: out.filter((x) => x.status === 'expiring').reduce((s, x) => s + x.value, 0),
+      };
+    });
+
+    /** Trace a lot or serial number from the supplier to the customer (recalls, warranty). */
+    r.get('/inventory/trace', 'inventory.read', ({ query }) => {
+      const code = String(query.q ?? '').trim();
+      if (!code) return { lots: [] };
+      const lots = db.all<any>(
+        `SELECT l.id, l.lot_no, l.expiry_date, i.id AS item_id, i.sku, i.name_en, i.name_ar, i.tracking
+         FROM stock_lots l JOIN items i ON i.id = l.item_id WHERE l.lot_no LIKE ? ORDER BY l.lot_no LIMIT 50`,
+        [`%${code}%`],
+      );
+      return {
+        lots: lots.map((l) => ({
+          ...l,
+          on_hand: db.all(
+            `SELECT w.code AS warehouse_code, ll.qty FROM lot_levels ll JOIN warehouses w ON w.id = ll.warehouse_id WHERE ll.lot_id = ? AND ll.qty > 0`,
+            [l.id],
+          ),
+          moves: db.all(
+            `SELECT m.id, m.date, m.qty, m.source_type, m.source_id, m.is_reversal, w.code AS warehouse_code,
+                    COALESCE(d.number, sd.number, gr.number) AS source_number, COALESCE(pa.name, sup.name) AS party_name
+             FROM stock_moves m JOIN warehouses w ON w.id = m.warehouse_id
+             LEFT JOIN documents d ON m.source_type IN ('sales_invoice', 'sales_credit', 'purchase_bill', 'purchase_credit') AND d.id = m.source_id
+             LEFT JOIN parties pa ON pa.id = d.party_id
+             LEFT JOIN stock_docs sd ON m.source_type IN ('adjustment', 'opening', 'count', 'transfer') AND sd.id = m.source_id
+             LEFT JOIN goods_receipts gr ON m.source_type = 'goods_receipt' AND gr.id = m.source_id
+             LEFT JOIN parties sup ON sup.id = gr.supplier_id
+             WHERE m.lot_id = ? ORDER BY m.date, m.id`,
+            [l.id],
+          ),
+        })),
+      };
+    });
+
+    // ------------------------------------------------------- goods receipts
+    const receiptView = (id: number) => {
+      const rc = inv.receipt(id);
+      const lines = db.all<any>(
+        `SELECT l.*, i.sku, i.name_en, i.name_ar, i.unit AS base_unit, i.tracking, u.name_en AS unit_name_en, u.name_ar AS unit_name_ar
+         FROM goods_receipt_lines l JOIN items i ON i.id = l.item_id LEFT JOIN item_units u ON u.id = l.unit_id
+         WHERE l.receipt_id = ? ORDER BY l.line_no`,
+        [id],
+      );
+      const je = (x: number | null) => (x ? db.get<{ number: string }>('SELECT number FROM journal_entries WHERE id = ?', [x])?.number : null);
+      return {
+        ...rc,
+        supplier: services.get('parties').get(rc.supplier_id),
+        warehouse: inv.warehouse(rc.warehouse_id),
+        lines: lines.map((l) => ({ ...l, lots: l.lots ? JSON.parse(l.lots) : null, remaining_base: l.base_quantity - l.billed_base })),
+        journal_number: je(rc.journal_entry_id),
+        void_journal_number: je(rc.void_entry_id),
+        grni_account_id: rc.status === 'posted' ? inv.engine.grniAccount() : null,
+      };
+    };
+
+    r.get('/inventory/receipts', 'inventory.read', ({ query }) => {
+      const { limit, offset } = paging(query);
+      const where: string[] = [];
+      const p: Record<string, string | number> = {};
+      if (query.status) (where.push('r.status = :status'), (p.status = query.status));
+      if (query.supplierId) (where.push('r.supplier_id = :sup'), (p.sup = Number(query.supplierId)));
+      if (query.unbilled === '1') where.push("r.status = 'posted' AND EXISTS (SELECT 1 FROM goods_receipt_lines l WHERE l.receipt_id = r.id AND l.billed_base < l.base_quantity)");
+      if (query.q) (where.push('(r.number LIKE :q OR r.reference LIKE :q OR pa.name LIKE :q)'), (p.q = `%${query.q}%`));
+      const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const rows = db.all(
+        `SELECT r.*, pa.name AS supplier_name, w.code AS warehouse_code,
+                (SELECT COALESCE(SUM(value), 0) FROM goods_receipt_lines l WHERE l.receipt_id = r.id) AS value,
+                (SELECT COALESCE(SUM(value - billed_value), 0) FROM goods_receipt_lines l WHERE l.receipt_id = r.id) AS unbilled_value
+         FROM goods_receipts r JOIN parties pa ON pa.id = r.supplier_id JOIN warehouses w ON w.id = r.warehouse_id
+         ${w} ORDER BY r.date DESC, r.id DESC LIMIT :limit OFFSET :offset`,
+        { ...p, limit, offset },
+      );
+      const total = db.get<{ n: number }>(`SELECT COUNT(*) n FROM goods_receipts r JOIN parties pa ON pa.id = r.supplier_id ${w}`, p)!.n;
+      return { rows, total };
+    });
+
+    r.get('/inventory/receipts/:id', 'inventory.read', ({ params }) => receiptView(Number(params.id)));
+
+    r.post('/inventory/receipts', 'inventory.write', ({ body, user }) => {
+      const input = parse(zReceipt, body);
+      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      const id = db.tx(() => {
+        const id = inv.createReceipt(input, user.id);
+        if (input.post) inv.postReceipt(id, user.id);
+        return id;
+      });
+      return { id };
+    });
+
+    r.put('/inventory/receipts/:id', 'inventory.write', ({ params, body, user }) => {
+      const id = Number(params.id);
+      const input = parse(zReceipt, body);
+      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      db.tx(() => {
+        inv.updateReceipt(id, input, user.id);
+        if (input.post) inv.postReceipt(id, user.id);
+      });
+      return { id };
+    });
+
+    r.post('/inventory/receipts/:id/post', 'inventory.post', ({ params, user }) => {
+      inv.postReceipt(Number(params.id), user.id);
+      return { ok: true };
+    });
+
+    r.post('/inventory/receipts/:id/void', 'inventory.post', ({ params, body, user }) => {
+      inv.voidReceipt(Number(params.id), parse(z.object({ date: zDate.nullish() }), body ?? {}), user.id);
+      return { ok: true };
+    });
+
+    r.delete('/inventory/receipts/:id', 'inventory.write', ({ params, user }) => {
+      inv.removeReceipt(Number(params.id), user.id);
+      return { ok: true };
+    });
+
+    /** Received but not yet invoiced — reconciled with the GRNI account. */
+    r.get('/inventory/reports/grni', 'inventory.read', ({ query }) => {
+      const asOf = String(query.asOf ?? today());
+      const rows = db.all<any>(
+        `SELECT l.id, r.id AS receipt_id, r.number, r.date, pa.name AS supplier_name, i.sku, i.name_en, i.name_ar,
+                l.base_quantity, l.billed_base, l.value, l.billed_value
+         FROM goods_receipt_lines l JOIN goods_receipts r ON r.id = l.receipt_id JOIN parties pa ON pa.id = r.supplier_id
+         JOIN items i ON i.id = l.item_id
+         WHERE r.status = 'posted' AND l.billed_base < l.base_quantity ORDER BY r.date, r.id, l.line_no`,
+      );
+      const open = rows.reduce((s, x) => s + (x.value - x.billed_value), 0);
+      const grni = services.get('ledger').defaultAccounts().grni;
+      const ledgerBalance = grni
+        ? db.get<{ b: number }>('SELECT COALESCE(SUM(credit - debit), 0) b FROM ledger WHERE account_id = ? AND date <= ?', [grni, asOf])!.b
+        : 0;
+      return { rows, open, ledger: ledgerBalance };
+    });
+
+    // --------------------------------------------------------- landed costs
+    r.get('/inventory/landed-costs', 'inventory.read', ({ query }) => {
+      const { limit, offset } = paging(query);
+      const rows = db.all(
+        `SELECT lc.*, a.code AS counter_code, a.name_en AS counter_name_en, a.name_ar AS counter_name_ar,
+                (SELECT COUNT(*) FROM landed_cost_targets t WHERE t.landed_cost_id = lc.id) AS targets
+         FROM landed_costs lc JOIN accounts a ON a.id = lc.counter_account_id
+         ORDER BY lc.date DESC, lc.id DESC LIMIT ? OFFSET ?`,
+        [limit, offset],
+      );
+      return { rows, total: db.get<{ n: number }>('SELECT COUNT(*) n FROM landed_costs')!.n };
+    });
+
+    /** Purchases that can carry landed costs (recent posted bills and receipts with stock items). */
+    r.get('/inventory/landed-costs/candidates', 'inventory.read', ({ query }) => {
+      const since = String(query.since ?? addDays(today(), -365));
+      return db.all(
+        `SELECT 'purchase_bill' AS source_type, d.id AS source_id, d.number, d.date, pa.name AS supplier_name,
+                (SELECT COALESCE(SUM(m.value), 0) FROM stock_moves m WHERE m.source_type = 'purchase_bill' AND m.source_id = d.id AND m.qty > 0 AND m.is_reversal = 0) AS value
+         FROM documents d JOIN parties pa ON pa.id = d.party_id
+         WHERE d.kind = 'purchase_bill' AND d.status = 'posted' AND d.date >= :since
+           AND EXISTS (SELECT 1 FROM stock_moves m WHERE m.source_type = 'purchase_bill' AND m.source_id = d.id)
+         UNION ALL
+         SELECT 'goods_receipt', r.id, r.number, r.date, pa.name,
+                (SELECT COALESCE(SUM(value), 0) FROM goods_receipt_lines l WHERE l.receipt_id = r.id)
+         FROM goods_receipts r JOIN parties pa ON pa.id = r.supplier_id
+         WHERE r.status = 'posted' AND r.date >= :since
+         ORDER BY 4 DESC LIMIT 300`,
+        { since },
+      );
+    });
+
+    r.get('/inventory/landed-costs/:id', 'inventory.read', ({ params }) => {
+      const lc = inv.landedCost(Number(params.id));
+      const targets = db.all(
+        `SELECT t.source_type, t.source_id, COALESCE(d.number, r.number) AS number, COALESCE(d.date, r.date) AS date, COALESCE(p1.name, p2.name) AS supplier_name
+         FROM landed_cost_targets t
+         LEFT JOIN documents d ON t.source_type = 'purchase_bill' AND d.id = t.source_id LEFT JOIN parties p1 ON p1.id = d.party_id
+         LEFT JOIN goods_receipts r ON t.source_type = 'goods_receipt' AND r.id = t.source_id LEFT JOIN parties p2 ON p2.id = r.supplier_id
+         WHERE t.landed_cost_id = ?`,
+        [lc.id],
+      );
+      const allocations =
+        lc.status === 'draft'
+          ? inv.landedCostBasis(lc.id).map((b) => ({ item_id: b.item_id, received_qty: b.qty, received_value: b.value }))
+          : db.all('SELECT * FROM landed_cost_allocations WHERE landed_cost_id = ?', [lc.id]);
+      const items = new Map(db.all<any>('SELECT id, sku, name_en, name_ar FROM items').map((x) => [x.id, x]));
+      const je = (x: number | null) => (x ? db.get<{ number: string }>('SELECT number FROM journal_entries WHERE id = ?', [x])?.number : null);
+      return {
+        ...lc,
+        counter_account: services.get('ledger').account(lc.counter_account_id),
+        targets,
+        allocations: (allocations as any[]).map((a) => ({ ...a, ...items.get(a.item_id) })),
+        journal_number: je(lc.journal_entry_id),
+        void_journal_number: je(lc.void_entry_id),
+      };
+    });
+
+    r.post('/inventory/landed-costs', 'inventory.write', ({ body, user }) => {
+      const input = parse(zLanded, body);
+      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      const id = db.tx(() => {
+        const id = inv.createLandedCost(input, user.id);
+        if (input.post) inv.postLandedCost(id, user.id);
+        return id;
+      });
+      return { id };
+    });
+
+    r.put('/inventory/landed-costs/:id', 'inventory.write', ({ params, body, user }) => {
+      const id = Number(params.id);
+      const input = parse(zLanded, body);
+      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      db.tx(() => {
+        inv.updateLandedCost(id, input, user.id);
+        if (input.post) inv.postLandedCost(id, user.id);
+      });
+      return { id };
+    });
+
+    r.post('/inventory/landed-costs/:id/post', 'inventory.post', ({ params, user }) => {
+      inv.postLandedCost(Number(params.id), user.id);
+      return { ok: true };
+    });
+
+    r.post('/inventory/landed-costs/:id/void', 'inventory.post', ({ params, body, user }) => {
+      inv.voidLandedCost(Number(params.id), parse(z.object({ date: zDate.nullish() }), body ?? {}), user.id);
+      return { ok: true };
+    });
+
+    r.delete('/inventory/landed-costs/:id', 'inventory.write', ({ params, user }) => {
+      inv.removeLandedCost(Number(params.id), user.id);
+      return { ok: true };
     });
   },
 };
