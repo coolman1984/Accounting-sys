@@ -51,6 +51,9 @@ Configuration (environment variables): `MIZAN_PORT` (4800), `MIZAN_HOST`
 - Sales invoices, credit notes, purchase bills, debit notes — auto-posted
 - Receipts & payments with allocation; customers & suppliers with statements
 - Products & services, VAT (inclusive / exclusive)
+- **Inventory:** warehouses, transfers, adjustments, physical counts, opening
+  stock, moving-average cost with automatic cost-of-goods entries, item card,
+  valuation reconciled to the books, reorder and profitability reports
 - Trial balance, general ledger, income statement, balance sheet, cash flow,
   aging, VAT summary, dashboard
 - Users & roles, audit trail, lock date, gap-free numbering, daily backups

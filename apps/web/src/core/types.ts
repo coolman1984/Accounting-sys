@@ -88,7 +88,37 @@ export interface Item {
   purchase_tax_id: number | null;
   description: string | null;
   is_active: number;
+  barcode: string | null;
+  category_id: number | null;
+  category_name_en?: string | null;
+  category_name_ar?: string | null;
+  track_stock: number;
+  inventory_account_id: number | null;
+  cogs_account_id: number | null;
+  reorder_level: number;
+  reorder_qty: number;
 }
+
+export interface ItemCategory {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  items: number;
+}
+
+export interface Warehouse {
+  id: number;
+  code: string;
+  name_en: string;
+  name_ar: string;
+  address: string | null;
+  is_active: number;
+  is_default: number;
+  items?: number;
+  value?: number;
+}
+
+export const isStockItem = (i: Pick<Item, 'kind' | 'track_stock'>) => i.kind === 'product' && i.track_stock === 1;
 
 export interface JournalLine {
   id: number;
@@ -153,6 +183,7 @@ export interface DocumentLine {
   tax_id: number | null;
   tax_code: string | null;
   tax_rate_bp: number;
+  warehouse_id: number | null;
   gross: number;
   discount: number;
   net: number;
@@ -171,6 +202,7 @@ export interface DocumentFull extends Omit<DocumentRow, 'party_name'> {
   journal_number: string | null;
   void_entry_id: number | null;
   void_journal_number: string | null;
+  warehouse_id: number | null;
   party: Party;
   lines: DocumentLine[];
   settlements: { id: number; source_type: 'payment' | 'credit'; source_id: number; source_number: string | null; amount: number; date: string }[];

@@ -21,10 +21,29 @@ away.
 - [x] Web app: EN/AR (RTL), light/dark, command palette, printing, CSV, mobile
 - [x] End-to-end test suite for the ledger and every posting path
 
+## ✅ Phase 2a — Inventory
+
+- [x] Multiple warehouses, default warehouse, transfers
+- [x] Perpetual stock ledger with running balances (item card)
+- [x] Moving weighted-average cost; automatic cost-of-goods entries
+- [x] Returns at original cost, supplier returns and voids trued-up in the ledger
+- [x] Adjustments, opening stock, physical counts (differences only)
+- [x] Negative stock impossible (database constraint), live availability in invoices
+- [x] Item categories, barcodes, reorder level & quantity, per-item inventory/COGS accounts
+- [x] Reports: stock on hand, valuation reconciled to the ledger, movement summary,
+      reorder suggestions, item profitability; dashboard widget
+
+## Phase 2b — Inventory, next level
+
+- [ ] Units of measure with conversions (box of 12 → pieces)
+- [ ] Batches / lots with expiry dates (FEFO), serial numbers
+- [ ] Landed costs (freight, customs) spread over received goods
+- [ ] Back-dated postings with automatic cost revaluation
+- [ ] Price lists per customer group; minimum selling price guard
+- [ ] Purchase orders from the reorder report; goods received notes
+
 ## Phase 2 — Operations
 
-- [ ] **Inventory** module: warehouses, stock moves, weighted-average cost,
-      automatic COGS on sales, stock valuation report
 - [ ] **Banking**: bank transfers between accounts, bank reconciliation,
       statement import (CSV)
 - [ ] **Multi-currency**: document currency + exchange rate, realised /

@@ -1,4 +1,7 @@
+import { Navigate, useParams } from 'react-router';
 import { FileMinus, FilePlus, FileText, ReceiptText } from 'lucide-react';
+import { useApi } from '../../core/hooks';
+import { Loading } from '../../ui/Page';
 import type { WebModule } from '../../core/registry';
 import type { DocKind } from '../../core/types';
 import { DocumentList } from './DocumentList';
@@ -16,6 +19,14 @@ const routesFor = (kind: DocKind) => {
   ];
 };
 
+/** /documents/:id → the right page for whatever kind of document it is (used by journal links). */
+function DocumentRedirect() {
+  const { id } = useParams();
+  const { data } = useApi<{ kind: DocKind }>(`/documents/${id}`);
+  if (!data) return <Loading />;
+  return <Navigate replace to={`${KIND_UI[data.kind].base}/${id}`} />;
+}
+
 export const documentsModule: WebModule = {
   id: 'documents',
   nav: [
@@ -24,7 +35,10 @@ export const documentsModule: WebModule = {
     { to: '/purchases/bills', label: 'nav.bills', icon: ReceiptText, section: 'purchases', order: 10, perm: 'purchases.read' },
     { to: '/purchases/debit-notes', label: 'nav.debitNotes', icon: FilePlus, section: 'purchases', order: 20, perm: 'purchases.read' },
   ],
-  routes: (['sales_invoice', 'sales_credit', 'purchase_bill', 'purchase_credit'] as DocKind[]).flatMap(routesFor),
+  routes: [
+    ...(['sales_invoice', 'sales_credit', 'purchase_bill', 'purchase_credit'] as DocKind[]).flatMap(routesFor),
+    { path: '/documents/:id', element: <DocumentRedirect /> },
+  ],
   commands: [
     { id: 'new-invoice', label: 'docs.sales_invoice.new', icon: FileText, group: 'create', to: '/sales/invoices/new', perm: 'sales.write', keywords: 'invoice فاتورة بيع' },
     { id: 'new-credit', label: 'docs.sales_credit.new', icon: FileMinus, group: 'create', to: '/sales/credit-notes/new', perm: 'sales.write', keywords: 'return credit مرتجع' },

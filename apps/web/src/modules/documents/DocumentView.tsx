@@ -16,6 +16,7 @@ import { LogoMark } from '../../ui/Brand';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
 import { KIND_UI } from './kinds';
+import { useSlot } from '../../core/slots';
 
 export function DocumentView({ kind }: { kind: DocKind }) {
   const { id } = useParams();
@@ -30,6 +31,7 @@ export function DocumentView({ kind }: { kind: DocKind }) {
   const errText = useErrorText();
   const { data: d, isLoading, error } = useApi<DocumentFull>(`/documents/${id}`);
   const act = useApiMutation((fn: () => Promise<unknown>) => fn());
+  const panels = useSlot('document.view');
 
   if (isLoading) return <Loading />;
   if (error || !d) return <ErrorBlock message={errText(error)} />;
@@ -310,6 +312,9 @@ export function DocumentView({ kind }: { kind: DocKind }) {
             </Card>
           )}
         </div>
+        {panels.map((Panel, i) => (
+          <Panel key={i} documentId={d.id} kind={d.kind} status={d.status} />
+        ))}
       </div>
     </div>
   );

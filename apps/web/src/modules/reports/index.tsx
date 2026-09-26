@@ -3,6 +3,8 @@ import { BarChart3, BookText, Clock, Droplets, FileSpreadsheet, Landmark, Percen
 import type { WebModule } from '../../core/registry';
 import { useI18n } from '../../core/i18n';
 import { PageHeader } from '../../ui/Page';
+import { useContributedReports } from '../../core/slots';
+import { useSession } from '../../core/session';
 import { AgingPage, GeneralLedgerPage, TaxSummaryPage, TrialBalancePage } from './ledgers';
 import { BalanceSheetPage, CashFlowPage, IncomeStatementPage } from './statements';
 
@@ -36,14 +38,23 @@ const GROUPS = [
 
 function ReportsHub() {
   const { t } = useI18n();
+  const { can } = useSession();
+  // Other modules (e.g. inventory) contribute their own report tiles.
+  const extra = useContributedReports().filter((r) => !r.perm || can(r.perm));
+  const extraGroups = [...new Set(extra.map((r) => r.group))].map((g) => ({
+    id: g,
+    title: g,
+    items: extra.filter((r) => r.group === g),
+  }));
+  const groups = [...GROUPS.map((g) => ({ ...g, title: 'reports.groups.' + g.id })), ...extraGroups];
   return (
     <div className="page">
       <PageHeader title={t('reports.title')} subtitle={t('reports.subtitle')} />
       <div className="stack" style={{ '--gap': '28px' } as React.CSSProperties}>
-        {GROUPS.map((g) => (
+        {groups.map((g) => (
           <section key={g.id}>
             <div className="nav-section" style={{ padding: '0 2px 10px' }}>
-              {t('reports.groups.' + g.id)}
+              {t(g.title)}
             </div>
             <div className="feature-grid">
               {g.items.map((r) => {

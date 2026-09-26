@@ -12,6 +12,7 @@ import { LoginPage } from './modules/auth/Login';
 import { SetupPage } from './modules/auth/Setup';
 import { webModules } from './modules';
 import { useI18n } from './core/i18n';
+import { ModulesProvider } from './core/slots';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,7 +46,11 @@ function Routed() {
   if (status === 'loading') return <Loading />;
   if (status === 'setup') return <SetupPage />;
   if (status === 'anonymous') return <LoginPage />;
-  return <RouterProvider router={router} />;
+  return (
+    <ModulesProvider modules={webModules}>
+      <RouterProvider router={router} />
+    </ModulesProvider>
+  );
 }
 
 export function App() {

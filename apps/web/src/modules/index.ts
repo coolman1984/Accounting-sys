@@ -6,6 +6,7 @@ import { partiesModule } from './parties';
 import { accountsModule } from './accounts';
 import { journalModule } from './journal';
 import { catalogModule } from './catalog';
+import { inventoryModule } from './inventory';
 import { reportsModule } from './reports';
 import { settingsModule } from './settings';
 
@@ -17,6 +18,7 @@ export const webModules: WebModule[] = [
   dashboardModule,
   documentsModule,
   partiesModule,
+  inventoryModule,
   paymentsModule,
   accountsModule,
   journalModule,

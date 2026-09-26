@@ -4,13 +4,13 @@ import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
 import { api } from '../../core/api';
-import { addDaysIso, QTY_SCALE, todayIso } from '../../core/format';
-import type { DocKind, DocumentFull, DocumentRow, Paged, Party } from '../../core/types';
+import { addDaysIso, formatQty, QTY_SCALE, todayIso } from '../../core/format';
+import { isStockItem, type DocKind, type DocumentFull, type DocumentRow, type Paged, type Party, type Warehouse } from '../../core/types';
 import { PageHeader, Loading } from '../../ui/Page';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { Checkbox, DecimalInput, Field, Input, Select, Textarea } from '../../ui/Field';
-import { AccountPicker, ItemPicker, PartyPicker, TaxSelect, useTaxes } from '../../ui/Pickers';
+import { AccountPicker, ItemPicker, PartyPicker, TaxSelect, useItems, useTaxes } from '../../ui/Pickers';
 import { Kbd, modKey } from '../../ui/Brand';
 import { useToast } from '../../ui/Toast';
 import { computeLine, KIND_UI } from './kinds';
@@ -24,6 +24,7 @@ interface Line {
   unitPrice: number | null;
   discountBp: number | null;
   taxId: number | null;
+  warehouseId: number | null;
 }
 
 let k = 0;
@@ -33,7 +34,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   const [params] = useSearchParams();
   const editing = id != null;
   const ui = KIND_UI[kind];
-  const { t, pick } = useI18n();
+  const { t, pick, locale } = useI18n();
   const navigate = useNavigate();
   const toast = useToast();
   const errText = useErrorText();
@@ -43,7 +44,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   const defaultTax = useMemo(() => (taxes ?? []).find((x) => x.is_active && x.code === 'VAT')?.id ?? null, [taxes]);
 
   const blank = useCallback(
-    (): Line => ({ key: ++k, itemId: null, description: '', accountId: null, quantity: 1000, unitPrice: null, discountBp: null, taxId: defaultTax }),
+    (): Line => ({ key: ++k, itemId: null, description: '', accountId: null, quantity: 1000, unitPrice: null, discountBp: null, taxId: defaultTax, warehouseId: null }),
     [defaultTax],
   );
 
@@ -58,7 +59,20 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   const [against, setAgainst] = useState<number | null>(params.get('against') ? Number(params.get('against')) : null);
   const [lines, setLines] = useState<Line[]>([]);
   const [showAccounts, setShowAccounts] = useState(false);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [showWarehouses, setShowWarehouses] = useState(false);
   const [err, setErr] = useState('');
+
+  // Inventory is optional: without it (or without permission) the warehouse controls simply don't show.
+  const { data: warehouses } = useApi<Warehouse[]>('/inventory/warehouses', undefined, { retry: false, staleTime: 60_000 });
+  const activeWarehouses = (warehouses ?? []).filter((w) => w.is_active || w.id === warehouseId);
+  useEffect(() => {
+    if (!editing && warehouseId == null && warehouses?.length) setWarehouseId(warehouses.find((w) => w.is_default)?.id ?? warehouses[0].id);
+  }, [warehouses, editing, warehouseId]);
+  const { data: items } = useItems();
+  const itemById = useMemo(() => new Map((items ?? []).map((i) => [i.id, i])), [items]);
+  const outgoing = kind === 'sales_invoice' || kind === 'purchase_credit';
+  const { data: levelsHere } = useApi<Record<number, number>>(warehouses && outgoing && warehouseId ? '/inventory/levels' : null, { warehouseId: warehouseId ?? undefined }, { retry: false });
 
   // Start with one blank line once taxes are known (so VAT is pre-selected).
   useEffect(() => {
@@ -85,9 +99,11 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
         unitPrice: l.unit_price,
         discountBp: l.discount_bp || null,
         taxId: l.tax_id,
+        warehouseId: l.warehouse_id,
       })),
     );
-    if (existing.lines.some((l) => l.account_id)) setShowAccounts(true);
+    setWarehouseId(existing.warehouse_id);
+    if (existing.lines.some((l) => l.warehouse_id)) setShowWarehouses(true);
   }, [existing]);
 
   useEffect(() => {
@@ -108,6 +124,25 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
 
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
+  /** Live stock hint under the quantity for goods leaving a warehouse. */
+  const availability = (l: Line) => {
+    const item = l.itemId ? itemById.get(l.itemId) : null;
+    if (!outgoing || !item || !isStockItem(item) || !levelsHere) return null;
+    const wh = (showWarehouses && l.warehouseId) || warehouseId;
+    if (wh !== warehouseId) return null;
+    const avail = levelsHere[item.id] ?? 0;
+    // Everything this document takes of the same item from the same warehouse.
+    const want = lines
+      .filter((x) => x.itemId === item.id && ((showWarehouses && x.warehouseId) || warehouseId) === wh)
+      .reduce((s, x) => s + (x.quantity ?? 0), 0);
+    const short = want > avail;
+    return (
+      <div className={short ? 'danger-text' : 'faint'} style={{ fontSize: 11.5, textAlign: 'end', padding: '2px 4px 0', whiteSpace: 'nowrap' }}>
+        {short ? t('inventory.notEnough', { qty: formatQty(avail, locale) }) : t('inventory.available', { qty: formatQty(avail, locale) })}
+      </div>
+    );
+  };
+
   const save = useApiMutation((post: boolean) => {
     const body = {
       kind,
@@ -118,6 +153,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
       notes: notes || null,
       taxInclusive: inclusive,
       againstDocumentId: against,
+      warehouseId: warehouses ? warehouseId : null,
       post,
       lines: lines
         .filter((l) => l.itemId || l.description.trim() || l.unitPrice)
@@ -129,6 +165,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
           discountBp: l.discountBp ?? 0,
           accountId: l.accountId,
           taxId: l.taxId,
+          warehouseId: showWarehouses ? l.warehouseId : null,
         })),
     };
     return editing ? api.put<{ id: number }>(`/documents/${id}`, body) : api.post<{ id: number }>('/documents', body);
@@ -225,6 +262,17 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                 </Select>
               </Field>
             )}
+            {warehouses && (
+              <Field label={t('inventory.warehouse')}>
+                <Select value={warehouseId ?? ''} onChange={(e) => setWarehouseId(Number(e.target.value))}>
+                  {activeWarehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.code} · {pick(w.name_en, w.name_ar)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
             <div className="field" style={{ justifyContent: 'flex-end', paddingTop: 26 }}>
               <Checkbox label={t('docs.taxInclusive')} checked={inclusive} onChange={setInclusive} />
             </div>
@@ -240,6 +288,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                   <th style={{ width: 170 }}>{t('docs.item')}</th>
                   <th>{t('common.description')}</th>
                   {showAccounts && <th style={{ width: 200 }}>{t('common.account')}</th>}
+                  {showWarehouses && <th style={{ width: 150 }}>{t('inventory.warehouse')}</th>}
                   <th className="end" style={{ width: 90 }}>
                     {t('docs.qty')}
                   </th>
@@ -289,8 +338,21 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                         />
                       </td>
                     )}
+                    {showWarehouses && (
+                      <td>
+                        <Select value={l.warehouseId ?? ''} onChange={(e) => update(l.key, { warehouseId: e.target.value ? Number(e.target.value) : null })}>
+                          <option value="">{t('items.useDefault')}</option>
+                          {activeWarehouses.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.code}
+                            </option>
+                          ))}
+                        </Select>
+                      </td>
+                    )}
                     <td>
                       <DecimalInput trim scale={QTY_SCALE} value={l.quantity} onChange={(v) => update(l.key, { quantity: v })} aria-label={t('docs.qty')} />
+                      {availability(l)}
                     </td>
                     <td>
                       <DecimalInput scale={scale} value={l.unitPrice} onChange={(v) => update(l.key, { unitPrice: v })} aria-label={t('docs.price')} />
@@ -323,6 +385,10 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
               {t('common.addLine')}
             </Button>
             <span className="spacer" />
+            {warehouses && (
+              <Checkbox label={t('inventory.byWarehouse')} checked={showWarehouses} onChange={setShowWarehouses} />
+            )}
+            <span style={{ width: 14 }} />
             <Checkbox label={t('common.account')} checked={showAccounts} onChange={setShowAccounts} />
           </div>
         </Card>

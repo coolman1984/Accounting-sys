@@ -93,14 +93,39 @@ export function useItems() {
   return useApi<Item[]>('/items', { active: 1 }, { staleTime: 30_000 });
 }
 
-export function ItemPicker({ value, onChange, sm }: { value: number | null; onChange(id: number | null, item?: Item): void; sm?: boolean }) {
+export function ItemPicker({
+  value,
+  onChange,
+  sm,
+  filter,
+  autoFocus,
+}: {
+  value: number | null;
+  onChange(id: number | null, item?: Item): void;
+  sm?: boolean;
+  filter?: (i: Item) => boolean;
+  autoFocus?: boolean;
+}) {
   const { pick } = useI18n();
   const { data } = useItems();
   const options = useMemo(
-    () => (data ?? []).map((i) => ({ id: i.id, code: i.sku, label: pick(i.name_en, i.name_ar), search: `${i.name_en} ${i.name_ar}` })),
-    [data, pick],
+    () =>
+      (data ?? [])
+        .filter((i) => !filter || filter(i))
+        // Barcode scanners type the code then Enter: the barcode is searchable too.
+        .map((i) => ({ id: i.id, code: i.sku, label: pick(i.name_en, i.name_ar), search: `${i.name_en} ${i.name_ar} ${i.barcode ?? ''}` })),
+    [data, pick, filter],
   );
-  return <Combobox options={options} value={value} sm={sm} placeholder="—" onChange={(id) => onChange(id, data?.find((i) => i.id === id))} />;
+  return (
+    <Combobox
+      options={options}
+      value={value}
+      sm={sm}
+      autoFocus={autoFocus}
+      placeholder="—"
+      onChange={(id) => onChange(id, data?.find((i) => i.id === id))}
+    />
+  );
 }
 
 export function useTaxes() {

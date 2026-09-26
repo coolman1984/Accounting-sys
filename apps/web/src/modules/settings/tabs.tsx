@@ -393,6 +393,7 @@ export function DefaultsTab() {
     vatInput: (a) => a.type === 'asset' || a.type === 'liability',
     retainedEarnings: (a) => a.subtype === 'retained_earnings',
     capital: (a) => a.type === 'equity',
+    inventoryAdjustment: (a) => a.type === 'expense',
   };
   return (
     <Card>

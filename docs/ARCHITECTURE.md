@@ -19,7 +19,7 @@ apps/
   server/                 Node 22 + Fastify + SQLite (node:sqlite) + zod
     src/kernel/           the "chassis": db, modules, services, events, money, dates
     src/modules/          the "parts": system, ledger, parties, catalog,
-                          documents, payments, reports
+                          documents, payments, inventory, reports
     src/test/             end-to-end accounting tests
   web/                    React 19 + Vite + TanStack Query + React Router
     src/core/             i18n (en/ar), theme, session, API client, formatting
@@ -95,6 +95,9 @@ trial balance, statements, party balances and aging always agree.
 | Payment to supplier | Accounts payable (party) | Cash / bank |
 | Direct receipt / payment | Cash / bank ↔ chosen income / expense account | |
 | Year-end close | Revenue accounts | Expense accounts; net → Retained earnings |
+| Purchase of a stock item | Inventory (instead of an expense) | — as a normal bill |
+| Sale of a stock item (automatic, separate "cost of goods" entry) | Cost of goods sold | Inventory — at average cost |
+| Stock adjustment / count / opening stock | Inventory ↔ Inventory adjustments (Capital for opening) | |
 
 Voiding a document or payment posts a **reversal** and releases its
 settlements; nothing is ever deleted once posted.
@@ -107,7 +110,41 @@ invoices and supplier debit notes; money out settles bills and customer credit
 notes. Unallocated money stays "on account" in the party's ledger balance and
 shows as a separate column in aging, so aging always reconciles to the ledger.
 
-## 4. Reports
+## 4. Inventory
+
+The inventory module is a separate part that plugs into sales & purchases
+through events — the documents module does not know it exists.
+
+* **Warehouses** hold quantities (`stock_levels`, per item × warehouse, with a
+  `CHECK (qty >= 0)`: stock can never go negative).
+* **Costing: moving weighted average**, pooled per item across warehouses
+  (`stock_values`), so transfers never change cost. Incoming moves carry their
+  value; outgoing moves take `value × qty ÷ pooled qty`; the last unit out takes
+  the whole remaining value, so rounding never leaves ghost value behind.
+* **Stock ledger** (`stock_moves`): immutable, every move stores the running
+  item and warehouse balances → the item card (كارت الصنف) is instant.
+* **Automatic postings:** when an invoice/bill/credit note is posted or voided,
+  inventory moves the goods *inside the same transaction* and posts one "cost of
+  goods" entry for the difference between the stock value change and what the
+  document already booked to inventory. This single rule covers sales (COGS),
+  customer returns (back at their original cost), supplier returns (price
+  difference to cost of sales) and voids — and guarantees
+  **inventory accounts = stock valuation, always**.
+* **Stock documents:** adjustments (±, at a cost or at average), opening stock,
+  physical counts (enter what you counted, only differences post), transfers.
+* **Reports:** stock on hand (by warehouse / category / status), item card,
+  valuation at any date **reconciled to the ledger**, movement summary
+  (opening / in / out / closing), reorder suggestions with 90-day sales, item
+  profitability (revenue − COGS, margin).
+* **Web:** live "available" hints and shortage warnings while typing an
+  invoice, barcode-ready item search, stock panel on every document, dashboard
+  widget, report tiles — all contributed through the web module slots.
+
+Known limits (see roadmap): stock checks use the current balance (not the
+balance at a back-dated date), one unit of measure per item, no batches /
+expiry / serial numbers yet.
+
+## 5. Reports
 
 All reports are computed from posted ledger movements:
 
@@ -124,7 +161,7 @@ All reports are computed from posted ledger movements:
 * **VAT summary** — output vs input tax from posted documents.
 * **Dashboard** — cash, AR, AP, monthly P&L series, overdue, top debtors.
 
-## 5. Security & multi-user
+## 6. Security & multi-user
 
 * Users with roles: **Administrator**, **Accountant**, **Viewer** (read-only).
 * Passwords hashed with scrypt; sessions are random tokens stored as SHA-256,
@@ -134,7 +171,7 @@ All reports are computed from posted ledger movements:
   so two PCs posting at the same moment can never interleave.
 * Daily automatic backups (last 14 kept) + on-demand backup & download.
 
-## 6. UI / UX
+## 7. UI / UX
 
 * Design language taken from the reference: white canvas, hairline borders,
   blue primary pill buttons, soft elevated cards, colourful "graph line"

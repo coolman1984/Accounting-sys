@@ -22,6 +22,7 @@ import { BarChart } from '../../ui/Chart';
 import { EmptyState, Loading } from '../../ui/Page';
 import { Kbd, modKey } from '../../ui/Brand';
 import { Money } from '../../ui/Money';
+import { useSlot } from '../../core/slots';
 
 interface Dashboard {
   today: string;
@@ -61,6 +62,7 @@ function DashboardPage() {
   const { fmt } = useMoney();
   const date = useDate();
   const { data, isLoading } = useApi<Dashboard>('/reports/dashboard');
+  const widgets = useSlot('dashboard.widgets');
 
   const quick = [
     { to: '/sales/invoices/new', label: t('docs.sales_invoice.new'), icon: FilePlus, perm: 'sales.write' },
@@ -270,6 +272,9 @@ function DashboardPage() {
               )}
             </Card>
           </div>
+          {widgets.map((W, i) => (
+            <W key={i} />
+          ))}
         </div>
       )}
     </div>

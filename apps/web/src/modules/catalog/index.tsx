@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Package, Pencil, Percent, Plus, Search } from 'lucide-react';
+import { Link } from 'react-router';
+import { Package, Pencil, Percent, Plus, Search, Tags, Trash2 } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
 import { useSession } from '../../core/session';
 import { api } from '../../core/api';
-import { formatBp } from '../../core/format';
-import type { Item, Tax } from '../../core/types';
+import { formatBp, formatQty, QTY_SCALE } from '../../core/format';
+import { isStockItem, type Item, type ItemCategory, type Tax } from '../../core/types';
 import { PageHeader, Loading, EmptyState } from '../../ui/Page';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
@@ -16,11 +17,12 @@ import { Dialog } from '../../ui/Dialog';
 import { Checkbox, DecimalInput, Field, Input, Select, Textarea } from '../../ui/Field';
 import { AccountPicker, TaxSelect, useTaxes } from '../../ui/Pickers';
 import { useToast } from '../../ui/Toast';
+import { useConfirm } from '../../ui/Dialog';
 
 // ------------------------------------------------------------------ items
 
 function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; item: Item | null }) {
-  const { t } = useI18n();
+  const { t, pick } = useI18n();
   const toast = useToast();
   const errText = useErrorText();
   const { scale } = useMoney();
@@ -38,9 +40,17 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
     purchaseTaxId: null as number | null,
     description: '',
     isActive: true,
+    barcode: '',
+    categoryId: null as number | null,
+    trackStock: true,
+    inventoryAccountId: null as number | null,
+    cogsAccountId: null as number | null,
+    reorderLevel: 0 as number | null,
+    reorderQty: 0 as number | null,
   };
   const [f, setF] = useState(blank);
   const [err, setErr] = useState('');
+  const { data: categories } = useApi<ItemCategory[]>('/item-categories');
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   useEffect(() => {
     if (!open) return;
@@ -61,15 +71,30 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             purchaseTaxId: item.purchase_tax_id,
             description: item.description ?? '',
             isActive: !!item.is_active,
+            barcode: item.barcode ?? '',
+            categoryId: item.category_id,
+            trackStock: !!item.track_stock,
+            inventoryAccountId: item.inventory_account_id,
+            cogsAccountId: item.cogs_account_id,
+            reorderLevel: item.reorder_level,
+            reorderQty: item.reorder_qty,
           }
         : blank,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item]);
+  const stock = f.kind === 'product' && f.trackStock;
   const save = useApiMutation((body: object) => (item ? api.put(`/items/${item.id}`, body) : api.post('/items', body)));
   const submit = () =>
     save.mutate(
-      { ...f, salePrice: f.salePrice ?? 0, purchasePrice: f.purchasePrice ?? 0 },
+      {
+        ...f,
+        barcode: f.barcode.trim() || null,
+        salePrice: f.salePrice ?? 0,
+        purchasePrice: f.purchasePrice ?? 0,
+        reorderLevel: f.reorderLevel ?? 0,
+        reorderQty: f.reorderQty ?? 0,
+      },
       { onSuccess: () => (toast.success(t('common.saved')), onClose()), onError: (e) => setErr(errText(e)) },
     );
   return (
@@ -101,6 +126,19 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
           <Field label={t('items.unit')}>
             <Input value={f.unit} onChange={(e) => set('unit', e.target.value)} />
           </Field>
+          <Field label={t('items.barcode')}>
+            <Input value={f.barcode} onChange={(e) => set('barcode', e.target.value)} dir="ltr" />
+          </Field>
+          <Field label={t('items.category')} className="span-2">
+            <Select value={f.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">{t('items.noCategory')}</option>
+              {(categories ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {pick(c.name_en, c.name_ar)}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
         <div className="grid-2">
           <Field label={t('common.nameEn')}>
@@ -124,15 +162,40 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
           <Field label={t('items.incomeAccount')}>
             <AccountPicker value={f.incomeAccountId} onChange={(v) => set('incomeAccountId', v)} filter={(a) => a.type === 'income'} placeholder={t('items.useDefault')} />
           </Field>
-          <Field label={t('items.expenseAccount')}>
-            <AccountPicker
-              value={f.expenseAccountId}
-              onChange={(v) => set('expenseAccountId', v)}
-              filter={(a) => a.type === 'expense' || a.type === 'asset'}
-              placeholder={t('items.useDefault')}
-            />
-          </Field>
+          {!stock && (
+            <Field label={t('items.expenseAccount')}>
+              <AccountPicker
+                value={f.expenseAccountId}
+                onChange={(v) => set('expenseAccountId', v)}
+                filter={(a) => a.type === 'expense' || a.type === 'asset'}
+                placeholder={t('items.useDefault')}
+              />
+            </Field>
+          )}
         </div>
+        {f.kind === 'product' && (
+          <div className="card" style={{ padding: 16, background: 'var(--bg-subtle)' }}>
+            <div className="row" style={{ marginBottom: stock ? 14 : 0 }}>
+              <Checkbox label={t('items.trackStock')} checked={f.trackStock} onChange={(v) => set('trackStock', v)} />
+            </div>
+            {stock && (
+              <div className="grid-2">
+                <Field label={t('items.reorderLevel')}>
+                  <DecimalInput trim scale={QTY_SCALE} value={f.reorderLevel} onChange={(v) => set('reorderLevel', v)} />
+                </Field>
+                <Field label={t('items.reorderQty')}>
+                  <DecimalInput trim scale={QTY_SCALE} value={f.reorderQty} onChange={(v) => set('reorderQty', v)} />
+                </Field>
+                <Field label={t('items.inventoryAccount')}>
+                  <AccountPicker value={f.inventoryAccountId} onChange={(v) => set('inventoryAccountId', v)} filter={(a) => a.subtype === 'inventory'} placeholder={t('items.useDefault')} />
+                </Field>
+                <Field label={t('items.cogsAccount')}>
+                  <AccountPicker value={f.cogsAccountId} onChange={(v) => set('cogsAccountId', v)} filter={(a) => a.type === 'expense'} placeholder={t('items.useDefault')} />
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
         <Field label={t('common.description')}>
           <Textarea rows={2} value={f.description} onChange={(e) => set('description', e.target.value)} />
         </Field>
@@ -144,11 +207,14 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
 }
 
 function ItemsPage() {
-  const { t, pick } = useI18n();
+  const { t, pick, locale } = useI18n();
   const { can } = useSession();
   const [q, setQ] = useState('');
+  const [cat, setCat] = useState('');
   const [dialog, setDialog] = useState<{ item: Item | null } | null>(null);
-  const { data, isLoading } = useApi<Item[]>('/items', { q });
+  const [cats, setCats] = useState(false);
+  const { data, isLoading } = useApi<Item[]>('/items', { q, categoryId: cat });
+  const { data: categories } = useApi<ItemCategory[]>('/item-categories');
   const { data: taxes } = useTaxes();
   const taxName = (id: number | null) => (id ? taxes?.find((x) => x.id === id)?.code ?? '' : '—');
   return (
@@ -169,6 +235,19 @@ function ItemsPage() {
           <Search />
           <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        <Select value={cat} onChange={(e) => setCat(e.target.value)} style={{ width: 'auto' }}>
+          <option value="">{t('inventory.allCategories')}</option>
+          {(categories ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {pick(c.name_en, c.name_ar)} ({c.items})
+            </option>
+          ))}
+        </Select>
+        {can('catalog.write') && (
+          <Button size="sm" variant="ghost" icon={<Tags />} onClick={() => setCats(true)}>
+            {t('inventory.manageCategories')}
+          </Button>
+        )}
       </div>
       <Card className="table-card">
         {isLoading ? (
@@ -183,6 +262,7 @@ function ItemsPage() {
                   <th>{t('items.sku')}</th>
                   <th>{t('common.name')}</th>
                   <th>{t('items.kind')}</th>
+                  <th>{t('items.category')}</th>
                   <th className="end">{t('items.salePrice')}</th>
                   <th className="end">{t('items.purchasePrice')}</th>
                   <th>{t('docs.tax')}</th>
@@ -193,12 +273,22 @@ function ItemsPage() {
                 {data.map((i) => (
                   <tr key={i.id} style={{ opacity: i.is_active ? 1 : 0.55 }}>
                     <td className="num faint">{i.sku}</td>
-                    <td style={{ fontWeight: 550 }}>{pick(i.name_en, i.name_ar)}</td>
+                    <td style={{ fontWeight: 550 }}>
+                      {isStockItem(i) ? <Link to={`/inventory/items/${i.id}`}>{pick(i.name_en, i.name_ar)}</Link> : pick(i.name_en, i.name_ar)}
+                      {i.barcode && <div className="faint mono" style={{ fontSize: 11.5, fontWeight: 400 }}>{i.barcode}</div>}
+                    </td>
                     <td>
                       <Badge tone={i.kind === 'product' ? 'cyan' : 'blue'} plain>
                         {t('items.kinds.' + i.kind)}
                       </Badge>
+                      {isStockItem(i) && (
+                        <span className="faint" style={{ fontSize: 12, marginInlineStart: 6 }}>
+                          · {t('items.stockSettings')}
+                          {i.reorder_level > 0 && ` ≥ ${formatQty(i.reorder_level, locale)}`}
+                        </span>
+                      )}
                     </td>
+                    <td className="muted">{pick(i.category_name_en, i.category_name_ar) || '—'}</td>
                     <td className="end">
                       <Money v={i.sale_price} />
                     </td>
@@ -215,7 +305,86 @@ function ItemsPage() {
         )}
       </Card>
       <ItemDialog open={!!dialog} onClose={() => setDialog(null)} item={dialog?.item ?? null} />
+      <CategoriesDialog open={cats} onClose={() => setCats(false)} />
     </div>
+  );
+}
+
+function CategoriesDialog({ open, onClose }: { open: boolean; onClose(): void }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const errText = useErrorText();
+  const confirm = useConfirm();
+  const { data } = useApi<ItemCategory[]>('/item-categories');
+  const [edit, setEdit] = useState<{ id: number | null; nameEn: string; nameAr: string } | null>(null);
+  const act = useApiMutation((fn: () => Promise<unknown>) => fn());
+  const run = (fn: () => Promise<unknown>, after?: () => void) =>
+    act.mutate(fn, { onSuccess: () => (toast.success(t('common.saved')), after?.()), onError: (e) => toast.error(errText(e)) });
+  return (
+    <Dialog open={open} onClose={onClose} title={t('inventory.categories')}>
+      <div className="stack">
+        <table className="table table-compact">
+          <tbody>
+            {(data ?? []).map((c) => (
+              <tr key={c.id}>
+                <td>{c.name_en}</td>
+                <td dir="rtl">{c.name_ar}</td>
+                <td className="end faint">{c.items}</td>
+                <td className="shrink">
+                  <Button size="sm" variant="ghost" iconOnly icon={<Pencil />} onClick={() => setEdit({ id: c.id, nameEn: c.name_en, nameAr: c.name_ar })} />
+                  {c.items === 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      iconOnly
+                      icon={<Trash2 />}
+                      onClick={async () => {
+                        if ((await confirm({ title: t('common.areYouSure'), danger: true, confirmLabel: t('common.delete') })).ok) run(() => api.del(`/item-categories/${c.id}`));
+                      }}
+                    />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {edit ? (
+          <div className="grid-2" style={{ alignItems: 'end' }}>
+            <Field label={t('common.nameEn')}>
+              <Input autoFocus dir="ltr" value={edit.nameEn} onChange={(e) => setEdit({ ...edit, nameEn: e.target.value })} />
+            </Field>
+            <Field label={t('common.nameAr')}>
+              <Input dir="rtl" value={edit.nameAr} onChange={(e) => setEdit({ ...edit, nameAr: e.target.value })} />
+            </Field>
+            <div className="row">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!edit.nameEn || !edit.nameAr}
+                loading={act.isPending}
+                onClick={() =>
+                  run(
+                    () => (edit.id ? api.put(`/item-categories/${edit.id}`, edit) : api.post('/item-categories', edit)),
+                    () => setEdit(null),
+                  )
+                }
+              >
+                {t('common.save')}
+              </Button>
+              <Button size="sm" onClick={() => setEdit(null)}>
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Button size="sm" icon={<Plus />} onClick={() => setEdit({ id: null, nameEn: '', nameAr: '' })}>
+              {t('inventory.newCategory')}
+            </Button>
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }
 
@@ -373,7 +542,7 @@ function TaxesPage() {
 export const catalogModule: WebModule = {
   id: 'catalog',
   nav: [
-    { to: '/items', label: 'nav.items', icon: Package, section: 'accounting', order: 30, perm: 'catalog.read' },
+    { to: '/items', label: 'nav.items', icon: Package, section: 'inventory', order: 10, perm: 'catalog.read' },
     { to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'accounting', order: 40, perm: 'catalog.read' },
   ],
   routes: [
