@@ -13,8 +13,10 @@ export interface AppConfig {
   logLevel: string;
 }
 
+/** Environment variables win over code defaults, so an installation can always be reconfigured. */
 export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
-  const dataDir = resolve(process.env.MIZAN_DATA_DIR ?? overrides.dataDir ?? resolve(process.cwd(), 'data'));
+  const { dataDir: dataDirDefault, ...rest } = overrides;
+  const dataDir = resolve(process.env.MIZAN_DATA_DIR ?? dataDirDefault ?? resolve(process.cwd(), 'data'));
   return {
     host: process.env.MIZAN_HOST ?? '0.0.0.0',
     port: Number(process.env.MIZAN_PORT ?? 4800),
@@ -24,6 +26,6 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     webDir: process.env.MIZAN_WEB_DIR ?? null,
     sessionHours: Number(process.env.MIZAN_SESSION_HOURS ?? 12),
     logLevel: process.env.MIZAN_LOG_LEVEL ?? 'info',
-    ...overrides,
+    ...rest,
   };
 }

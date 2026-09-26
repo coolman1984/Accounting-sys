@@ -1,0 +1,113 @@
+/* ============================================================
+   Mizan design tokens — clean, native-feeling, light & dark.
+   Inspired by the reference: white canvas, hairline borders,
+   blue primary pills, soft shadows, colorful "graph" accents.
+   ============================================================ */
+:root {
+  --font-sans: 'Inter Variable', 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+
+  --bg: #ffffff;
+  --bg-subtle: #fafafa;
+  --bg-muted: #f4f4f6;
+  --bg-hover: #f6f6f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --overlay: rgba(17, 19, 24, 0.28);
+
+  --border: #ebebef;
+  --border-strong: #dcdce3;
+  --ring: rgba(37, 99, 235, 0.35);
+
+  --text: #15171c;
+  --text-muted: #5d6270;
+  --text-faint: #8e94a0;
+  --text-inverse: #ffffff;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-soft: #eef3ff;
+  --primary-soft-text: #1d4ed8;
+
+  --success: #15803d;
+  --success-soft: #eaf7ef;
+  --warning: #b45309;
+  --warning-soft: #fff7e6;
+  --danger: #dc2626;
+  --danger-soft: #fdeeee;
+  --info: #0e7490;
+  --info-soft: #e8f7fa;
+  --diff-add: #e3f5e9;
+
+  /* "Git graph" accent lines */
+  --line-purple: #a78bfa;
+  --line-teal: #2dd4bf;
+  --line-pink: #ec4899;
+  --line-amber: #f59e0b;
+  --line-blue: #3b82f6;
+
+  --chart-1: #2563eb;
+  --chart-2: #f472b6;
+
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 2px 4px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 8px 16px rgba(16, 24, 40, 0.06), 0 32px 72px rgba(16, 24, 40, 0.16);
+
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  --sidebar-w: 252px;
+  --topbar-h: 60px;
+  --content-max: 1320px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0b0c10;
+  --bg-subtle: #0f1116;
+  --bg-muted: #171a21;
+  --bg-hover: #161920;
+  --surface: #111319;
+  --surface-raised: #161920;
+  --overlay: rgba(0, 0, 0, 0.55);
+
+  --border: #22252e;
+  --border-strong: #2f333e;
+  --ring: rgba(96, 165, 250, 0.45);
+
+  --text: #ececf1;
+  --text-muted: #a3a9b6;
+  --text-faint: #6c7383;
+  --text-inverse: #ffffff;
+
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-soft: rgba(59, 130, 246, 0.14);
+  --primary-soft-text: #93b8ff;
+
+  --success: #4ade80;
+  --success-soft: rgba(34, 197, 94, 0.13);
+  --warning: #fbbf24;
+  --warning-soft: rgba(245, 158, 11, 0.13);
+  --danger: #f87171;
+  --danger-soft: rgba(239, 68, 68, 0.13);
+  --info: #22d3ee;
+  --info-soft: rgba(34, 211, 238, 0.12);
+  --diff-add: rgba(34, 197, 94, 0.12);
+
+  --chart-1: #3b82f6;
+  --chart-2: #f472b6;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4), 0 32px 72px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}

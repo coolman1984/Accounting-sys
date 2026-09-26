@@ -388,7 +388,7 @@ export const reportsModule: AppModule = {
       );
       const recent = db.all(
         `SELECT id, number, date, memo, source_type, total FROM journal_entries WHERE status = 'posted'
-         ORDER BY posted_at DESC, id DESC LIMIT 8`,
+         ORDER BY date DESC, id DESC LIMIT 8`,
       );
       const topDebtors = db.all(
         `SELECT l.party_id, p.name, SUM(l.debit - l.credit) AS balance

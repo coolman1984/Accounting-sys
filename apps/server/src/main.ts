@@ -5,9 +5,11 @@ import { loadConfig } from './config.js';
 import { buildApp } from './app.js';
 import { lanUrls } from './modules/system/index.js';
 
+// Works from src/ (tsx) and dist/ (compiled): both sit two levels below the repository root.
 const here = dirname(fileURLToPath(import.meta.url));
-const builtWeb = resolve(here, '../../web/dist');
-const config = loadConfig({ webDir: existsSync(builtWeb) ? builtWeb : null });
+const root = resolve(here, '../../..');
+const builtWeb = resolve(root, 'apps/web/dist');
+const config = loadConfig({ dataDir: resolve(root, 'data'), webDir: existsSync(builtWeb) ? builtWeb : null });
 
 const { http, kernel } = await buildApp(config);
 await http.listen({ host: config.host, port: config.port });
