@@ -4,7 +4,8 @@ import { Download, Package, SlidersHorizontal } from 'lucide-react';
 import { useApi, useDate, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
 import { useSession } from '../../core/session';
-import type { Item } from '../../core/types';
+import { todayIso } from '../../core/format';
+import type { Item, ItemUnit } from '../../core/types';
 import { downloadCsv, csvMoney } from '../../lib/csv';
 import { PageHeader, Loading, ErrorBlock, EmptyState } from '../../ui/Page';
 import { Card, CardHeader } from '../../ui/Card';
@@ -21,6 +22,8 @@ interface ItemStock {
   value: number;
   avg_cost: number;
   levels: { warehouse_id: number; code: string; name_en: string; name_ar: string; qty: number; value: number }[];
+  units: ItemUnit[];
+  lots: { id: number; lot_no: string; expiry_date: string | null; warehouse_code: string; warehouse_id: number; qty: number }[];
 }
 
 interface CardRow {
@@ -35,6 +38,8 @@ interface CardRow {
   party_name: string | null;
   warehouse_code: string;
   is_reversal: number;
+  lot_no: string | null;
+  expiry_date: string | null;
   journal_entry_id: number | null;
   journal_number: string | null;
   balance_qty: number;
@@ -123,6 +128,67 @@ export function ItemCardPage() {
           <Kpi icon={<span>↺</span>} label={t('inventory.reorderLevel')} value={it.reorder_level ? <Qty v={it.reorder_level} /> : '—'} tone={low ? 'var(--danger)' : undefined} />
         </div>
 
+        {(s.units.length > 0 || it.tracking !== 'none') && (
+          <div className="grid-2">
+            {s.units.length > 0 && (
+              <Card className="table-card">
+                <CardHeader title={t('adv.units')} sub={`${t('adv.baseUnit')}: ${it.unit ?? '—'}`} />
+                <table className="table">
+                  <tbody>
+                    {s.units.map((u) => (
+                      <tr key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
+                        <td style={{ fontWeight: 550 }}>{pick(u.name_en, u.name_ar)}</td>
+                        <td className="muted">
+                          = <Qty v={u.factor} unit={it.unit} />
+                        </td>
+                        <td className="end">
+                          <Qty v={Math.floor((s.qty * 1000) / u.factor)} unit={pick(u.name_en, u.name_ar)} />
+                        </td>
+                        <td className="end muted num">{u.barcode ?? ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            )}
+            {it.tracking !== 'none' && (
+              <Card className="table-card">
+                <CardHeader title={it.tracking === 'serial' ? t('adv.serials') : t('adv.lots')} sub={t('adv.onHandNow')} />
+                {!s.lots.length ? (
+                  <EmptyState title={t('common.noResults')} />
+                ) : (
+                  <div className="table-wrap" style={{ maxHeight: 320, overflow: 'auto' }}>
+                    <table className="table">
+                      <tbody>
+                        {s.lots.map((l) => (
+                          <tr key={`${l.id}-${l.warehouse_id}`}>
+                            <td>
+                              <Link to={`/reports/inventory/trace?q=${encodeURIComponent(l.lot_no)}`} className="num" style={{ fontWeight: 550 }}>
+                                {l.lot_no}
+                              </Link>
+                            </td>
+                            <td className="nowrap">
+                              {l.expiry_date ? (
+                                <span className={l.expiry_date < todayIso() ? 'danger-text' : 'muted'}>{date(l.expiry_date)}</span>
+                              ) : (
+                                <span className="faint">—</span>
+                              )}
+                            </td>
+                            <td className="muted">{l.warehouse_code}</td>
+                            <td className="end" style={{ fontWeight: 600 }}>
+                              <Qty v={l.qty} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+        )}
+
         <Card className="table-card">
           <CardHeader title={t('inventory.byWarehouse')} />
           <table className="table">
@@ -205,6 +271,11 @@ export function ItemCardPage() {
                       </td>
                       <td className="muted">
                         {sourceLabel(r)}
+                        {r.lot_no && (
+                          <div className="num faint" style={{ fontSize: 12 }}>
+                            {r.lot_no}
+                          </div>
+                        )}
                         {!!r.is_reversal && (
                           <Badge tone="amber" plain>
                             {t('status.void')}
@@ -212,7 +283,7 @@ export function ItemCardPage() {
                         )}
                       </td>
                       <td className="muted">{r.warehouse_code}</td>
-                      <td className="end success-text">{r.qty > 0 ? <Qty v={r.qty} /> : ''}</td>
+                      <td className="end success-text">{r.qty > 0 ? <Qty v={r.qty} /> : r.qty === 0 ? <span className="muted" style={{ fontSize: 12 }}>{r.value >= 0 ? '+' : ''}<Money v={r.value} /></span> : ''}</td>
                       <td className="end danger-text">{r.qty < 0 ? <Qty v={-r.qty} /> : ''}</td>
                       <td className="end muted">
                         <Money v={r.unit_cost} />

@@ -13,6 +13,9 @@ import { DecimalInput, Field, Input } from '../../ui/Field';
 import { AccountPicker, ItemPicker, useItems } from '../../ui/Pickers';
 import { useToast } from '../../ui/Toast';
 import { Qty, useWarehouses, WarehouseSelect } from './common';
+import { LotChip, LotsDialog } from '../../ui/LotsDialog';
+import { Select } from '../../ui/Field';
+import type { LotEntry } from '../../core/types';
 
 export type OpKind = 'adjustment' | 'opening' | 'count' | 'transfer';
 const KINDS: OpKind[] = ['adjustment', 'transfer', 'count', 'opening'];
@@ -23,6 +26,8 @@ interface Line {
   qty: number | null;
   unitCost: number | null;
   note: string;
+  unitId: number | null;
+  lots: LotEntry[] | null;
 }
 
 interface OpDetail {
@@ -33,11 +38,12 @@ interface OpDetail {
   counter_account_id: number | null;
   reference: string | null;
   memo: string | null;
-  lines: { item_id: number; qty: number; unit_cost: number | null; note: string | null }[];
+  lines: { item_id: number; qty: number; unit_cost: number | null; note: string | null; unit_id: number | null; lots: LotEntry[] | null }[];
 }
 
 let k = 0;
-const blank = (itemId: number | null = null): Line => ({ key: ++k, itemId, qty: null, unitCost: null, note: '' });
+const blank = (itemId: number | null = null): Line => ({ key: ++k, itemId, qty: null, unitCost: null, note: '', unitId: null, lots: null });
+const factorOf = (item: Item | undefined, unitId: number | null) => (item && unitId ? item.units.find((u) => u.id === unitId)?.factor ?? 1000 : 1000);
 const stockOnly = (i: Item) => isStockItem(i) && !!i.is_active;
 
 export function OperationEditor() {
@@ -77,7 +83,7 @@ export function OperationEditor() {
     setCounter(existing.counter_account_id);
     setReference(existing.reference ?? '');
     setMemo(existing.memo ?? '');
-    setLines(existing.lines.map((l) => ({ key: ++k, itemId: l.item_id, qty: l.qty, unitCost: l.unit_cost, note: l.note ?? '' })));
+    setLines(existing.lines.map((l) => ({ key: ++k, itemId: l.item_id, qty: l.qty, unitCost: l.unit_cost, note: l.note ?? '', unitId: l.unit_id, lots: l.lots })));
   }, [existing]);
 
   const { data: levels } = useApi<Record<number, number>>(wh ? '/inventory/levels' : null, { warehouseId: wh ?? undefined });
@@ -86,10 +92,23 @@ export function OperationEditor() {
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   /** Physical count: start from every item that has stock in this warehouse, counted = book. */
+  const { data: whLots } = useApi<{ item_id: number; lot_no: string; expiry_date: string | null; qty: number }[]>(wh ? '/inventory/lots' : null, { warehouseId: wh ?? undefined });
   const loadAll = () => {
     const inStock = (items ?? []).filter((i) => stockOnly(i) && book(i.id) > 0);
-    setLines(inStock.map((i) => ({ ...blank(i.id), qty: book(i.id) })));
+    setLines(
+      inStock.map((i) => ({
+        ...blank(i.id),
+        qty: book(i.id),
+        // Tracked items are counted per lot: start from the book lots.
+        lots: i.tracking === 'none' ? null : (whLots ?? []).filter((x) => x.item_id === i.id).map((x) => ({ lotNo: x.lot_no, expiry: x.expiry_date, qty: x.qty })),
+      })),
+    );
   };
+  const [lotsFor, setLotsFor] = useState<number | null>(null);
+  const lotsLine = lines.find((l) => l.key === lotsFor);
+  const lotsItem = lotsLine?.itemId ? itemById.get(lotsLine.itemId) : undefined;
+  const lotDirection = (l: Line): 'in' | 'out' => (kind === 'transfer' || (kind === 'adjustment' && (l.qty ?? 0) < 0) ? 'out' : 'in');
+  const hasUnits = lines.some((l) => (itemById.get(l.itemId ?? 0)?.units ?? []).some((u) => u.is_active));
 
   const save = useApiMutation((post: boolean) => {
     const body = {
@@ -103,7 +122,14 @@ export function OperationEditor() {
       post,
       lines: lines
         .filter((l) => l.itemId && l.qty != null)
-        .map((l) => ({ itemId: l.itemId, qty: l.qty, unitCost: kind === 'adjustment' || kind === 'opening' || kind === 'count' ? l.unitCost : null, note: l.note || null })),
+        .map((l) => ({
+          itemId: l.itemId,
+          qty: l.qty,
+          unitId: l.unitId,
+          lots: l.lots?.length ? l.lots : null,
+          unitCost: kind === 'adjustment' || kind === 'opening' || kind === 'count' ? l.unitCost : null,
+          note: l.note || null,
+        })),
     };
     return editing ? api.put<{ id: number }>(`/inventory/operations/${id}`, body) : api.post<{ id: number }>('/inventory/operations', body);
   });
@@ -196,6 +222,7 @@ export function OperationEditor() {
                   <th className="end" style={{ width: 130 }}>
                     {kind === 'count' ? t('inventory.counted') : kind === 'adjustment' ? t('inventory.qtyChange') : t('docs.qty')}
                   </th>
+                  {hasUnits && <th style={{ width: 110 }}>{t('adv.unit')}</th>}
                   {kind === 'count' && <th className="end">{t('inventory.difference')}</th>}
                   {showCost && (
                     <th className="end" style={{ width: 140 }}>
@@ -210,13 +237,23 @@ export function OperationEditor() {
                 {lines.map((l, i) => {
                   const item = l.itemId ? itemById.get(l.itemId) : undefined;
                   const onHand = book(l.itemId);
-                  const diff = kind === 'count' && l.qty != null ? l.qty - onHand : null;
-                  const short = (kind === 'transfer' && (l.qty ?? 0) > onHand) || (kind === 'adjustment' && (l.qty ?? 0) < 0 && -(l.qty ?? 0) > onHand);
+                  const baseQty = Math.round(((l.qty ?? 0) * factorOf(item, l.unitId)) / 1000);
+                  const diff = kind === 'count' && l.qty != null ? baseQty - onHand : null;
+                  const short = (kind === 'transfer' && baseQty > onHand) || (kind === 'adjustment' && baseQty < 0 && -baseQty > onHand);
+                  const tracked = !!item && item.tracking !== 'none';
                   return (
                     <tr key={l.key}>
                       <td className="line-no">{i + 1}</td>
                       <td>
-                        <ItemPicker value={l.itemId} filter={stockOnly} onChange={(itemId) => update(l.key, { itemId })} />
+                        <ItemPicker value={l.itemId} filter={stockOnly} onChange={(itemId) => update(l.key, { itemId, unitId: null, lots: null })} />
+                        {tracked && (
+                          <LotChip
+                            lots={l.lots}
+                            required={lotDirection(l) === 'in'}
+                            direction={lotDirection(l)}
+                            onClick={() => setLotsFor(l.key)}
+                          />
+                        )}
                       </td>
                       <td className="line-total muted">{l.itemId ? <Qty v={onHand} unit={item?.unit} /> : ''}</td>
                       <td>
@@ -229,6 +266,26 @@ export function OperationEditor() {
                           className={short ? 'danger-text' : ''}
                         />
                       </td>
+                      {hasUnits && (
+                        <td>
+                          {item && item.units.some((u) => u.is_active) ? (
+                            <Select value={l.unitId ?? ''} onChange={(e) => update(l.key, { unitId: e.target.value ? Number(e.target.value) : null, lots: null })}>
+                              <option value="">{item.unit || t('adv.baseUnit')}</option>
+                              {item.units
+                                .filter((u) => u.is_active || u.id === l.unitId)
+                                .map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+                                  </option>
+                                ))}
+                            </Select>
+                          ) : (
+                            <span className="faint" style={{ display: 'block', paddingTop: 8 }}>
+                              {item?.unit ?? ''}
+                            </span>
+                          )}
+                        </td>
+                      )}
                       {kind === 'count' && (
                         <td className="line-total">{diff != null && diff !== 0 ? <Qty v={diff} signed tone /> : <span className="faint">—</span>}</td>
                       )}
@@ -270,6 +327,22 @@ export function OperationEditor() {
           </div>
         </Card>
 
+        {lotsLine && lotsItem && (
+          <LotsDialog
+            open
+            onClose={() => setLotsFor(null)}
+            item={lotsItem}
+            direction={lotDirection(lotsLine)}
+            warehouseId={wh}
+            factor={factorOf(lotsItem, lotsLine.unitId)}
+            qty={Math.abs(lotsLine.qty ?? 0)}
+            value={lotsLine.lots}
+            freeTotal={kind === 'count'}
+            onChange={(lots) =>
+              update(lotsLine.key, kind === 'count' ? { lots, qty: (lots ?? []).reduce((s, x) => s + x.qty, 0) } : { lots })
+            }
+          />
+        )}
         {err && (
           <div className="notice danger">
             <AlertTriangle />

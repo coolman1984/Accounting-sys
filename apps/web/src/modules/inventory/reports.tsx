@@ -1,5 +1,6 @@
-import { Link } from 'react-router';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
+import { useSession } from '../../core/session';
+import { AlertTriangle, CheckCircle2, ShoppingCart } from 'lucide-react';
 import { useApi, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
 import { formatBp, todayIso } from '../../core/format';
@@ -233,6 +234,8 @@ function Pair({ q, v, showValue, strong }: { q: number; v: number | null; showVa
 // -------------------------------------------------------------------- reorder
 export function ReorderPage() {
   const { t, pick } = useI18n();
+  const { can } = useSession();
+  const navigate = useNavigate();
   const { params, set } = usePeriod();
   const wh = params.get('warehouseId') ? Number(params.get('warehouseId')) : null;
   const { data, isLoading } = useApi<
@@ -251,7 +254,23 @@ export function ReorderPage() {
           data.map((r) => [r.sku, pick(r.name_en, r.name_ar), r.qty / 1000, r.reorder_level / 1000, r.sold_90d / 1000, r.suggested / 1000]),
         )
       }
-      controls={<WarehouseSelect all value={wh} onChange={(v) => set({ warehouseId: v ? String(v) : null })} />}
+      controls={
+        <>
+          <WarehouseSelect all value={wh} onChange={(v) => set({ warehouseId: v ? String(v) : null })} />
+          {can('purchasing.write') && !!data?.length && (
+            <button
+              className="btn btn-primary"
+              onClick={() =>
+                navigate('/purchasing/orders/new', {
+                  state: { lines: data.filter((r) => r.suggested > 0).map((r) => ({ itemId: r.id, quantity: r.suggested })) },
+                })
+              }
+            >
+              <ShoppingCart /> {t('adv.fromReorder')}
+            </button>
+          )}
+        </>
+      }
     >
       <Card className="table-card">
         {isLoading || !data ? (

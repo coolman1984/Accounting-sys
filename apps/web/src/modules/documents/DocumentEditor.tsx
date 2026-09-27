@@ -5,7 +5,9 @@ import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks
 import { useI18n } from '../../core/i18n';
 import { api } from '../../core/api';
 import { addDaysIso, formatQty, QTY_SCALE, todayIso } from '../../core/format';
-import { isStockItem, type DocKind, type DocumentFull, type DocumentRow, type Paged, type Party, type Warehouse } from '../../core/types';
+import { isStockItem, type DocKind, type DocumentFull, type DocumentRow, type Item, type LineExt, type Paged, type Party, type Warehouse } from '../../core/types';
+import { LotChip, LotsDialog } from '../../ui/LotsDialog';
+import { Badge } from '../../ui/Badge';
 import { PageHeader, Loading } from '../../ui/Page';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
@@ -25,9 +27,14 @@ interface Line {
   discountBp: number | null;
   taxId: number | null;
   warehouseId: number | null;
+  unitId: number | null;
+  ext: LineExt | null;
 }
 
 let k = 0;
+
+const factorOf = (item: Item | undefined, unitId: number | null) => (item && unitId ? item.units.find((u) => u.id === unitId)?.factor ?? 1000 : 1000);
+const baseOf = (qty: number | null, factor: number) => Math.round(((qty ?? 0) * factor) / 1000);
 
 export function DocumentEditor({ kind }: { kind: DocKind }) {
   const { id } = useParams();
@@ -44,7 +51,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   const defaultTax = useMemo(() => (taxes ?? []).find((x) => x.is_active && x.code === 'VAT')?.id ?? null, [taxes]);
 
   const blank = useCallback(
-    (): Line => ({ key: ++k, itemId: null, description: '', accountId: null, quantity: 1000, unitPrice: null, discountBp: null, taxId: defaultTax, warehouseId: null }),
+    (): Line => ({ key: ++k, itemId: null, description: '', accountId: null, quantity: 1000, unitPrice: null, discountBp: null, taxId: defaultTax, warehouseId: null, unitId: null, ext: null }),
     [defaultTax],
   );
 
@@ -100,6 +107,8 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
         discountBp: l.discount_bp || null,
         taxId: l.tax_id,
         warehouseId: l.warehouse_id,
+        unitId: l.unit_id,
+        ext: l.ext,
       })),
     );
     setWarehouseId(existing.warehouse_id);
@@ -134,7 +143,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
     // Everything this document takes of the same item from the same warehouse.
     const want = lines
       .filter((x) => x.itemId === item.id && ((showWarehouses && x.warehouseId) || warehouseId) === wh)
-      .reduce((s, x) => s + (x.quantity ?? 0), 0);
+      .reduce((s, x) => s + baseOf(x.quantity, factorOf(item, x.unitId)), 0);
     const short = want > avail;
     return (
       <div className={short ? 'danger-text' : 'faint'} style={{ fontSize: 11.5, textAlign: 'end', padding: '2px 4px 0', whiteSpace: 'nowrap' }}>
@@ -142,6 +151,117 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
       </div>
     );
   };
+
+  // ---- units, price lists, lots -------------------------------------------------
+  const sales = ui.side === 'sales';
+  const { data: partyPrices } = useApi<{ list: { id: number; name_en: string; name_ar: string } | null; prices: Record<string, number> }>(
+    sales && partyId ? `/pricing/for-party/${partyId}` : null,
+    undefined,
+    { retry: false },
+  );
+  /** Price of an item in a unit: the customer's price list first, then the unit's own price, then base price × size. */
+  const priceFor = (item: Item, unitId: number | null) => {
+    const listed = partyPrices?.prices[`${item.id}:${unitId ?? 0}`];
+    if (listed != null) return listed;
+    const unit = unitId ? item.units.find((u) => u.id === unitId) : undefined;
+    const own = unit ? (sales ? unit.sale_price : unit.purchase_price) : null;
+    if (own != null) return own;
+    const base = sales ? item.sale_price : item.purchase_price;
+    return Math.round((base * (unit?.factor ?? 1000)) / 1000);
+  };
+  const hasUnits = lines.some((l) => (itemById.get(l.itemId ?? 0)?.units ?? []).some((u) => u.is_active));
+  const unitSelect = (l: Line) => {
+    const item = l.itemId ? itemById.get(l.itemId) : undefined;
+    const units = (item?.units ?? []).filter((u) => u.is_active || u.id === l.unitId);
+    if (!item || !units.length) return <span className="faint" style={{ display: 'block', paddingTop: 8 }}>{item?.unit ?? ''}</span>;
+    return (
+      <Select
+        value={l.unitId ?? ''}
+        onChange={(e) => {
+          const unitId = e.target.value ? Number(e.target.value) : null;
+          update(l.key, { unitId, unitPrice: priceFor(item, unitId), ext: l.ext?.receiptLineId ? l.ext : null });
+        }}
+      >
+        <option value="">{item.unit || t('adv.baseUnit')}</option>
+        {units.map((u) => (
+          <option key={u.id} value={u.id}>
+            {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+          </option>
+        ))}
+      </Select>
+    );
+  };
+  const minPriceWarning = (l: Line, net: number) => {
+    const item = l.itemId ? itemById.get(l.itemId) : undefined;
+    if (!sales || !item?.min_sale_price || !l.quantity) return null;
+    const perBase = Math.round((net * 1000) / Math.max(1, baseOf(l.quantity, factorOf(item, l.unitId))));
+    if (perBase >= item.min_sale_price) return null;
+    return (
+      <div className="danger-text" style={{ fontSize: 11.5, textAlign: 'end', padding: '2px 4px 0', whiteSpace: 'nowrap' }}>
+        {t('adv.belowMin', { min: fmt(item.min_sale_price) })}
+      </div>
+    );
+  };
+  const [lotsFor, setLotsFor] = useState<number | null>(null);
+  const lotDirection = kind === 'sales_invoice' || kind === 'purchase_credit' ? 'out' : 'in';
+  const lineExtras = (l: Line) => {
+    const item = l.itemId ? itemById.get(l.itemId) : undefined;
+    if (l.ext?.receiptLineId) return <Badge tone="cyan" plain>{t('adv.receipt')}</Badge>;
+    if (!item || !isStockItem(item) || item.tracking === 'none') return null;
+    const required = kind === 'purchase_bill' || (kind === 'sales_credit' && !against);
+    return <LotChip lots={l.ext?.lots} required={required} direction={lotDirection} onClick={() => setLotsFor(l.key)} />;
+  };
+  const lotsLine = lines.find((l) => l.key === lotsFor);
+  const lotsItem = lotsLine?.itemId ? itemById.get(lotsLine.itemId) : undefined;
+
+  // ---- prefill from a goods receipt or a purchase order ---------------------------
+  const fromReceipt = params.get('fromReceipt');
+  const fromPo = params.get('fromPo');
+  const { data: srcReceipt } = useApi<any>(!editing && fromReceipt ? `/inventory/receipts/${fromReceipt}` : null);
+  const { data: srcPo } = useApi<any>(!editing && fromPo ? `/purchase-orders/${fromPo}` : null);
+  useEffect(() => {
+    if (!srcReceipt || !items) return;
+    setPartyId(srcReceipt.supplier_id);
+    setWarehouseId(srcReceipt.warehouse_id);
+    setReference(srcReceipt.reference ?? '');
+    setLines(
+      srcReceipt.lines
+        .filter((g: any) => g.remaining_base > 0)
+        .map((g: any) => ({
+          ...blank(),
+          itemId: g.item_id,
+          description: g.description || pick(g.name_en, g.name_ar),
+          unitId: g.unit_id,
+          quantity: Math.round((g.remaining_base * 1000) / g.unit_factor),
+          unitPrice: g.unit_cost,
+          taxId: itemById.get(g.item_id)?.purchase_tax_id ?? defaultTax,
+          ext: { receiptLineId: g.id, ...(g.po_line_id ? { poLineId: g.po_line_id } : {}) },
+        })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcReceipt, items]);
+  useEffect(() => {
+    if (!srcPo || !items) return;
+    setPartyId(srcPo.supplier_id);
+    if (srcPo.warehouse_id) setWarehouseId(srcPo.warehouse_id);
+    setReference(srcPo.number ?? '');
+    setLines(
+      srcPo.lines
+        .filter((p: any) => p.to_bill > 0)
+        .map((p: any) => ({
+          ...blank(),
+          itemId: p.item_id,
+          description: p.description,
+          unitId: p.unit_id,
+          quantity: Math.round((p.to_bill * 1000) / p.unit_factor),
+          unitPrice: p.unit_price,
+          discountBp: p.discount_bp || null,
+          taxId: p.tax_id,
+          ext: { poLineId: p.id },
+        })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcPo, items]);
 
   const save = useApiMutation((post: boolean) => {
     const body = {
@@ -166,6 +286,8 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
           accountId: l.accountId,
           taxId: l.taxId,
           warehouseId: showWarehouses ? l.warehouseId : null,
+          unitId: l.unitId,
+          ext: l.ext && (l.ext.lots?.length || l.ext.receiptLineId || l.ext.poLineId) ? l.ext : null,
         })),
     };
     return editing ? api.put<{ id: number }>(`/documents/${id}`, body) : api.post<{ id: number }>('/documents', body);
@@ -232,6 +354,11 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                   setAgainst(null);
                 }}
               />
+              {partyPrices?.list && (
+                <div style={{ marginTop: 6 }}>
+                  <Badge tone="blue">{t('adv.priceList', { name: pick(partyPrices.list.name_en, partyPrices.list.name_ar) })}</Badge>
+                </div>
+              )}
             </Field>
             <Field label={t('common.date')}>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -292,6 +419,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                   <th className="end" style={{ width: 90 }}>
                     {t('docs.qty')}
                   </th>
+                  {hasUnits && <th style={{ width: 110 }}>{t('adv.unit')}</th>}
                   <th className="end" style={{ width: 120 }}>
                     {t('docs.price')}
                   </th>
@@ -313,20 +441,22 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                       <ItemPicker
                         value={l.itemId}
                         onChange={(itemId, item) => {
-                          if (!item) return update(l.key, { itemId });
-                          const sales = ui.side === 'sales';
+                          if (!item) return update(l.key, { itemId, unitId: null, ext: null });
                           update(l.key, {
                             itemId,
+                            unitId: null,
+                            ext: null,
                             description: pick(item.name_en, item.name_ar),
-                            unitPrice: sales ? item.sale_price : item.purchase_price,
+                            unitPrice: priceFor(item, null),
                             taxId: (sales ? item.sales_tax_id : item.purchase_tax_id) ?? l.taxId,
-                            accountId: (sales ? item.income_account_id : item.expense_account_id) ?? null,
+                            accountId: (sales ? item.income_account_id : isStockItem(item) ? null : item.expense_account_id) ?? null,
                           });
                         }}
                       />
                     </td>
                     <td>
                       <Input value={l.description} onChange={(e) => update(l.key, { description: e.target.value })} />
+                      {lineExtras(l)}
                     </td>
                     {showAccounts && (
                       <td>
@@ -354,8 +484,10 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                       <DecimalInput trim scale={QTY_SCALE} value={l.quantity} onChange={(v) => update(l.key, { quantity: v })} aria-label={t('docs.qty')} />
                       {availability(l)}
                     </td>
+                    {hasUnits && <td>{unitSelect(l)}</td>}
                     <td>
                       <DecimalInput scale={scale} value={l.unitPrice} onChange={(v) => update(l.key, { unitPrice: v })} aria-label={t('docs.price')} />
+                      {minPriceWarning(l, computed[i].net)}
                     </td>
                     <td>
                       <DecimalInput trim scale={2} value={l.discountBp} onChange={(v) => update(l.key, { discountBp: v == null ? null : Math.min(v, 10000) })} aria-label={t('docs.discount')} />
@@ -427,6 +559,19 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
           <Kbd>↵</Kbd> {t('common.saveAndPost')}
         </p>
       </div>
+      {lotsLine && lotsItem && (
+        <LotsDialog
+          open
+          onClose={() => setLotsFor(null)}
+          item={lotsItem}
+          direction={lotDirection}
+          warehouseId={(showWarehouses && lotsLine.warehouseId) || warehouseId}
+          factor={factorOf(lotsItem, lotsLine.unitId)}
+          qty={lotsLine.quantity ?? 0}
+          value={lotsLine.ext?.lots ?? null}
+          onChange={(lots) => update(lotsLine.key, { ext: { ...(lotsLine.ext ?? {}), lots: lots ?? undefined } })}
+        />
+      )}
     </div>
   );
 }

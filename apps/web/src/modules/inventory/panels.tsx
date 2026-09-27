@@ -13,7 +13,9 @@ import type { Summary } from './StockPage';
 export function DocumentStockPanel({ documentId, kind, status }: { documentId: number; kind: string; status: string }) {
   const { t, pick } = useI18n();
   const { can } = useSession();
-  const { data } = useApi<{ id: number; qty: number; value: number; is_reversal: number; item_id: number; sku: string; name_en: string; name_ar: string; warehouse_code: string; journal_entry_id: number | null; journal_number: string | null }[]>(
+  const { data } = useApi<
+    { id: number; qty: number; value: number; is_reversal: number; item_id: number; sku: string; name_en: string; name_ar: string; warehouse_code: string; journal_entry_id: number | null; journal_number: string | null; lot_no: string | null; expiry_date: string | null }[]
+  >(
     status !== 'draft' && can('inventory.read') ? '/inventory/by-source' : null,
     { type: kind, id: documentId },
   );
@@ -54,9 +56,13 @@ export function DocumentStockPanel({ documentId, kind, status }: { documentId: n
                   </Badge>
                 )}
               </td>
+              <td className="muted mono" style={{ fontSize: 12.5 }}>
+                {m.lot_no}
+                {m.expiry_date && <span className="faint"> · {m.expiry_date}</span>}
+              </td>
               <td className="muted">{m.warehouse_code}</td>
               <td className="end">
-                <Qty v={m.qty} signed tone />
+                {m.qty !== 0 ? <Qty v={m.qty} signed tone /> : <span className="faint">{t('journal.sources.stock_revaluation')}</span>}
               </td>
               <td className="end">
                 <Money v={m.value} />

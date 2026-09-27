@@ -97,6 +97,36 @@ export interface Item {
   cogs_account_id: number | null;
   reorder_level: number;
   reorder_qty: number;
+  tracking: 'none' | 'batch' | 'serial';
+  requires_expiry: number;
+  min_sale_price: number;
+  units: ItemUnit[];
+}
+
+/** 1 unit = factor/1000 base units (a box of 12 => 12000). */
+export interface ItemUnit {
+  id: number;
+  item_id: number;
+  name_en: string;
+  name_ar: string;
+  factor: number;
+  barcode: string | null;
+  sale_price: number | null;
+  purchase_price: number | null;
+  is_active: number;
+}
+
+/** A lot / serial as typed on a line; qty in the line's unit (x1000). */
+export interface LotEntry {
+  lotNo: string;
+  expiry?: string | null;
+  qty: number;
+}
+
+export interface LineExt {
+  lots?: LotEntry[];
+  receiptLineId?: number;
+  poLineId?: number;
 }
 
 export interface ItemCategory {
@@ -184,6 +214,13 @@ export interface DocumentLine {
   tax_code: string | null;
   tax_rate_bp: number;
   warehouse_id: number | null;
+  unit_id: number | null;
+  unit_factor: number;
+  base_quantity: number;
+  unit_name_en: string | null;
+  unit_name_ar: string | null;
+  base_unit: string | null;
+  ext: LineExt | null;
   gross: number;
   discount: number;
   net: number;
