@@ -18,7 +18,7 @@ import { ItemPicker, PartyPicker, useItems } from '../../ui/Pickers';
 import { LotChip, LotsDialog } from '../../ui/LotsDialog';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
-import { Qty, WarehouseSelect, useWarehouses } from './common';
+import { Qty, WarehouseSelect, useWarehouses } from '../../ui/Stock';
 import { unitLabel } from '../../core/units';
 
 interface Line {
@@ -152,7 +152,7 @@ export function ReceiptEditor() {
             <Button onClick={() => submit(false)} loading={save.isPending && !save.variables} disabled={!ready}>
               {t('common.saveDraft')}
             </Button>
-            {can('inventory.post') && (
+            {can('inventory.receipts.post') && (
               <Button variant="primary" icon={<Send />} onClick={() => submit(true)} loading={save.isPending && !!save.variables} disabled={!ready || missingLots}>
                 {t('common.saveAndPost')}
               </Button>
@@ -324,7 +324,7 @@ export function ReceiptsList() {
         title={t('adv.receipts')}
         subtitle={t('adv.receiptsSubtitle')}
         actions={
-          can('inventory.write') && (
+          can('inventory.receipts.write') && (
             <Link to="/inventory/receipts/new" className="btn btn-primary">
               <Plus /> {t('adv.newReceipt')}
             </Link>
@@ -376,7 +376,7 @@ export function ReceiptView() {
             <Button icon={<Printer />} onClick={() => window.print()}>
               {t('common.print')}
             </Button>
-            {r.status === 'draft' && can('inventory.write') && (
+            {r.status === 'draft' && can('inventory.receipts.write') && (
               <>
                 <Button
                   variant="danger"
@@ -393,12 +393,12 @@ export function ReceiptView() {
                 </Link>
               </>
             )}
-            {r.status === 'draft' && can('inventory.post') && (
+            {r.status === 'draft' && can('inventory.receipts.post') && (
               <Button variant="primary" icon={<Send />} loading={act.isPending} onClick={() => run(() => api.post(`/inventory/receipts/${r.id}/post`), t('common.posted'))}>
                 {t('common.post')}
               </Button>
             )}
-            {r.status === 'posted' && !anyBilled && can('inventory.post') && (
+            {r.status === 'posted' && !anyBilled && can('inventory.receipts.post') && (
               <Button
                 variant="danger"
                 icon={<Ban />}
@@ -410,7 +410,7 @@ export function ReceiptView() {
                 {t('common.void')}
               </Button>
             )}
-            {unbilled && can('purchases.write') && (
+            {unbilled && can('ap.bills.write') && (
               <Link to={`/purchases/bills/new?fromReceipt=${r.id}`} className="btn btn-primary">
                 <FilePlus /> {t('adv.createBill')}
               </Link>

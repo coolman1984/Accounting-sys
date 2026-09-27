@@ -17,7 +17,7 @@ import { DecimalInput, Field, Input, Textarea } from '../../ui/Field';
 import { AccountPicker } from '../../ui/Pickers';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
-import { Qty } from './common';
+import { Qty } from '../../ui/Stock';
 
 interface Candidate {
   source_type: 'purchase_bill' | 'goods_receipt';
@@ -116,7 +116,7 @@ export function LandedEditor() {
             <Button onClick={() => submit(false)} loading={save.isPending && !save.variables} disabled={!ready}>
               {t('common.saveDraft')}
             </Button>
-            {can('inventory.post') && (
+            {can('inventory.landed.post') && (
               <Button variant="primary" icon={<Send />} onClick={() => submit(true)} loading={save.isPending && !!save.variables} disabled={!ready}>
                 {t('common.saveAndPost')}
               </Button>
@@ -246,7 +246,7 @@ export function LandedList() {
         title={t('adv.landedCosts')}
         subtitle={t('adv.landedSubtitle')}
         actions={
-          can('inventory.write') && (
+          can('inventory.landed.write') && (
             <Link to="/inventory/landed-costs/new" className="btn btn-primary">
               <Plus /> {t('adv.newLanded')}
             </Link>
@@ -293,7 +293,7 @@ export function LandedView() {
         subtitle={`${date(lc.date, 'long')} · ${t('adv.methods.' + lc.method)}`}
         actions={
           <>
-            {lc.status === 'draft' && can('inventory.write') && (
+            {lc.status === 'draft' && can('inventory.landed.write') && (
               <>
                 <Button
                   variant="danger"
@@ -310,12 +310,12 @@ export function LandedView() {
                 </Link>
               </>
             )}
-            {lc.status === 'draft' && can('inventory.post') && (
+            {lc.status === 'draft' && can('inventory.landed.post') && (
               <Button variant="primary" icon={<Send />} loading={act.isPending} onClick={() => run(() => api.post(`/inventory/landed-costs/${lc.id}/post`), t('common.posted'))}>
                 {t('common.post')}
               </Button>
             )}
-            {lc.status === 'posted' && can('inventory.post') && (
+            {lc.status === 'posted' && can('inventory.landed.post') && (
               <Button
                 variant="danger"
                 icon={<Ban />}

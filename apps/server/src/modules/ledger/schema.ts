@@ -136,4 +136,20 @@ export const migrations: Migration[] = [
         WHERE e.status = 'posted';
     `,
   },
+  {
+    // Controlling dimension on every ledger line (like SAP's universal journal): the CO module
+    // provides the cost centers; the ledger only stores the id.
+    id: '002_cost_center_dimension',
+    up: `
+      ALTER TABLE journal_lines ADD COLUMN cost_center_id INTEGER;
+      CREATE INDEX jl_cost_center ON journal_lines(cost_center_id) WHERE cost_center_id IS NOT NULL;
+      DROP VIEW ledger;
+      CREATE VIEW ledger AS
+        SELECT l.id, l.entry_id, e.number, e.date, e.reference, e.memo, e.source_type, e.source_id,
+               l.line_no, l.account_id, l.party_id, l.cost_center_id, l.description, l.debit, l.credit
+        FROM journal_lines l
+        JOIN journal_entries e ON e.id = l.entry_id
+        WHERE e.status = 'posted';
+    `,
+  },
 ];

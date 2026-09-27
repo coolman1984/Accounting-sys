@@ -59,4 +59,36 @@ export const migrations: Migration[] = [
         BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
     `,
   },
+  {
+    // Roles like SAP / ERPNext: a role is a set of permissions, a user holds several roles.
+    // Built-in roles follow a rule so they always cover permissions of modules installed later;
+    // custom roles list their permissions. users.role is kept only for old installs.
+    id: '002_roles',
+    up: `
+      CREATE TABLE roles (
+        id          INTEGER PRIMARY KEY,
+        key         TEXT UNIQUE,                 -- built-in roles: admin | accountant | viewer
+        name        TEXT NOT NULL,
+        description TEXT,
+        rule        TEXT CHECK (rule IN ('all', 'all_but_admin', 'read_only')),
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+      );
+      CREATE TABLE role_permissions (
+        role_id    INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        permission TEXT NOT NULL,
+        PRIMARY KEY (role_id, permission)
+      );
+      CREATE TABLE user_roles (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, role_id)
+      );
+      INSERT INTO roles (key, name, rule, created_at, updated_at) VALUES
+        ('admin', 'Administrator', 'all', datetime('now'), datetime('now')),
+        ('accountant', 'Accountant', 'all_but_admin', datetime('now'), datetime('now')),
+        ('viewer', 'Viewer', 'read_only', datetime('now'), datetime('now'));
+      INSERT INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u JOIN roles r ON r.key = u.role;
+    `,
+  },
 ];

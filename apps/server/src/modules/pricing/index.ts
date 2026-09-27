@@ -24,8 +24,8 @@ const zList = z.object({
 export const pricingModule: AppModule = {
   id: 'pricing',
   dependsOn: ['catalog', 'parties', 'documents'],
-  permissions: ['pricing.read', 'pricing.write', 'pricing.override'],
-  apps: [{ id: 'pricing', order: 60, requires: ['sales'], permissions: ['pricing'] }],
+  permissions: ['pricing.lists.read', 'pricing.lists.write', 'pricing.minprice.override'],
+  apps: [{ id: 'pricing', order: 60, requires: ['ar'], permissions: ['pricing'] }],
   migrations: [
     {
       id: '001_price_lists',
@@ -56,7 +56,7 @@ export const pricingModule: AppModule = {
     // Minimum price guard: net price per base unit (after discount, before tax) must not go below the item's minimum.
     events.on('document.posted', (e) => {
       if (e.kind !== 'sales_invoice' || !apps.isEnabled('pricing')) return;
-      if (services.get('access').userCan(e.userId, 'pricing.override')) return;
+      if (services.get('access').userCan(e.userId, 'pricing.minprice.override')) return;
       const lines = db.all<{ line_no: number; item_id: number; net: number; base_quantity: number; min_sale_price: number; sku: string }>(
         `SELECT l.line_no, l.item_id, l.net, l.base_quantity, i.min_sale_price, i.sku
          FROM document_lines l JOIN items i ON i.id = l.item_id WHERE l.document_id = ? AND i.min_sale_price > 0`,
@@ -80,7 +80,7 @@ export const pricingModule: AppModule = {
   routes(r, { db, services, apps }) {
     const audit = services.get('audit');
 
-    r.get('/pricing/lists', 'pricing.read', () =>
+    r.get('/pricing/lists', 'pricing.lists.read', () =>
       db.all(
         `SELECT pl.*, (SELECT COUNT(*) FROM price_list_prices p WHERE p.price_list_id = pl.id) AS prices,
                 (SELECT COUNT(*) FROM party_price_lists pp WHERE pp.price_list_id = pl.id) AS parties
@@ -88,7 +88,7 @@ export const pricingModule: AppModule = {
       ),
     );
 
-    r.get('/pricing/lists/:id', 'pricing.read', ({ params }) => {
+    r.get('/pricing/lists/:id', 'pricing.lists.read', ({ params }) => {
       const id = Number(params.id);
       const list = db.get('SELECT * FROM price_lists WHERE id = ?', [id]) ?? notFound('price_list', id);
       return {
@@ -139,13 +139,13 @@ export const pricingModule: AppModule = {
       });
     };
 
-    r.post('/pricing/lists', 'pricing.write', ({ body, user }) => ({ id: save(null, parse(zList, body), user.id) }));
-    r.put('/pricing/lists/:id', 'pricing.write', ({ params, body, user }) => {
+    r.post('/pricing/lists', 'pricing.lists.write', ({ body, user }) => ({ id: save(null, parse(zList, body), user.id) }));
+    r.put('/pricing/lists/:id', 'pricing.lists.write', ({ params, body, user }) => {
       const id = Number(params.id);
       if (!db.get('SELECT 1 FROM price_lists WHERE id = ?', [id])) notFound('price_list', id);
       return { id: save(id, parse(zList, body), user.id) };
     });
-    r.delete('/pricing/lists/:id', 'pricing.write', ({ params, user }) => {
+    r.delete('/pricing/lists/:id', 'pricing.lists.write', ({ params, user }) => {
       const id = Number(params.id);
       db.tx(() => {
         db.run('DELETE FROM price_lists WHERE id = ?', [id]);

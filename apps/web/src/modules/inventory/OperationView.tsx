@@ -12,7 +12,7 @@ import { Badge, SimpleStatus } from '../../ui/Badge';
 import { Money } from '../../ui/Money';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
-import { Qty } from './common';
+import { Qty } from '../../ui/Stock';
 import type { OpKind } from './OperationEditor';
 
 interface OpView {
@@ -63,7 +63,7 @@ export function OperationView() {
             <Button icon={<Printer />} onClick={() => window.print()}>
               {t('common.print')}
             </Button>
-            {d.status === 'draft' && can('inventory.write') && (
+            {d.status === 'draft' && can('inventory.operations.write') && (
               <>
                 <Button
                   variant="danger"
@@ -80,12 +80,12 @@ export function OperationView() {
                 </Link>
               </>
             )}
-            {d.status === 'draft' && can('inventory.post') && (
+            {d.status === 'draft' && can('inventory.operations.post') && (
               <Button variant="primary" icon={<Send className="flip-rtl" />} loading={act.isPending} onClick={() => run(() => api.post(`/inventory/operations/${d.id}/post`), t('common.posted'))}>
                 {t('common.post')}
               </Button>
             )}
-            {d.status === 'posted' && can('inventory.post') && (
+            {d.status === 'posted' && can('inventory.operations.post') && (
               <Button
                 variant="danger"
                 icon={<Ban />}

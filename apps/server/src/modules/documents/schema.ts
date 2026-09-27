@@ -1,17 +1,6 @@
 import type { Migration } from '../../kernel/modules.js';
 
-export const DOC_KINDS = ['sales_invoice', 'sales_credit', 'purchase_bill', 'purchase_credit'] as const;
-export type DocKind = (typeof DOC_KINDS)[number];
-
-export const KIND_INFO: Record<
-  DocKind,
-  { side: 'sales' | 'purchases'; /** +1 increases what the party owes us, -1 decreases it */ sign: 1 | -1; seq: string; prefix: string }
-> = {
-  sales_invoice: { side: 'sales', sign: 1, seq: 'sales_invoice', prefix: 'INV-' },
-  sales_credit: { side: 'sales', sign: -1, seq: 'sales_credit', prefix: 'CN-' },
-  purchase_bill: { side: 'purchases', sign: -1, seq: 'purchase_bill', prefix: 'BILL-' },
-  purchase_credit: { side: 'purchases', sign: 1, seq: 'purchase_credit', prefix: 'DN-' },
-};
+export { DOC_KINDS, KIND_INFO, type DocKind } from '../../contracts/documents.js';
 
 export const migrations: Migration[] = [
   {
@@ -139,5 +128,10 @@ export const migrations: Migration[] = [
       WHEN (SELECT status FROM documents WHERE id = OLD.document_id) <> 'draft'
       BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
     `,
+  },
+  {
+    // Cost center (CO) per line: revenue and expense lines carry it into the ledger.
+    id: '004_cost_center',
+    up: `ALTER TABLE document_lines ADD COLUMN cost_center_id INTEGER;`,
   },
 ];

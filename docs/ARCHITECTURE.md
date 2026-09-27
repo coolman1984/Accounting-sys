@@ -17,16 +17,21 @@ from a browser. No cloud, no subscription, one SQLite file holds the books.
 ```
 apps/
   server/                 Node 22 + Fastify + SQLite (node:sqlite) + zod
-    src/kernel/           the "chassis": db, modules, services, events, money, dates
-    src/modules/          the "parts": system, ledger, parties, catalog,
-                          documents, payments, inventory, reports
-    src/test/             end-to-end accounting tests
+    src/kernel/           the "chassis": db, modules, services, events, apps, money, dates
+    src/contracts/        shared types modules use to talk to each other
+    src/modules/          the "parts": system + ledger (GL core), ar, ap, payments
+                          (treasury), tax, co, inventory, purchasing, pricing, and the
+                          engines parties, catalog, documents
+    src/test/             end-to-end tests + boundary, edition and docs checks
   web/                    React 19 + Vite + TanStack Query + React Router
     src/core/             i18n (en/ar), theme, session, API client, formatting
-    src/ui/               design-system components
+    src/ui/               design-system components shared by every module
+    src/engines/          shared screens used by several apps (documents, parties)
     src/shell/            sidebar, top bar, ⌘K command palette
-    src/modules/          one folder per feature, mirroring the server
-docs/                     this document and the roadmap
+    src/modules/          one folder per app: gl, ar, ap, treasury, tax, co,
+                          inventory, purchasing, pricing, catalog, dashboard, admin, auth
+scripts/                  edition.mjs (build an edition), docs-map.mjs (program map)
+docs/                     see docs/README.md — MAP.md tells where everything lives
 ```
 
 ## 2. The "mechano" principle — every feature is a module
@@ -40,7 +45,9 @@ interface AppModule {
   id: string;                 // also the migration namespace
   dependsOn?: string[];       // kernel orders modules by dependency
   migrations?: Migration[];   // owns its tables, applied once, never edited
-  permissions?: string[];     // e.g. 'sales.post'
+  permissions?: string[];     // 'module.object.action', e.g. 'ar.invoices.post'
+  roles?: RoleTemplate[];     // ready-made roles offered in Users & roles
+  sod?: [string, string][];   // duties better held by two different people
   setup?(ctx): void;          // provide a typed service, subscribe to events
   routes?(router, ctx): void; // mount HTTP endpoints under /api
   apps?: AppManifest[];       // the switchable apps this module provides
@@ -55,7 +62,12 @@ each other's tables for writes:
 |---|---|---|
 | **Services** | typed public API, `services.get('ledger')` | documents call `ledger.createEntry()` to post |
 | **Events** | synchronous, inside the same DB transaction | `system.setup` → ledger seeds the chart, catalog seeds VAT |
-| **Permissions** | declared per module, resolved per role | `payments.post`, `reports.read` |
+| **Permissions** | declared per module, resolved per role | `treasury.payments.post`, `gl.reports.read` |
+| **Registries** | an engine lets apps plug in | AR registers `sales_invoice` with `documents.registerKind`, `customer` with `parties.registerRole` |
+
+Shared types live in `src/contracts/`. A test (`test/boundaries.test.ts`) fails
+if a module imports another module's code directly — on the server and in the
+web app — so every piece stays removable.
 
 Adding a feature (inventory, payroll, fixed assets…) = write a module, add it
 to `modules/index.ts`. The kernel does not change.
@@ -65,15 +77,24 @@ to `modules/index.ts`. The kernel does not change.
 Modules are how the code is built; **apps** are what a company switches on
 (`kernel/apps.ts`, the Apps page, and a step in the setup wizard):
 
-| App | Unlocks | Needs |
-|---|---|---|
-| Accounting (core, always on) | accounts, journal, fiscal years, reports, settings | — |
-| Sales | `sales.*`, customers, products | — |
-| Purchases | `purchases.*`, suppliers, products | — |
-| Cash & bank | `payments.*` | — |
-| Inventory | `inventory.*` (warehouses, lots, receipts, landed costs) | — |
-| Purchase orders | `purchasing.*` | Purchases |
-| Price lists | `pricing.*` | Sales |
+| App | Modules | Unlocks | Needs |
+|---|---|---|---|
+| General ledger (core, always on) | system, ledger | accounts, journal, fiscal years, statements, users & roles, settings | — |
+| Receivables (AR) | ar (+ parties, catalog, documents) | customers, sales invoices, credit notes, ageing | — |
+| Payables (AP) | ap (+ engines) | suppliers, bills, debit notes, ageing | — |
+| Treasury | payments | receipts and payments (separate rights) | — |
+| Tax | tax | tax codes, tax on lines, tax summary | — |
+| Cost centers (CO) | co | cost centers on lines, P&L per center | — |
+| Inventory | inventory | warehouses, lots, receipts, landed costs | — |
+| Purchase orders | purchasing | orders, approval, receive & bill from the order | AP |
+| Price lists | pricing | price lists, minimum price guard | AR |
+
+### Editions — deliver only what was bought
+
+`npm run edition -- finance --check` (or a list such as `gl,ap,purchasing`)
+copies the program without the other apps' folders, rewrites the server and
+web module lists from `dependsOn`, and runs typecheck plus the edition tests on
+the copy. Presets: `ledger`, `finance`, `trade`, `full` (`--list` shows them).
 
 A module declares the apps it provides; one module can serve several
 (documents → Sales and Purchases) and several modules can add to one app.
@@ -202,7 +223,17 @@ All reports are computed from posted ledger movements:
 
 ## 6. Security & multi-user
 
-* Users with roles: **Administrator**, **Accountant**, **Viewer** (read-only).
+* **Users & roles** (Admin › Users & roles), simplified from SAP role
+  collections and Business Central permission sets:
+  * rights are `module.object.action` (view, create & edit, post, approve, manage, override),
+    shown as a matrix per module;
+  * built-in roles **Administrator**, **Accountant**, **Viewer**; custom roles from
+    templates each module offers (sales clerk, cashier, storekeeper, controller …);
+  * a user may hold several roles; rights add up, limited to the apps that are on,
+    and apply on the next request (no re-login);
+  * separation-of-duties pairs (e.g. create suppliers × pay suppliers) show a warning;
+  * users, settings, backups and price override are administrator-only; the last
+    active administrator cannot be removed.
 * Passwords hashed with scrypt; sessions are random tokens stored as SHA-256,
   HttpOnly cookie; brute-force cool-down on login.
 * Every write is audited (who, what, when, before/after).

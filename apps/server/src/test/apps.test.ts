@@ -14,9 +14,9 @@ describe('apps — sell only what the customer needs', () => {
     const c = await setupCompany({ apps: [] });
     try {
       const me = await c.get('/api/auth/me');
-      assert.deepEqual(me.apps, ['accounting']);
-      assert.ok(me.user.permissions.includes('journal.post'));
-      assert.ok(!me.user.permissions.some((p: string) => /^(sales|purchases|payments|inventory|purchasing|pricing|parties|catalog)\./.test(p)));
+      assert.deepEqual(me.apps, ['gl']);
+      assert.ok(me.user.permissions.includes('gl.journal.post'));
+      assert.ok(!me.user.permissions.some((p: string) => /^(ar|ap|treasury|inventory|purchasing|pricing|catalog|tax|co)\./.test(p)));
       assert.equal((await c.raw('GET', '/api/documents?kind=sales_invoice')).status, 403);
       assert.equal((await c.raw('GET', '/api/inventory/stock')).status, 403);
       const cash = await acc(c, '1110');
@@ -34,13 +34,13 @@ describe('apps — sell only what the customer needs', () => {
 
   let c: TestClient;
   before(async () => {
-    c = await setupCompany({ apps: ['sales', 'purchases'], vatRateBp: null });
+    c = await setupCompany({ apps: ['ar', 'ap'], vatRateBp: null });
   });
   after(() => c.close());
 
   test('without the Inventory app, products are bought as expenses and sold without stock checks', async () => {
     const me = await c.get('/api/auth/me');
-    assert.deepEqual(me.apps.sort(), ['accounting', 'purchases', 'sales']);
+    assert.deepEqual(me.apps.sort(), ['ap', 'ar', 'gl']);
     const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'S' })).id;
     const customer = (await c.post('/api/parties', { kind: 'customer', name: 'C' })).id;
     const item = (await c.post('/api/items', { sku: 'P1', nameEn: 'Product', nameAr: 'منتج', kind: 'product', salePrice: 1500, purchasePrice: 1000 })).id;
@@ -60,10 +60,10 @@ describe('apps — sell only what the customer needs', () => {
     const bad = await c.raw('PUT', '/api/system/apps', { enabled: ['purchasing'] });
     assert.equal(bad.status, 422);
     assert.equal(bad.body.error.code, 'apps.requires');
-    const list = await c.put('/api/system/apps', { enabled: ['sales', 'purchases', 'inventory', 'purchasing'] });
+    const list = await c.put('/api/system/apps', { enabled: ['ar', 'ap', 'inventory', 'purchasing'] });
     assert.ok(list.find((a: any) => a.id === 'inventory').enabled);
     const me = await c.get('/api/auth/me');
-    assert.ok(me.user.permissions.includes('inventory.write'), 'no restart or new login needed');
+    assert.ok(me.user.permissions.includes('inventory.operations.write'), 'no restart or new login needed');
     assert.equal((await c.raw('GET', '/api/inventory/stock')).status, 200);
     // Now stock items go to the inventory asset.
     const supplier = (await c.get('/api/parties?kind=supplier')).rows[0].id;
@@ -72,12 +72,12 @@ describe('apps — sell only what the customer needs', () => {
     assert.equal((await c.get(`/api/documents/${bill}`)).lines[0].account_id, await acc(c, '1140'));
     await healthOk(c);
     // Turning an app off hides it for everyone right away.
-    await c.put('/api/system/apps', { enabled: ['sales', 'purchases'] });
+    await c.put('/api/system/apps', { enabled: ['ar', 'ap'] });
     assert.equal((await c.raw('GET', '/api/purchase-orders')).status, 403);
   });
 
   test('health checks run per module, so a fault points at its module', async () => {
-    await c.put('/api/system/apps', { enabled: ['sales', 'purchases', 'inventory'] });
+    await c.put('/api/system/apps', { enabled: ['ar', 'ap', 'inventory'] });
     await healthOk(c);
     // Break the stock pool on purpose (outside the app, as a crash or manual edit would).
     c.app.kernel.db.run('UPDATE stock_values SET value = value + 1');

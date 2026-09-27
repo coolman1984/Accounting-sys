@@ -1,6 +1,5 @@
 import { Link } from 'react-router';
 import {
-  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   BookOpen,
@@ -34,11 +33,8 @@ interface Dashboard {
   lastMonth: { revenue: number; expenses: number; profit: number };
   yearToDate: { revenue: number; expenses: number; profit: number };
   series: { month: string; revenue: number; expenses: number; profit: number }[];
-  overdue: { n: number; amount: number };
-  billsDue: { n: number; amount: number };
   cashAccounts: { id: number; code: string; name_en: string; name_ar: string; balance: number }[];
   recent: { id: number; number: string; date: string; memo: string | null; source_type: string; total: number }[];
-  topDebtors: { party_id: number; name: string; balance: number }[];
   drafts: number;
 }
 
@@ -57,21 +53,63 @@ function Kpi({ icon, label, value, foot, tone }: { icon: React.ReactNode; label:
   );
 }
 
+interface Quick {
+  to: string;
+  label: string;
+  icon: typeof FilePlus;
+  perm: string;
+}
+
+function QuickActions({ quick, drafts }: { quick: Quick[]; drafts?: number }) {
+  const { t } = useI18n();
+  return (
+    <Card>
+      <CardHeader
+        title={t('common.quickActions')}
+        actions={
+          <span className="row" style={{ gap: 3 }}>
+            <Kbd>{modKey}</Kbd>
+            <Kbd>K</Kbd>
+          </span>
+        }
+      />
+      <div style={{ padding: 6 }}>
+        {quick.map((q) => {
+          const Icon = q.icon;
+          return (
+            <Link key={q.to} to={q.to} className="palette-item">
+              <Icon />
+              <span>{q.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+      {!!drafts && drafts > 0 && (
+        <div className="card-footer muted" style={{ fontSize: 13 }}>
+          {t('dashboard.drafts', { n: drafts })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function DashboardPage() {
   const { t, locale, pick } = useI18n();
   const { user, company, can, hasApp } = useSession();
   const { fmt } = useMoney();
   const date = useDate();
-  const { data, isLoading } = useApi<Dashboard>('/reports/dashboard');
+  // Ledger figures need the GL reports right; everyone else gets actions and their modules' cards.
+  const gl = can('gl.reports.read');
+  const { data, isLoading } = useApi<Dashboard>(gl ? '/reports/dashboard' : null);
   const widgets = useSlot('dashboard.widgets');
 
   const quick = [
-    { to: '/sales/invoices/new', label: t('docs.sales_invoice.new'), icon: FilePlus, perm: 'sales.write' },
-    { to: '/receipts/new', label: t('payments.in.new'), icon: ArrowDownLeft, perm: 'payments.write' },
-    { to: '/purchases/bills/new', label: t('docs.purchase_bill.new'), icon: ReceiptText, perm: 'purchases.write' },
-    { to: '/purchasing/orders/new', label: t('adv.newPo'), icon: ClipboardList, perm: 'purchasing.write' },
-    { to: '/payments/new', label: t('payments.out.new'), icon: ArrowUpRight, perm: 'payments.write' },
-    { to: '/journal/new', label: t('journal.new'), icon: BookOpen, perm: 'journal.write' },
+    { to: '/sales/invoices/new', label: t('docs.sales_invoice.new'), icon: FilePlus, perm: 'ar.invoices.write' },
+    { to: '/receipts/new', label: t('payments.in.new'), icon: ArrowDownLeft, perm: 'treasury.receipts.write' },
+    { to: '/purchases/bills/new', label: t('docs.purchase_bill.new'), icon: ReceiptText, perm: 'ap.bills.write' },
+    { to: '/purchasing/orders/new', label: t('adv.newPo'), icon: ClipboardList, perm: 'purchasing.orders.write' },
+    { to: '/payments/new', label: t('payments.out.new'), icon: ArrowUpRight, perm: 'treasury.payments.write' },
+    { to: '/journal/new', label: t('journal.new'), icon: BookOpen, perm: 'gl.journal.write' },
   ].filter((q) => can(q.perm));
 
   return (
@@ -83,29 +121,26 @@ function DashboardPage() {
         </div>
       </div>
 
-      {isLoading || !data ? (
+      {!gl ? (
+        <div className="stack" style={{ '--gap': '20px' } as React.CSSProperties}>
+          <QuickActions quick={quick} />
+          <div className="dash-widgets">
+            {widgets.map((W, i) => (
+              <W key={i} />
+            ))}
+          </div>
+        </div>
+      ) : isLoading || !data ? (
         <Loading />
       ) : (
         <div className="stack" style={{ '--gap': '20px' } as React.CSSProperties}>
           <div className="grid-4">
             <Kpi icon={<Wallet />} label={t('dashboard.cash')} value={fmt(data.cash)} foot={company?.baseCurrency} />
-            {hasApp('sales') && (
-              <Kpi
-                icon={<ArrowDownLeft />}
-                tone="var(--success)"
-                label={t('dashboard.receivables')}
-                value={fmt(data.receivables)}
-                foot={data.overdue.n > 0 ? <span className="danger-text">{t('dashboard.overdueCount', { n: data.overdue.n })}</span> : t('dashboard.allGood')}
-              />
+            {hasApp('ar') && (
+              <Kpi icon={<ArrowDownLeft />} tone="var(--success)" label={t('dashboard.receivables')} value={fmt(data.receivables)} foot={t('dashboard.controlAccounts')} />
             )}
-            {hasApp('purchases') && (
-              <Kpi
-                icon={<ArrowUpRight />}
-                tone="var(--line-pink)"
-                label={t('dashboard.payables')}
-                value={fmt(data.payables)}
-                foot={data.billsDue.n > 0 ? `${t('dashboard.billsDue')}: ${fmt(data.billsDue.amount)}` : t('dashboard.allGood')}
-              />
+            {hasApp('ap') && (
+              <Kpi icon={<ArrowUpRight />} tone="var(--line-pink)" label={t('dashboard.payables')} value={fmt(data.payables)} foot={t('dashboard.controlAccounts')} />
             )}
             <Kpi
               icon={<TrendingUp />}
@@ -146,36 +181,10 @@ function DashboardPage() {
               </div>
             </Card>
 
-            <Card>
-              <CardHeader
-                title={t('common.quickActions')}
-                actions={
-                  <span className="row" style={{ gap: 3 }}>
-                    <Kbd>{modKey}</Kbd>
-                    <Kbd>K</Kbd>
-                  </span>
-                }
-              />
-              <div style={{ padding: 6 }}>
-                {quick.map((q) => {
-                  const Icon = q.icon;
-                  return (
-                    <Link key={q.to} to={q.to} className="palette-item">
-                      <Icon />
-                      <span>{q.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-              {data.drafts > 0 && (
-                <div className="card-footer muted" style={{ fontSize: 13 }}>
-                  {t('dashboard.drafts', { n: data.drafts })}
-                </div>
-              )}
-            </Card>
+            <QuickActions quick={quick} drafts={data.drafts} />
           </div>
 
-          <div className="grid-3">
+          <div className="grid-2">
             <Card>
               <CardHeader title={t('dashboard.cashAccounts')} icon={<Landmark size={18} className="muted" />} />
               <div className="table-wrap">
@@ -201,47 +210,6 @@ function DashboardPage() {
               </div>
             </Card>
 
-            {hasApp('sales') && (
-              <Card>
-                <CardHeader
-                  title={t('dashboard.overdueInvoices')}
-                  icon={<AlertTriangle size={18} className={data.overdue.n ? 'danger-text' : 'muted'} />}
-                  actions={
-                    <Link to="/sales/invoices?overdue=1" className="btn btn-sm btn-ghost">
-                      {t('common.viewAll')}
-                    </Link>
-                  }
-                />
-                <div className="card-body">
-                  {data.overdue.n === 0 ? (
-                    <p className="muted">{t('dashboard.allGood')} ✓</p>
-                  ) : (
-                    <>
-                      <div className="kpi-value num danger-text" style={{ fontSize: 24, fontWeight: 680 }}>
-                        {fmt(data.overdue.amount)}
-                      </div>
-                      <p className="muted" style={{ marginTop: 4 }}>
-                        {t('dashboard.overdueCount', { n: data.overdue.n })}
-                      </p>
-                    </>
-                  )}
-                  {data.topDebtors.length > 0 && (
-                    <>
-                      <div className="label" style={{ margin: '18px 0 8px' }}>
-                        {t('dashboard.topDebtors')}
-                      </div>
-                      {data.topDebtors.map((d) => (
-                        <Link key={d.party_id} to={`/customers/${d.party_id}`} className="row" style={{ padding: '5px 0', fontSize: 13.5 }}>
-                          <span>{d.name}</span>
-                          <span className="spacer" />
-                          <Money v={d.balance} />
-                        </Link>
-                      ))}
-                    </>
-                  )}
-                </div>
-              </Card>
-            )}
 
             <Card>
               <CardHeader
@@ -280,9 +248,11 @@ function DashboardPage() {
               )}
             </Card>
           </div>
-          {widgets.map((W, i) => (
-            <W key={i} />
-          ))}
+          <div className="dash-widgets">
+            {widgets.map((W, i) => (
+              <W key={i} />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -291,7 +261,7 @@ function DashboardPage() {
 
 export const dashboardModule: WebModule = {
   id: 'dashboard',
-  nav: [{ to: '/', label: 'nav.dashboard', icon: LayoutDashboard, section: 'overview', order: 0, end: true, perm: 'reports.read' }],
+  nav: [{ to: '/', label: 'nav.dashboard', icon: LayoutDashboard, section: 'overview', order: 0, end: true }],
   routes: [{ path: '/', element: <DashboardPage /> }],
   commands: [{ id: 'go-dashboard', label: 'nav.dashboard', icon: LayoutDashboard, group: 'navigate', to: '/', keywords: 'home لوحة' }],
 };

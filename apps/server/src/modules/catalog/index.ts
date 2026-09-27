@@ -2,91 +2,10 @@ import { z } from 'zod';
 import type { AppModule, ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
-import { parse, zBp, zOptId, zOptText } from '../../kernel/validate.js';
+import { parse, zOptId, zOptText } from '../../kernel/validate.js';
+import type { CatalogService, Item, ItemUnit } from '../../contracts/catalog.js';
 
-export interface Tax {
-  id: number;
-  code: string;
-  name_en: string;
-  name_ar: string;
-  rate_bp: number;
-  scope: 'sales' | 'purchases' | 'both';
-  sales_account_id: number | null;
-  purchase_account_id: number | null;
-  is_active: number;
-}
-
-export interface Item {
-  id: number;
-  sku: string;
-  name_en: string;
-  name_ar: string;
-  kind: 'service' | 'product';
-  unit: string | null;
-  sale_price: number;
-  purchase_price: number;
-  income_account_id: number | null;
-  expense_account_id: number | null;
-  sales_tax_id: number | null;
-  purchase_tax_id: number | null;
-  description: string | null;
-  is_active: number;
-  barcode: string | null;
-  category_id: number | null;
-  /** Products are stock-tracked unless this is 0 (consumables). */
-  track_stock: number;
-  inventory_account_id: number | null;
-  cogs_account_id: number | null;
-  /** x1000, like every quantity. */
-  reorder_level: number;
-  reorder_qty: number;
-  /** none | batch (lots, optional expiry) | serial (one unit per number). */
-  tracking: 'none' | 'batch' | 'serial';
-  requires_expiry: number;
-  /** Lowest allowed net selling price per base unit (0 = no guard). */
-  min_sale_price: number;
-}
-
-/** An alternative unit of measure: 1 unit = factor/1000 base units (a box of 12 => 12000). */
-export interface ItemUnit {
-  id: number;
-  item_id: number;
-  name_en: string;
-  name_ar: string;
-  factor: number;
-  barcode: string | null;
-  sale_price: number | null;
-  purchase_price: number | null;
-  is_active: number;
-}
-
-export interface CatalogService {
-  tax(id: number): Tax;
-  item(id: number): Item;
-  /** Does this item carry a stock balance? */
-  isStockItem(item: Item): boolean;
-  unit(id: number): ItemUnit;
-  units(itemId: number): ItemUnit[];
-  /** Conversion factor (x1000) of a unit for an item; null unit = base unit (1000). */
-  unitFactor(item: Item, unitId: number | null | undefined): number;
-}
-
-declare module '../../kernel/services.js' {
-  interface ServiceMap {
-    catalog: CatalogService;
-  }
-}
-
-const zTax = z.object({
-  code: z.string().trim().min(1).max(20),
-  nameEn: z.string().trim().min(1).max(100),
-  nameAr: z.string().trim().min(1).max(100),
-  rateBp: zBp,
-  scope: z.enum(['sales', 'purchases', 'both']).default('both'),
-  salesAccountId: zOptId.transform((v) => v ?? null),
-  purchaseAccountId: zOptId.transform((v) => v ?? null),
-  isActive: z.boolean().default(true),
-});
+export type { Item, ItemUnit } from '../../contracts/catalog.js';
 
 const zItem = z.object({
   sku: z.string().trim().min(1).max(50),
@@ -136,7 +55,6 @@ const zCategory = z.object({
 
 function createCatalog({ db }: ModuleContext): CatalogService {
   return {
-    tax: (id) => db.get<Tax>('SELECT * FROM taxes WHERE id = ?', [id]) ?? notFound('tax', id),
     item: (id) => db.get<Item>('SELECT * FROM items WHERE id = ?', [id]) ?? notFound('item', id),
     isStockItem: (item) => item.kind === 'product' && item.track_stock === 1,
     unit: (id) => db.get<ItemUnit>('SELECT * FROM item_units WHERE id = ?', [id]) ?? notFound('item_unit', id),
@@ -154,7 +72,7 @@ function createCatalog({ db }: ModuleContext): CatalogService {
 export const catalogModule: AppModule = {
   id: 'catalog',
   dependsOn: ['ledger'],
-  permissions: ['catalog.read', 'catalog.write'],
+  permissions: ['catalog.items.read', 'catalog.items.write'],
   migrations: [
     {
       id: '001_catalog',
@@ -238,22 +156,6 @@ export const catalogModule: AppModule = {
 
   setup(ctx) {
     ctx.services.provide('catalog', createCatalog(ctx));
-    ctx.events.on('system.setup', (s) => {
-      if (s.vatRateBp == null) return;
-      const ledger = ctx.services.get('ledger');
-      const d = ledger.defaultAccounts();
-      const pct = s.vatRateBp / 100;
-      ctx.db.insert('taxes', {
-        code: 'VAT',
-        name_en: `VAT ${pct}%`,
-        name_ar: `ضريبة القيمة المضافة ${pct}٪`,
-        rate_bp: s.vatRateBp,
-        scope: 'both',
-        sales_account_id: d.vatOutput,
-        purchase_account_id: d.vatInput,
-        created_at: nowIso(),
-      });
-    });
   },
 
   routes(r, { db, services }) {
@@ -266,55 +168,8 @@ export const catalogModule: AppModule = {
       if (a.is_group) fail('account.group_not_allowed', `${label}: choose a posting account, not a group`);
     };
 
-    // -------------------------------------------------------------- taxes
-    r.get('/taxes', 'catalog.read', () => db.all<Tax>('SELECT * FROM taxes ORDER BY code'));
-
-    const taxRow = (i: z.infer<typeof zTax>) => ({
-      code: i.code,
-      name_en: i.nameEn,
-      name_ar: i.nameAr,
-      rate_bp: i.rateBp,
-      scope: i.scope,
-      sales_account_id: i.salesAccountId,
-      purchase_account_id: i.purchaseAccountId,
-      is_active: i.isActive,
-    });
-
-    const checkTax = (i: z.infer<typeof zTax>) => {
-      if (i.rateBp > 0 && i.scope !== 'purchases' && !i.salesAccountId) fail('tax.account_required', 'Choose the output tax account');
-      if (i.rateBp > 0 && i.scope !== 'sales' && !i.purchaseAccountId) fail('tax.account_required', 'Choose the input tax account');
-      postable(i.salesAccountId, 'Output tax account');
-      postable(i.purchaseAccountId, 'Input tax account');
-    };
-
-    r.post('/taxes', 'catalog.write', ({ body, user }) => {
-      const input = parse(zTax, body);
-      checkTax(input);
-      if (db.get('SELECT 1 FROM taxes WHERE code = ?', [input.code])) conflict('tax.duplicate_code', 'Tax code already exists');
-      return db.tx(() => {
-        const id = db.insert('taxes', { ...taxRow(input), created_at: nowIso() });
-        audit.log({ userId: user.id, action: 'create', entity: 'tax', entityId: id, summary: input.code });
-        return { id };
-      });
-    });
-
-    r.put('/taxes/:id', 'catalog.write', ({ params, body, user }) => {
-      const id = Number(params.id);
-      const cur = services.get('catalog').tax(id);
-      const input = parse(zTax, body);
-      checkTax(input);
-      const dup = db.get<{ id: number }>('SELECT id FROM taxes WHERE code = ?', [input.code]);
-      if (dup && dup.id !== id) conflict('tax.duplicate_code', 'Tax code already exists');
-      db.tx(() => {
-        // Posted documents keep their own copy of the rate, so changing it only affects new documents.
-        db.update('taxes', id, taxRow(input));
-        audit.log({ userId: user.id, action: 'update', entity: 'tax', entityId: id, data: { before: cur, after: input } });
-      });
-      return { ok: true };
-    });
-
     // -------------------------------------------------------------- items
-    r.get('/items', 'catalog.read', ({ query }) => {
+    r.get('/items', 'catalog.items.read', ({ query }) => {
       const where: string[] = [];
       const p: Record<string, string | number> = {};
       if (query.active === '1') where.push('i.is_active = 1');
@@ -337,7 +192,7 @@ export const catalogModule: AppModule = {
     });
 
     /** Barcode scanner lookup: an item's own barcode or one of its units'. */
-    r.get('/items/lookup', 'catalog.read', ({ query }) => {
+    r.get('/items/lookup', 'catalog.items.read', ({ query }) => {
       const code = String(query.barcode ?? '');
       const item = db.get<Item>('SELECT * FROM items WHERE barcode = ?', [code]);
       if (item) return { item, unit: null };
@@ -347,14 +202,14 @@ export const catalogModule: AppModule = {
     });
 
     // ------------------------------------------------------------ categories
-    r.get('/item-categories', 'catalog.read', () =>
+    r.get('/item-categories', 'catalog.items.read', () =>
       db.all(
         `SELECT c.*, (SELECT COUNT(*) FROM items i WHERE i.category_id = c.id) AS items
          FROM item_categories c ORDER BY c.name_en`,
       ),
     );
 
-    r.post('/item-categories', 'catalog.write', ({ body, user }) => {
+    r.post('/item-categories', 'catalog.items.write', ({ body, user }) => {
       const input = parse(zCategory, body);
       return db.tx(() => {
         const id = db.insert('item_categories', { name_en: input.nameEn, name_ar: input.nameAr, created_at: nowIso() });
@@ -363,7 +218,7 @@ export const catalogModule: AppModule = {
       });
     });
 
-    r.put('/item-categories/:id', 'catalog.write', ({ params, body, user }) => {
+    r.put('/item-categories/:id', 'catalog.items.write', ({ params, body, user }) => {
       const id = Number(params.id);
       const input = parse(zCategory, body);
       if (!db.get('SELECT 1 FROM item_categories WHERE id = ?', [id])) notFound('item_category', id);
@@ -374,7 +229,7 @@ export const catalogModule: AppModule = {
       return { ok: true };
     });
 
-    r.delete('/item-categories/:id', 'catalog.write', ({ params, user }) => {
+    r.delete('/item-categories/:id', 'catalog.items.write', ({ params, user }) => {
       const id = Number(params.id);
       if (db.get('SELECT 1 FROM items WHERE category_id = ?', [id])) conflict('category.in_use', 'Move the items to another category first');
       db.tx(() => {
@@ -469,11 +324,15 @@ export const catalogModule: AppModule = {
           fail('item.stock_locked', 'This item has stock movements; its inventory account cannot change');
         }
       }
-      if (i.salesTaxId) services.get('catalog').tax(i.salesTaxId);
-      if (i.purchaseTaxId) services.get('catalog').tax(i.purchaseTaxId);
+      // Default taxes come from the Tax module; without it an item simply carries none.
+      for (const taxId of [i.salesTaxId, i.purchaseTaxId]) {
+        if (!taxId) continue;
+        if (!services.has('tax')) fail('tax.unavailable', 'Taxes are not installed');
+        services.get('tax').get(taxId);
+      }
     };
 
-    r.post('/items', 'catalog.write', ({ body, user }) => {
+    r.post('/items', 'catalog.items.write', ({ body, user }) => {
       const input = parse(zItem, body);
       checkItem(input);
       if (db.get('SELECT 1 FROM items WHERE sku = ?', [input.sku])) conflict('item.duplicate_sku', 'SKU already exists');
@@ -485,7 +344,7 @@ export const catalogModule: AppModule = {
       });
     });
 
-    r.put('/items/:id', 'catalog.write', ({ params, body, user }) => {
+    r.put('/items/:id', 'catalog.items.write', ({ params, body, user }) => {
       const id = Number(params.id);
       const cur = services.get('catalog').item(id);
       const input = parse(zItem, body);
@@ -500,7 +359,7 @@ export const catalogModule: AppModule = {
       return { ok: true };
     });
 
-    r.delete('/items/:id', 'catalog.write', ({ params, user }) => {
+    r.delete('/items/:id', 'catalog.items.write', ({ params, user }) => {
       const id = Number(params.id);
       const cur = services.get('catalog').item(id);
       db.tx(() => {

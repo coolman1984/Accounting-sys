@@ -1,4 +1,5 @@
 import type { ModuleContext } from '../../kernel/modules.js';
+import type {} from '../../contracts/co.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, addMonths, isValidDate, nowIso, today } from '../../kernel/dates.js';
 import { isMinor, sum } from '../../kernel/money.js';
@@ -37,6 +38,8 @@ export interface JournalLineInput {
   credit: number;
   description?: string | null;
   partyId?: number | null;
+  /** Controlling dimension (CO module); income and expense lines may carry one. */
+  costCenterId?: number | null;
 }
 
 export interface JournalInput {
@@ -81,6 +84,7 @@ export interface JournalLine {
   account_name_en: string;
   account_name_ar: string;
   party_id: number | null;
+  cost_center_id: number | null;
   description: string | null;
   debit: number;
   credit: number;
@@ -117,7 +121,7 @@ const MANUAL_SOURCES = new Set(['manual', 'opening']);
 
 export type LedgerService = ReturnType<typeof createLedger>;
 
-export function createLedger({ db, services, events }: ModuleContext) {
+export function createLedger({ db, services, events, apps }: ModuleContext) {
   const audit = () => services.get('audit');
   const settings = () => services.get('settings');
 
@@ -322,7 +326,8 @@ export function createLedger({ db, services, events }: ModuleContext) {
 
   // ------------------------------------------------------------------ journal
 
-  function validateLines(lines: JournalLineInput[]): void {
+  /** `mirror`: the lines copy an entry already posted (a reversal) — its dimensions were valid then and must be kept as-is. */
+  function validateLines(lines: JournalLineInput[], mirror = false): void {
     if (lines.length === 0) fail('journal.no_lines', 'An entry needs lines');
     lines.forEach((l, i) => {
       if (!isMinor(l.debit) || !isMinor(l.credit) || l.debit < 0 || l.credit < 0) {
@@ -339,6 +344,11 @@ export function createLedger({ db, services, events }: ModuleContext) {
         fail('journal.party_required', `Line ${i + 1}: ${a.code} needs a customer or supplier`, { line: i + 1, code: a.code });
       }
       if (l.partyId && services.has('parties')) services.get('parties').get(l.partyId);
+      if (l.costCenterId && !mirror) {
+        // Cost centers belong to the CO module; without it (or switched off) none may be used.
+        if (!services.has('costCenters') || !apps.isEnabled('co')) fail('co.unavailable', `Line ${i + 1}: cost centers are not in use`, { line: i + 1 });
+        services.get('costCenters').assertUsable(l.costCenterId);
+      }
     });
   }
 
@@ -358,6 +368,7 @@ export function createLedger({ db, services, events }: ModuleContext) {
         line_no: i + 1,
         account_id: l.accountId,
         party_id: l.partyId ?? null,
+        cost_center_id: l.costCenterId ?? null,
         description: l.description ?? null,
         debit: l.debit,
         credit: l.credit,
@@ -365,8 +376,8 @@ export function createLedger({ db, services, events }: ModuleContext) {
     );
   }
 
-  function createEntry(input: JournalInput, opts: EntryOptions): number {
-    validateLines(input.lines);
+  function createEntry(input: JournalInput, opts: EntryOptions, mirror = false): number {
+    validateLines(input.lines, mirror);
     const post = opts.post ?? true;
     if (post) {
       assertBalanced(input.lines);
@@ -462,12 +473,14 @@ export function createLedger({ db, services, events }: ModuleContext) {
           lines: cur.lines.map((l) => ({
             accountId: l.account_id,
             partyId: l.party_id,
+            costCenterId: l.cost_center_id,
             description: l.description,
             debit: l.credit,
             credit: l.debit,
           })),
         },
         { sourceType: opts.sourceType ?? 'reversal', sourceId: cur.source_id, userId, post: false },
+        true,
       );
       db.run('UPDATE journal_entries SET reversal_of_id = ? WHERE id = ?', [id, revId]);
       postEntry(revId, userId, { silentAudit: true });
@@ -491,7 +504,7 @@ export function createLedger({ db, services, events }: ModuleContext) {
     const h = header(id);
     const lines = db.all<JournalLine>(
       `SELECT l.id, l.line_no, l.account_id, a.code AS account_code, a.name_en AS account_name_en, a.name_ar AS account_name_ar,
-              l.party_id, l.description, l.debit, l.credit
+              l.party_id, l.cost_center_id, l.description, l.debit, l.credit
        FROM journal_lines l JOIN accounts a ON a.id = l.account_id
        WHERE l.entry_id = ? ORDER BY l.line_no`,
       [id],

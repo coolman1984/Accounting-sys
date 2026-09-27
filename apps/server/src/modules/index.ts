@@ -5,7 +5,10 @@ import { partiesModule } from './parties/index.js';
 import { catalogModule } from './catalog/index.js';
 import { documentsModule } from './documents/index.js';
 import { paymentsModule } from './payments/index.js';
-import { reportsModule } from './reports/index.js';
+import { taxModule } from './tax/index.js';
+import { arModule } from './ar/index.js';
+import { apModule } from './ap/index.js';
+import { coModule } from './co/index.js';
 import { inventoryModule } from './inventory/index.js';
 import { purchasingModule } from './purchasing/index.js';
 import { pricingModule } from './pricing/index.js';
@@ -25,5 +28,8 @@ export const modules: AppModule[] = [
   inventoryModule,
   purchasingModule,
   pricingModule,
-  reportsModule,
+  taxModule,
+  arModule,
+  apModule,
+  coModule,
 ];

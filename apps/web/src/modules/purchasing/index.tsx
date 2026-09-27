@@ -16,7 +16,7 @@ import { Badge, type Tone } from '../../ui/Badge';
 import { Money } from '../../ui/Money';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
-import { Qty } from '../inventory/common';
+import { Qty } from '../../ui/Stock';
 import { PoEditor } from './PoEditor';
 
 const TONE: Record<string, Tone> = { draft: 'neutral', open: 'blue', closed: 'green', cancelled: 'red' };
@@ -69,7 +69,7 @@ function PoList() {
         title={t('adv.purchaseOrders')}
         subtitle={t('adv.poSubtitle')}
         actions={
-          can('purchasing.write') && (
+          can('purchasing.orders.write') && (
             <Link to="/purchasing/orders/new" className="btn btn-primary">
               <Plus /> {t('adv.newPo')}
             </Link>
@@ -120,7 +120,7 @@ function PoView() {
             <Button icon={<Printer />} onClick={() => window.print()}>
               {t('common.print')}
             </Button>
-            {o.status === 'draft' && can('purchasing.write') && (
+            {o.status === 'draft' && can('purchasing.orders.write') && (
               <>
                 <Button
                   variant="danger"
@@ -137,32 +137,32 @@ function PoView() {
                 </Link>
               </>
             )}
-            {o.status === 'draft' && can('purchasing.approve') && (
+            {o.status === 'draft' && can('purchasing.orders.approve') && (
               <Button variant="primary" loading={act.isPending} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/approve`), t('common.saved'))}>
                 {t('adv.approve')}
               </Button>
             )}
-            {(o.status === 'draft' || o.status === 'open') && can('purchasing.write') && !o.lines.some((l: any) => l.received_base || l.billed_base) && (
+            {(o.status === 'draft' || o.status === 'open') && can('purchasing.orders.write') && !o.lines.some((l: any) => l.received_base || l.billed_base) && (
               <Button variant="danger" icon={<Ban />} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/cancel`), t('common.saved'))}>
                 {t('adv.cancelOrder')}
               </Button>
             )}
-            {o.status === 'open' && can('purchasing.write') && (
+            {o.status === 'open' && can('purchasing.orders.write') && (
               <Button icon={<Lock />} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/close`), t('common.saved'))}>
                 {t('adv.closeOrder')}
               </Button>
             )}
-            {o.status === 'closed' && can('purchasing.write') && (
+            {o.status === 'closed' && can('purchasing.orders.write') && (
               <Button icon={<LockOpen />} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/reopen`), t('common.saved'))}>
                 {t('adv.reopenOrder')}
               </Button>
             )}
-            {o.status === 'open' && toBill && can('purchases.write') && (
+            {o.status === 'open' && toBill && can('ap.bills.write') && (
               <Link to={`/purchases/bills/new?fromPo=${o.id}`} className="btn">
                 <FilePlus /> {t('adv.createBill')}
               </Link>
             )}
-            {o.status === 'open' && toReceive && can('inventory.write') && (
+            {o.status === 'open' && toReceive && can('inventory.receipts.write') && (
               <Link to={`/inventory/receipts/new?po=${o.id}`} className="btn btn-primary">
                 <PackageCheck /> {t('adv.receiveGoods')}
               </Link>
@@ -267,7 +267,7 @@ function PoView() {
 
 export const purchasingModule: WebModule = {
   id: 'purchasing',
-  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchases', order: 5, perm: 'purchasing.read', app: 'purchasing' }],
+  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchases', order: 5, perm: 'purchasing.orders.read', app: 'purchasing' }],
   routes: [
     { path: '/purchasing/orders', element: <PoList /> },
     { path: '/purchasing/orders/new', element: <PoEditor key="new" /> },
@@ -275,7 +275,7 @@ export const purchasingModule: WebModule = {
     { path: '/purchasing/orders/:id/edit', element: <PoEditor key="edit" /> },
   ],
   commands: [
-    { id: 'new-po', label: 'adv.newPo', icon: ShoppingCart, group: 'create', to: '/purchasing/orders/new', perm: 'purchasing.write', app: 'purchasing', keywords: 'purchase order po أمر شراء' },
-    { id: 'go-po', label: 'nav.purchaseOrders', icon: ClipboardList, group: 'navigate', to: '/purchasing/orders', perm: 'purchasing.read', app: 'purchasing', keywords: 'أوامر شراء' },
+    { id: 'new-po', label: 'adv.newPo', icon: ShoppingCart, group: 'create', to: '/purchasing/orders/new', perm: 'purchasing.orders.write', app: 'purchasing', keywords: 'purchase order po أمر شراء' },
+    { id: 'go-po', label: 'nav.purchaseOrders', icon: ClipboardList, group: 'navigate', to: '/purchasing/orders', perm: 'purchasing.orders.read', app: 'purchasing', keywords: 'أوامر شراء' },
   ],
 };

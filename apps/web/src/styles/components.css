@@ -1616,3 +1616,121 @@
 .health-row.bad {
   color: var(--danger);
 }
+
+/* Home-page cards contributed by modules (AR overdue, AP due, inventory…) */
+.dash-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+.dash-widgets:empty {
+  display: none;
+}
+
+/* Users & roles: role picker in the user dialog */
+.role-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.role-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.role-option:hover {
+  border-color: var(--border-strong);
+}
+.role-option.on {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.role-option input {
+  margin-top: 3px;
+}
+.role-option > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.role-option .faint {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* Role editor: one section per module, one row per object, one cell per action */
+.perm-matrix {
+  display: grid;
+  gap: 12px;
+}
+.perm-matrix section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.perm-matrix section.off {
+  opacity: 0.6;
+}
+.perm-matrix header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+.perm-matrix table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.perm-matrix th {
+  text-align: start;
+  font-weight: 500;
+  padding: 6px 12px;
+  width: 30%;
+  color: var(--text-muted);
+}
+.perm-matrix td {
+  padding: 4px 4px;
+}
+.perm-matrix tr + tr > * {
+  border-top: 1px solid var(--border);
+}
+.perm-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.perm-cell:hover {
+  background: var(--bg-muted);
+}
+.perm-cell.on {
+  color: var(--primary-soft-text);
+  background: var(--primary-soft);
+}
+@media (max-width: 640px) {
+  .perm-matrix table,
+  .perm-matrix tbody,
+  .perm-matrix tr {
+    display: block;
+  }
+  .perm-matrix th {
+    display: block;
+    width: auto;
+    padding-bottom: 0;
+  }
+  .perm-matrix td {
+    display: inline-block;
+  }
+}

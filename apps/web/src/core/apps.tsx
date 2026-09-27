@@ -1,11 +1,13 @@
-import { BookOpenCheck, ClipboardList, Landmark, Package, ShoppingBag, Tags, Truck, type LucideIcon } from 'lucide-react';
+import { BookOpenCheck, ClipboardList, Landmark, Package, Percent, ShoppingBag, Tags, Target, Truck, type LucideIcon } from 'lucide-react';
 
 /** How each app looks in the catalogue (names and texts come from the dictionaries: apps.<id>.*). */
 export const APP_META: Record<string, { icon: LucideIcon; color: string }> = {
-  accounting: { icon: BookOpenCheck, color: '#2563eb' },
-  sales: { icon: ShoppingBag, color: '#16a34a' },
-  purchases: { icon: Truck, color: '#ea580c' },
-  banking: { icon: Landmark, color: '#0891b2' },
+  gl: { icon: BookOpenCheck, color: '#2563eb' },
+  ar: { icon: ShoppingBag, color: '#16a34a' },
+  ap: { icon: Truck, color: '#ea580c' },
+  treasury: { icon: Landmark, color: '#0891b2' },
+  tax: { icon: Percent, color: '#64748b' },
+  co: { icon: Target, color: '#0d9488' },
   inventory: { icon: Package, color: '#9333ea' },
   purchasing: { icon: ClipboardList, color: '#db2777' },
   pricing: { icon: Tags, color: '#ca8a04' },

@@ -67,9 +67,16 @@ export function collectApps(manifests: AppManifest[]): Map<string, AppManifest> 
   return out;
 }
 
+const RENAMED: Record<string, string> = { accounting: 'gl', sales: 'ar', purchases: 'ap', banking: 'treasury' };
+
 export function createAppRegistry(db: Database, manifests: AppManifest[]): AppRegistry {
   const apps = collectApps(manifests);
   db.exec('CREATE TABLE IF NOT EXISTS _apps (id TEXT PRIMARY KEY, enabled INTEGER NOT NULL)');
+  // Apps renamed when finance was split like SAP (FI-GL / AR / AP / bank): keep each company's choice.
+  for (const [from, to] of Object.entries(RENAMED)) {
+    if (!db.get('SELECT 1 FROM _apps WHERE id = ?', [to])) db.run('UPDATE _apps SET id = ? WHERE id = ?', [to, from]);
+    db.run('DELETE FROM _apps WHERE id = ?', [from]);
+  }
   // An app not in the table yet is on: existing companies keep everything, new apps appear enabled.
   let off = new Set(db.all<{ id: string }>('SELECT id FROM _apps WHERE enabled = 0').map((r) => r.id));
   const isEnabled = (id: string) => {

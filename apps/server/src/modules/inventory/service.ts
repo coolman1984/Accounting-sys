@@ -2,9 +2,8 @@ import type { ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { lineAmount } from '../../kernel/money.js';
-import type { Item } from '../catalog/index.js';
-import { KIND_INFO, type DocKind } from '../documents/schema.js';
-import type { DocumentsService } from '../documents/service.js';
+import type { Item } from '../../contracts/catalog.js';
+import { KIND_INFO, type DocKind, type DocumentLine } from '../../contracts/documents.js';
 import { STOCK_SEQ, type StockDocKind } from './schema.js';
 import { createEngine, mulDiv, split, type Diff, type PostMeta, type StockMove } from './engine.js';
 
@@ -185,7 +184,7 @@ export function createInventory(ctx: ModuleContext) {
     return ext?.receiptLineId ? engine.grniAccount() : null;
   }
 
-  type DocLineRow = ReturnType<DocumentsService['lines']>[number];
+  type DocLineRow = DocumentLine;
 
   function onDocumentPosted(documentId: number, userId: number | null): void {
     const docs = services.get('documents');

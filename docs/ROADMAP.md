@@ -50,13 +50,22 @@ away.
 - [x] Excel-like data grid on every list: per-column filters, grouping with subtotals, saved views
 - [x] Menus across the top as an alternative to the sidebar
 
+## ✅ Phase 2d — Professional modules, roles, editions, docs
+
+- [x] Finance split like SAP/Odoo: GL, AR, AP, Treasury, Tax, CO as separate apps
+- [x] Contracts and registries so each module can be removed; boundary tests (server + web)
+- [x] Users & roles: permission matrix, role templates, several roles per user, duty-split warnings
+- [x] Cost centers as a dimension on journal and document lines; P&L per cost center
+- [x] Editions: build and test a copy with only the chosen apps
+- [x] Documentation system: generated program map, changelog, decisions, lessons, CLAUDE.md rules
+
 ## Phase 2 — Operations
 
 - [ ] **Banking**: bank transfers between accounts, bank reconciliation,
       statement import (CSV)
 - [ ] **Multi-currency**: document currency + exchange rate, realised /
       unrealised FX gains & losses
-- [ ] **Cost centers / projects** as a reporting dimension on journal lines
+- [ ] Projects as a second dimension next to cost centers; budgets per cost center
 - [ ] Recurring invoices and journal templates
 - [ ] Quotations → sales orders → invoices; purchase orders → bills
 
@@ -81,6 +90,9 @@ away.
 
 1. It owns its tables and migrations; it never writes another module's tables.
 2. It posts to the books **only** through `services.get('ledger')`.
-3. It declares its permissions and audit-logs every write.
+3. It declares its permissions (`module.object.action`), role templates and audit-logs every write.
 4. It ships its web module (nav, pages, commands) and both translations.
 5. It comes with tests proving the books still balance.
+6. It talks to other modules only through contracts, services, events and registries,
+   is listed in `scripts/edition.mjs`, and passes `npm run edition -- <its app> --check`.
+7. It updates the docs in the same commit (see `CLAUDE.md`).

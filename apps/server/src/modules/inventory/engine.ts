@@ -3,7 +3,7 @@ import { fail, notFound } from '../../kernel/errors.js';
 import { isValidDate, nowIso } from '../../kernel/dates.js';
 import { divRound } from '../../kernel/money.js';
 import type { JournalLineInput } from '../ledger/service.js';
-import type { Item } from '../catalog/index.js';
+import type { Item } from '../../contracts/catalog.js';
 
 export interface StockMove {
   id: number;

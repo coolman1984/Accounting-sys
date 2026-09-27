@@ -83,7 +83,7 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
 
   // ---- Apps: which features this installation uses (switchable, like Odoo apps).
   router.get('/system/apps', 'auth', () => kernel.apps.list());
-  router.put('/system/apps', 'settings.manage', ({ body, user }) => {
+  router.put('/system/apps', 'admin.settings.manage', ({ body, user }) => {
     const input = parse(z.object({ enabled: z.array(z.string()).max(50) }), body);
     const before = kernel.apps.list().filter((a) => a.enabled).map((a) => a.id);
     kernel.apps.setEnabled(input.enabled);
@@ -93,7 +93,7 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
   });
 
   // ---- Health: every module checks its own data, separately, so a fault names its module.
-  router.get('/system/health', 'settings.read', () =>
+  router.get('/system/health', 'admin.settings.read', () =>
     kernel.modules
       .filter((m) => m.health)
       .map((m) => {

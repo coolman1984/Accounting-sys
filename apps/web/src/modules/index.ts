@@ -1,34 +1,34 @@
 import type { WebModule } from '../core/registry';
 import { dashboardModule } from './dashboard';
-import { documentsModule } from './documents';
-import { paymentsModule } from './payments';
-import { partiesModule } from './parties';
-import { accountsModule } from './accounts';
-import { journalModule } from './journal';
+import { glModule } from './gl';
+import { taxModule } from './tax';
+import { arModule } from './ar';
+import { apModule } from './ap';
+import { treasuryModule } from './treasury';
+import { coModule } from './co';
 import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
 import { purchasingModule } from './purchasing';
 import { pricingModule } from './pricing';
-import { reportsModule } from './reports';
-import { settingsModule } from './settings';
-import { systemModule } from './system';
+import { adminModule } from './admin';
 
 /**
- * Installed web modules. Each one contributes its own navigation, pages and
- * command-palette actions; the shell simply composes them.
+ * Installed web modules — the edition's list. Each one contributes its own
+ * navigation, pages, commands, report tiles and home-page cards; the shell
+ * composes them. A module imports only core/, ui/ and engines/ (checked by
+ * the boundary test), so removing one is deleting its folder and its line here.
  */
 export const webModules: WebModule[] = [
   dashboardModule,
-  documentsModule,
-  partiesModule,
+  glModule,
+  taxModule,
+  arModule,
+  apModule,
+  treasuryModule,
+  coModule,
+  catalogModule,
   inventoryModule,
   purchasingModule,
   pricingModule,
-  paymentsModule,
-  accountsModule,
-  journalModule,
-  catalogModule,
-  reportsModule,
-  settingsModule,
-  systemModule,
+  adminModule,
 ];

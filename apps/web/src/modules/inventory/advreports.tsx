@@ -10,8 +10,8 @@ import { Badge } from '../../ui/Badge';
 import { Loading, EmptyState } from '../../ui/Page';
 import { Money } from '../../ui/Money';
 import { Select } from '../../ui/Field';
-import { ReportFrame, usePeriod } from '../reports/shared';
-import { Qty, WarehouseSelect, moveSourceLink } from './common';
+import { ReportFrame, usePeriod } from '../../ui/Report';
+import { Qty, WarehouseSelect, moveSourceLink } from '../../ui/Stock';
 
 const itemLink = (id: number) => `/inventory/items/${id}`;
 

@@ -7,7 +7,7 @@ import { useSession } from '../../core/session';
 import { PageHeader, EmptyState } from '../../ui/Page';
 import { DataGrid, type Column } from '../../ui/DataGrid';
 import { Money } from '../../ui/Money';
-import { Qty, StockStatus, WarehouseSelect } from './common';
+import { Qty, StockStatus, WarehouseSelect } from '../../ui/Stock';
 
 interface StockRow {
   id: number;
@@ -60,7 +60,7 @@ export function Kpi({ icon, label, value, tone, onClick, active }: { icon: React
 export function NewOperationButtons() {
   const { t } = useI18n();
   const { can } = useSession();
-  if (!can('inventory.write')) return null;
+  if (!can('inventory.operations.write')) return null;
   return (
     <>
       <Link to="/inventory/operations/new?kind=transfer" className="btn">

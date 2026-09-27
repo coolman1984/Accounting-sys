@@ -91,6 +91,9 @@ button {
 .danger-text {
   color: var(--danger);
 }
+.warning-text {
+  color: var(--warning);
+}
 .success-text {
   color: var(--success);
 }
