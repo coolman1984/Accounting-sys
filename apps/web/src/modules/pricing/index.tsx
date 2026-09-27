@@ -42,7 +42,7 @@ function PriceListsPage() {
         title={t('adv.priceLists')}
         subtitle={t('adv.priceListsSubtitle')}
         actions={
-          can('pricing.write') && (
+          can('pricing.lists.write') && (
             <Link to="/sales/price-lists/new" className="btn btn-primary">
               <Plus /> {t('adv.newPriceList')}
             </Link>
@@ -144,7 +144,7 @@ function PriceListEditor() {
   const remove = useApiMutation(() => api.del(`/pricing/lists/${id}`));
 
   if (editing && isLoading) return <Loading />;
-  const writable = can('pricing.write');
+  const writable = can('pricing.lists.write');
 
   return (
     <div className="page">
@@ -327,11 +327,11 @@ function PriceListEditor() {
 
 export const pricingModule: WebModule = {
   id: 'pricing',
-  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.read', app: 'pricing' }],
+  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.lists.read', app: 'pricing' }],
   routes: [
     { path: '/sales/price-lists', element: <PriceListsPage /> },
     { path: '/sales/price-lists/new', element: <PriceListEditor key="new" /> },
     { path: '/sales/price-lists/:id', element: <PriceListEditor key="edit" /> },
   ],
-  commands: [{ id: 'go-price-lists', label: 'nav.priceLists', icon: Tags, group: 'navigate', to: '/sales/price-lists', perm: 'pricing.read', app: 'pricing', keywords: 'price list قائمة أسعار' }],
+  commands: [{ id: 'go-price-lists', label: 'nav.priceLists', icon: Tags, group: 'navigate', to: '/sales/price-lists', perm: 'pricing.lists.read', app: 'pricing', keywords: 'price list قائمة أسعار' }],
 };

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '../core/hooks';
 import { useI18n } from '../core/i18n';
+import { useSession } from '../core/session';
 import type { Account, Item, Paged, Party, Tax } from '../core/types';
 import { Combobox } from './Combobox';
 import { Select } from './Field';
@@ -128,8 +129,10 @@ export function ItemPicker({
   );
 }
 
+/** Tax codes — none while the Tax app is switched off. */
 export function useTaxes() {
-  return useApi<Tax[]>('/taxes', undefined, { staleTime: 30_000 });
+  const { hasApp } = useSession();
+  return useApi<Tax[]>(hasApp('tax') ? '/taxes' : null, undefined, { staleTime: 30_000 });
 }
 
 export function TaxSelect({

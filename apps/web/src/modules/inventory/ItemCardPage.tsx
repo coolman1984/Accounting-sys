@@ -14,7 +14,7 @@ import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Field';
 import { Money } from '../../ui/Money';
 import { Kpi } from './StockPage';
-import { moveSourceLink, Qty, WarehouseSelect } from './common';
+import { moveSourceLink, Qty, WarehouseSelect } from '../../ui/Stock';
 
 interface ItemStock {
   item: Item;
@@ -112,7 +112,7 @@ export function ItemCardPage() {
             <Link to="/items" className="btn">
               <Package /> {t('nav.items')}
             </Link>
-            {can('inventory.write') && (
+            {can('inventory.operations.write') && (
               <Link to={`/inventory/operations/new?kind=adjustment&item=${it.id}`} className="btn btn-primary">
                 <SlidersHorizontal /> {t('inventory.kinds.adjustment')}
               </Link>

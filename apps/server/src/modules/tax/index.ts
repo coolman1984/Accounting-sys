@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AppModule } from '../../kernel/modules.js';
-import { conflict, fail, notFound } from '../../kernel/errors.js';
+import { assertApp, conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso, today } from '../../kernel/dates.js';
 import { parse, zBp, zDate, zOptId } from '../../kernel/validate.js';
 import type { Tax, TaxService } from '../../contracts/tax.js';
@@ -52,7 +52,7 @@ export const taxModule: AppModule = {
     });
   },
 
-  routes(r, { db, services }) {
+  routes(r, { db, services, apps }) {
     const audit = services.get('audit');
     const ledger = services.get('ledger');
     const tax = services.get('tax');
@@ -63,7 +63,11 @@ export const taxModule: AppModule = {
       if (a.is_group) fail('account.group_not_allowed', `${label}: choose a posting account, not a group`);
     };
 
-    r.get('/taxes', 'tax.codes.read', () => db.all<Tax>('SELECT * FROM taxes ORDER BY code'));
+    // Reference data: whoever writes invoices or bills picks a tax code, so any signed-in user may list them.
+    r.get('/taxes', 'auth', () => {
+      assertApp(apps, 'tax');
+      return db.all<Tax>('SELECT * FROM taxes ORDER BY code');
+    });
 
     const taxRow = (i: z.infer<typeof zTax>) => ({
       code: i.code,

@@ -9,8 +9,8 @@ import { Card } from '../../ui/Card';
 import { Badge } from '../../ui/Badge';
 import { Loading, EmptyState } from '../../ui/Page';
 import { Money } from '../../ui/Money';
-import { PeriodControls, ReportFrame, useCsvMoney, usePeriod } from '../reports/shared';
-import { Qty, WarehouseSelect } from './common';
+import { PeriodControls, ReportFrame, useCsvMoney, usePeriod } from '../../ui/Report';
+import { Qty, WarehouseSelect } from '../../ui/Stock';
 
 const itemLink = (id: number) => `/inventory/items/${id}`;
 
@@ -257,7 +257,7 @@ export function ReorderPage() {
       controls={
         <>
           <WarehouseSelect all value={wh} onChange={(v) => set({ warehouseId: v ? String(v) : null })} />
-          {can('purchasing.write') && !!data?.length && (
+          {can('purchasing.orders.write') && !!data?.length && (
             <button
               className="btn btn-primary"
               onClick={() =>

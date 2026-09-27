@@ -12,7 +12,7 @@ import { Card } from '../../ui/Card';
 import { DecimalInput, Field, Input } from '../../ui/Field';
 import { AccountPicker, ItemPicker, useItems } from '../../ui/Pickers';
 import { useToast } from '../../ui/Toast';
-import { Qty, useWarehouses, WarehouseSelect } from './common';
+import { Qty, useWarehouses, WarehouseSelect } from '../../ui/Stock';
 import { LotChip, LotsDialog } from '../../ui/LotsDialog';
 import { Select } from '../../ui/Field';
 import type { LotEntry } from '../../core/types';

@@ -34,3 +34,8 @@ export const unauthorized = (): never => {
 export const forbidden = (permission?: string): never => {
   throw new AppError('auth.forbidden', 'You do not have permission for this action', 403, { permission });
 };
+
+/** Reference data readable by any signed-in user — but only while its app is switched on. */
+export const assertApp = (apps: { isEnabled(id: string): boolean }, id: string): void => {
+  if (!apps.isEnabled(id)) throw new AppError('auth.forbidden', `The ${id} app is switched off`, 403, { app: id });
+};

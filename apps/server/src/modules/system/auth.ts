@@ -9,7 +9,7 @@ export const BUILTIN_ROLES = ['admin', 'accountant', 'viewer'] as const;
 export type RoleRule = 'all' | 'all_but_admin' | 'read_only';
 
 /** Permissions only administrators get from the built-in rules. */
-export const ADMIN_ONLY = new Set(['admin.users.manage', 'admin.settings.manage', 'admin.backup.manage', 'pricing.override']);
+export const ADMIN_ONLY = new Set(['admin.users.manage', 'admin.settings.manage', 'admin.backup.manage', 'pricing.minprice.override']);
 
 export function permissionsForRule(rule: RoleRule, all: readonly string[]): string[] {
   if (rule === 'all') return [...all];

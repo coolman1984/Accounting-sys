@@ -12,8 +12,8 @@ import { Card } from '../../ui/Card';
 import { DecimalInput, Field, Input, Select, Textarea } from '../../ui/Field';
 import { ItemPicker, PartyPicker, TaxSelect, useItems, useTaxes } from '../../ui/Pickers';
 import { useToast } from '../../ui/Toast';
-import { computeLine } from '../documents/kinds';
-import { WarehouseSelect } from '../inventory/common';
+import { computeLine } from '../../engines/documents/kinds';
+import { useStockOn, WarehouseSelect } from '../../ui/Stock';
 import { unitLabel } from '../../core/units';
 
 interface Line {
@@ -40,6 +40,7 @@ export function PoEditor() {
   const location = useLocation();
   const prefill = (location.state as PoPrefill | null) ?? null;
   const { t, pick } = useI18n();
+  const stockOn = useStockOn();
   const navigate = useNavigate();
   const toast = useToast();
   const errText = useErrorText();
@@ -108,7 +109,7 @@ export function PoEditor() {
       supplierId,
       date,
       expectedDate: expected || null,
-      warehouseId: wh,
+      warehouseId: stockOn ? wh : null,
       reference: reference || null,
       notes: notes || null,
       approve,
@@ -163,9 +164,11 @@ export function PoEditor() {
             <Field label={t('adv.expectedDate')}>
               <Input type="date" value={expected} min={date} onChange={(e) => setExpected(e.target.value)} />
             </Field>
-            <Field label={t('inventory.warehouse')}>
-              <WarehouseSelect value={wh} onChange={setWh} />
-            </Field>
+            {stockOn && (
+              <Field label={t('inventory.warehouse')}>
+                <WarehouseSelect value={wh} onChange={setWh} />
+              </Field>
+            )}
             <Field label={t('common.reference')}>
               <Input value={reference} onChange={(e) => setReference(e.target.value)} />
             </Field>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AppModule } from '../../kernel/modules.js';
-import { conflict, fail, notFound } from '../../kernel/errors.js';
+import { assertApp, conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso, today } from '../../kernel/dates.js';
 import { parse, zDate, zOptId } from '../../kernel/validate.js';
 import type { CostCenter, CostCentersService } from '../../contracts/co.js';
@@ -62,16 +62,18 @@ export const coModule: AppModule = {
     return [{ id: 'references', ok: orphans === 0, details: { count: orphans } }];
   },
 
-  routes(r, { db, services }) {
+  routes(r, { db, services, apps }) {
     const audit = services.get('audit');
     const ledger = services.get('ledger');
 
-    r.get('/cost-centers', 'co.costcenters.read', () =>
-      db.all(
+    // Reference data: anyone who writes journal lines or documents may tag them with a cost center.
+    r.get('/cost-centers', 'auth', () => {
+      assertApp(apps, 'co');
+      return db.all(
         `SELECT c.*, (SELECT COUNT(*) FROM journal_lines l WHERE l.cost_center_id = c.id) AS lines
          FROM cost_centers c ORDER BY c.code`,
-      ),
-    );
+      );
+    });
 
     const check = (input: z.infer<typeof zCostCenter>, selfId: number | null) => {
       const dup = db.get<{ id: number }>('SELECT id FROM cost_centers WHERE code = ?', [input.code]);

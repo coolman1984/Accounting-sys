@@ -18,7 +18,7 @@ export interface Me {
   id: number;
   username: string;
   displayName: string;
-  role: 'admin' | 'accountant' | 'viewer';
+  role: 'admin' | 'accountant' | 'viewer' | 'custom' | 'none';
   locale: 'en' | 'ar';
   permissions: string[];
 }
@@ -159,6 +159,7 @@ export interface JournalLine {
   account_name_ar: string;
   party_id: number | null;
   party_name: string | null;
+  cost_center_id?: number | null;
   description: string | null;
   debit: number;
   credit: number;
@@ -215,6 +216,7 @@ export interface DocumentLine {
   tax_rate_bp: number;
   warehouse_id: number | null;
   unit_id: number | null;
+  cost_center_id?: number | null;
   unit_factor: number;
   base_quantity: number;
   unit_name_en: string | null;

@@ -44,6 +44,10 @@ describe('finance modules, roles & page-level permissions', () => {
     assert.equal((await get('/api/documents?kind=purchase_bill')).status, 403);
     assert.equal((await get('/api/journal')).status, 403);
     assert.equal((await get('/api/payments?direction=in')).status, 403);
+    // Reference lists that an invoice needs are open to any signed-in user.
+    assert.equal((await get('/api/taxes')).status, 200);
+    assert.equal((await get('/api/cost-centers')).status, 200);
+    assert.equal((await c.raw('POST', '/api/taxes', { code: 'X', nameEn: 'x', nameAr: 'x', rateBp: 0, scope: 'both' }, cookie)).status, 403);
     // May draft an invoice but not post it.
     const draft = await c.raw('POST', '/api/documents', { kind: 'sales_invoice', partyId: customer, date: '2026-03-01', lines: [{ itemId: item, quantity: 1000, unitPrice: 10000 }] }, cookie);
     assert.equal(draft.status, 200);
@@ -90,7 +94,8 @@ describe('finance modules, roles & page-level permissions', () => {
     });
     const rent = await acc(c, '5220');
     const cash = await acc(c, '1110');
-    await c.post('/api/journal', { date: '2026-04-03', memo: 'Sales travel', post: true, lines: [{ accountId: rent, debit: 1500, costCenterId: sales }, { accountId: cash, credit: 1500 }] });
+    const travel = (await c.post('/api/journal', { date: '2026-04-03', memo: 'Sales travel', post: true, lines: [{ accountId: rent, debit: 1500, costCenterId: sales }, { accountId: cash, credit: 1500 }] })).id;
+    assert.equal((await c.get(`/api/journal/${travel}`)).lines[0].cost_center_id, sales);
     const rep = await c.get('/api/reports/cost-centers?from=2026-04-01&to=2026-04-30');
     const profit = (id: number | null) => rep.profit.find((p: any) => p.cost_center_id === id).profit;
     assert.equal(profit(sales), 20000 - 1500);
@@ -102,7 +107,12 @@ describe('finance modules, roles & page-level permissions', () => {
     await c.put('/api/system/apps', { enabled: all.filter((x: string) => x !== 'co') });
     const res = await c.raw('POST', '/api/journal', { date: '2026-04-04', post: true, lines: [{ accountId: rent, debit: 100, costCenterId: sales }, { accountId: cash, credit: 100 }] });
     assert.equal(res.body.error.code, 'co.unavailable');
+    // A reversal mirrors the original, cost center included — even with CO off.
+    const rev = (await c.post(`/api/journal/${travel}/reverse`, {})).id;
+    assert.equal((await c.get(`/api/journal/${rev}`)).lines[0].cost_center_id, sales);
     await c.put('/api/system/apps', { enabled: all });
+    const after = await c.get('/api/reports/cost-centers?from=2026-04-01&to=2026-04-30');
+    assert.equal(after.profit.find((p: any) => p.cost_center_id === sales).profit, 20000);
   });
 
   test('Tax: switched off, lines carry no tax and tax codes are hidden', async () => {

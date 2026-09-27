@@ -24,7 +24,7 @@ const zList = z.object({
 export const pricingModule: AppModule = {
   id: 'pricing',
   dependsOn: ['catalog', 'parties', 'documents'],
-  permissions: ['pricing.lists.read', 'pricing.lists.write', 'pricing.override'],
+  permissions: ['pricing.lists.read', 'pricing.lists.write', 'pricing.minprice.override'],
   apps: [{ id: 'pricing', order: 60, requires: ['ar'], permissions: ['pricing'] }],
   migrations: [
     {
@@ -56,7 +56,7 @@ export const pricingModule: AppModule = {
     // Minimum price guard: net price per base unit (after discount, before tax) must not go below the item's minimum.
     events.on('document.posted', (e) => {
       if (e.kind !== 'sales_invoice' || !apps.isEnabled('pricing')) return;
-      if (services.get('access').userCan(e.userId, 'pricing.override')) return;
+      if (services.get('access').userCan(e.userId, 'pricing.minprice.override')) return;
       const lines = db.all<{ line_no: number; item_id: number; net: number; base_quantity: number; min_sale_price: number; sku: string }>(
         `SELECT l.line_no, l.item_id, l.net, l.base_quantity, i.min_sale_price, i.sku
          FROM document_lines l JOIN items i ON i.id = l.item_id WHERE l.document_id = ? AND i.min_sale_price > 0`,

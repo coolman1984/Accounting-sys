@@ -8,7 +8,7 @@ import { Button } from '../../ui/Button';
 import { Field, Input, Select } from '../../ui/Field';
 import { AuthFrame } from './Login';
 import { toggleApp } from '../../core/apps';
-import { AppCard } from '../system/AppCard';
+import { AppCard } from '../../ui/AppCard';
 
 const CURRENCIES = [
   ['EGP', 2],

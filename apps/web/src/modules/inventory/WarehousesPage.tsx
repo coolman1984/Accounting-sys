@@ -13,7 +13,7 @@ import { Money } from '../../ui/Money';
 import { Dialog } from '../../ui/Dialog';
 import { Checkbox, Field, Input } from '../../ui/Field';
 import { useToast } from '../../ui/Toast';
-import { useWarehouses } from './common';
+import { useWarehouses } from '../../ui/Stock';
 
 function WarehouseDialog({ open, onClose, warehouse }: { open: boolean; onClose(): void; warehouse: Warehouse | null }) {
   const { t } = useI18n();
@@ -89,7 +89,7 @@ export function WarehousesPage() {
         title={t('inventory.warehousesTitle')}
         subtitle={t('inventory.warehousesSubtitle')}
         actions={
-          can('inventory.write') && (
+          can('inventory.warehouses.manage') && (
             <Button variant="primary" icon={<Plus />} onClick={() => setDialog({ w: null })}>
               {t('inventory.newWarehouse')}
             </Button>
@@ -108,7 +108,7 @@ export function WarehousesPage() {
                 <span className="spacer" />
                 {!!w.is_default && <Badge tone="blue">{t('inventory.isDefault')}</Badge>}
                 {!w.is_active && <Badge>{t('common.inactive')}</Badge>}
-                {can('inventory.write') && <Button size="sm" variant="ghost" iconOnly icon={<Pencil />} onClick={() => setDialog({ w })} />}
+                {can('inventory.warehouses.manage') && <Button size="sm" variant="ghost" iconOnly icon={<Pencil />} onClick={() => setDialog({ w })} />}
               </div>
               <h3>{pick(w.name_en, w.name_ar)}</h3>
               <p>{w.address || '—'}</p>

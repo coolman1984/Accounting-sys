@@ -371,7 +371,7 @@ function ItemsPage() {
         title={t('items.title')}
         subtitle={t('items.subtitle')}
         actions={
-          can('catalog.write') && (
+          can('catalog.items.write') && (
             <>
               <Button icon={<Tags />} onClick={() => setCats(true)}>
                 {t('inventory.manageCategories')}
@@ -390,7 +390,7 @@ function ItemsPage() {
         columns={columns}
         presets={presets}
         rowKey={(i) => i.id}
-        onRowClick={(i) => (can('catalog.write') ? setDialog({ item: i }) : isStockItem(i) && navigate(`/inventory/items/${i.id}`))}
+        onRowClick={(i) => (can('catalog.items.write') ? setDialog({ item: i }) : isStockItem(i) && navigate(`/inventory/items/${i.id}`))}
         exportName={t('items.title')}
         empty={<EmptyState icon={<Package size={22} />} title={t('common.noResults')} />}
       />
@@ -480,155 +480,6 @@ function CategoriesDialog({ open, onClose }: { open: boolean; onClose(): void })
 
 // ------------------------------------------------------------------ taxes
 
-function TaxDialog({ open, onClose, tax }: { open: boolean; onClose(): void; tax: Tax | null }) {
-  const { t } = useI18n();
-  const toast = useToast();
-  const errText = useErrorText();
-  const blank = {
-    code: '',
-    nameEn: '',
-    nameAr: '',
-    rateBp: 1400 as number | null,
-    scope: 'both' as Tax['scope'],
-    salesAccountId: null as number | null,
-    purchaseAccountId: null as number | null,
-    isActive: true,
-  };
-  const [f, setF] = useState(blank);
-  const [err, setErr] = useState('');
-  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
-  useEffect(() => {
-    if (!open) return;
-    setErr('');
-    setF(
-      tax
-        ? {
-            code: tax.code,
-            nameEn: tax.name_en,
-            nameAr: tax.name_ar,
-            rateBp: tax.rate_bp,
-            scope: tax.scope,
-            salesAccountId: tax.sales_account_id,
-            purchaseAccountId: tax.purchase_account_id,
-            isActive: !!tax.is_active,
-          }
-        : blank,
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, tax]);
-  const save = useApiMutation((body: object) => (tax ? api.put(`/taxes/${tax.id}`, body) : api.post('/taxes', body)));
-  const submit = () =>
-    save.mutate({ ...f, rateBp: f.rateBp ?? 0 }, { onSuccess: () => (toast.success(t('common.saved')), onClose()), onError: (e) => setErr(errText(e)) });
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={tax ? t('taxes.edit') : t('taxes.new')}
-      footer={
-        <>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="primary" loading={save.isPending} disabled={!f.code || !f.nameEn || !f.nameAr} onClick={submit}>
-            {t('common.save')}
-          </Button>
-        </>
-      }
-    >
-      <div className="stack">
-        <div className="grid-2">
-          <Field label={t('common.code')}>
-            <Input value={f.code} onChange={(e) => set('code', e.target.value)} />
-          </Field>
-          <Field label={t('taxes.rate')}>
-            <DecimalInput trim scale={2} value={f.rateBp} onChange={(v) => set('rateBp', v == null ? null : Math.min(v, 10000))} />
-          </Field>
-          <Field label={t('common.nameEn')}>
-            <Input dir="ltr" value={f.nameEn} onChange={(e) => set('nameEn', e.target.value)} />
-          </Field>
-          <Field label={t('common.nameAr')}>
-            <Input dir="rtl" value={f.nameAr} onChange={(e) => set('nameAr', e.target.value)} />
-          </Field>
-        </div>
-        <Field label={t('taxes.scope')}>
-          <Select value={f.scope} onChange={(e) => set('scope', e.target.value as Tax['scope'])}>
-            {(['both', 'sales', 'purchases'] as const).map((s) => (
-              <option key={s} value={s}>
-                {t('taxes.scopes.' + s)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {f.scope !== 'purchases' && (
-          <Field label={t('taxes.salesAccount')}>
-            <AccountPicker value={f.salesAccountId} onChange={(v) => set('salesAccountId', v)} filter={(a) => a.type === 'liability' || a.type === 'asset'} />
-          </Field>
-        )}
-        {f.scope !== 'sales' && (
-          <Field label={t('taxes.purchaseAccount')}>
-            <AccountPicker value={f.purchaseAccountId} onChange={(v) => set('purchaseAccountId', v)} filter={(a) => a.type === 'asset' || a.type === 'liability'} />
-          </Field>
-        )}
-        <Checkbox label={t('common.active')} checked={f.isActive} onChange={(v) => set('isActive', v)} />
-        {err && <p className="danger-text">{err}</p>}
-      </div>
-    </Dialog>
-  );
-}
-
-function TaxesPage() {
-  const { t, pick } = useI18n();
-  const { can } = useSession();
-  const [dialog, setDialog] = useState<{ tax: Tax | null } | null>(null);
-  const { data, isLoading } = useTaxes();
-  return (
-    <div className="page">
-      <PageHeader
-        title={t('taxes.title')}
-        subtitle={t('taxes.subtitle')}
-        actions={
-          can('catalog.write') && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setDialog({ tax: null })}>
-              {t('taxes.new')}
-            </Button>
-          )
-        }
-      />
-      <Card className="table-card">
-        {isLoading ? (
-          <Loading />
-        ) : !data?.length ? (
-          <EmptyState icon={<Percent size={22} />} title={t('common.noResults')} />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t('common.code')}</th>
-                <th>{t('common.name')}</th>
-                <th className="end">{t('taxes.rate')}</th>
-                <th>{t('taxes.scope')}</th>
-                <th>{t('common.status')}</th>
-                <th className="shrink" />
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((x) => (
-                <tr key={x.id}>
-                  <td style={{ fontWeight: 600 }}>{x.code}</td>
-                  <td>{pick(x.name_en, x.name_ar)}</td>
-                  <td className="end num">{formatBp(x.rate_bp)}</td>
-                  <td className="muted">{t('taxes.scopes.' + x.scope)}</td>
-                  <td>{x.is_active ? <Badge tone="green">{t('common.active')}</Badge> : <Badge>{t('common.inactive')}</Badge>}</td>
-                  <td>{can('catalog.write') && <Button size="sm" variant="ghost" iconOnly icon={<Pencil />} onClick={() => setDialog({ tax: x })} />}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-      <TaxDialog open={!!dialog} onClose={() => setDialog(null)} tax={dialog?.tax ?? null} />
-    </div>
-  );
-}
-
 export const catalogModule: WebModule = {
   id: 'catalog',
   nav: [
@@ -637,18 +488,13 @@ export const catalogModule: WebModule = {
       label: 'nav.items',
       icon: Package,
       // Products sit with stock when Inventory is on, otherwise with what the company does.
-      section: (has) => (has('inventory') ? 'inventory' : has('sales') ? 'sales' : 'purchases'),
+      section: (has) => (has('inventory') ? 'inventory' : has('ar') ? 'sales' : 'purchases'),
       order: 10,
-      perm: 'catalog.read',
+      perm: 'catalog.items.read',
     },
-    { to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'accounting', order: 40, perm: 'catalog.read' },
   ],
-  routes: [
-    { path: '/items', element: <ItemsPage /> },
-    { path: '/taxes', element: <TaxesPage /> },
-  ],
+  routes: [{ path: '/items', element: <ItemsPage /> }],
   commands: [
-    { id: 'go-items', label: 'nav.items', icon: Package, group: 'navigate', to: '/items', perm: 'catalog.read', keywords: 'products services أصناف منتجات' },
-    { id: 'go-taxes', label: 'nav.taxes', icon: Percent, group: 'navigate', to: '/taxes', perm: 'catalog.read', keywords: 'vat ضريبة' },
+    { id: 'go-items', label: 'nav.items', icon: Package, group: 'navigate', to: '/items', perm: 'catalog.items.read', keywords: 'products services أصناف منتجات' },
   ],
 };

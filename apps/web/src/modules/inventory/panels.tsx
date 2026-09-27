@@ -6,7 +6,7 @@ import { useSession } from '../../core/session';
 import { Card, CardHeader } from '../../ui/Card';
 import { Money } from '../../ui/Money';
 import { Badge } from '../../ui/Badge';
-import { Qty } from './common';
+import { Qty } from '../../ui/Stock';
 import type { Summary } from './StockPage';
 
 /** Shown on invoices/bills: the stock that moved and the cost entry it produced. */
@@ -16,7 +16,7 @@ export function DocumentStockPanel({ documentId, kind, status }: { documentId: n
   const { data } = useApi<
     { id: number; qty: number; value: number; is_reversal: number; item_id: number; sku: string; name_en: string; name_ar: string; warehouse_code: string; journal_entry_id: number | null; journal_number: string | null; lot_no: string | null; expiry_date: string | null }[]
   >(
-    status !== 'draft' && can('inventory.read') ? '/inventory/by-source' : null,
+    status !== 'draft' && can('inventory.stock.read') ? '/inventory/by-source' : null,
     { type: kind, id: documentId },
   );
   if (!data?.length) return null;
@@ -79,7 +79,7 @@ export function DocumentStockPanel({ documentId, kind, status }: { documentId: n
 export function InventoryWidget() {
   const { t, pick } = useI18n();
   const { can } = useSession();
-  const { data } = useApi<Summary>(can('inventory.read') ? '/inventory/summary' : null);
+  const { data } = useApi<Summary>(can('inventory.stock.read') ? '/inventory/summary' : null);
   if (!data || data.items === 0) return null;
   return (
     <div className="grid-2">
