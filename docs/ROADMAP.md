@@ -66,7 +66,7 @@ away.
 - [x] **Multi-currency**: document currency + exchange rate, realised /
       unrealised FX gains & losses
 - [x] **Financial analysis app**: full statement set, 50 ratios, DuPont, break-even, distress score, notes
-- [ ] Budgets and variance analysis (flexible budget, price / volume / mix variances)
+- [x] Budgets and variance analysis (flexible budget, price / volume / mix variances)
 - [ ] Projects as a second dimension next to cost centers; budgets per cost center
 - [ ] Recurring invoices and journal templates
 - [ ] Quotations → sales orders → invoices; purchase orders → bills

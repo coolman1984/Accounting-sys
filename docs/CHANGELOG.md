@@ -6,6 +6,12 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Budgets & variance analysis** (new `budget` app): monthly budgets by account (and cost center),
+  started empty, from a copy, or from 12 past months with a growth rate (seasons matched by calendar
+  month; unfinished months estimated); approval locks a budget (separate approve right). Budget vs actual
+  in three columns — planned, plan flexed to actual sales, actual — splitting every difference into
+  "due to sales level" and "due to prices & spending", with the worst overspends listed. Optional sales
+  budget by item gives price, mix, quantity and volume variances on the planned margin.
 - **Multi-currency** (new `fx` app, IAS 21 simplified): currencies and daily rates; invoices, bills,
   credit notes, receipts and payments in any currency with their own rate; bank/cash accounts kept in a
   foreign currency; realised exchange gains/losses booked with the payment; month-end revaluation of

@@ -102,3 +102,20 @@ ledger (through `ledger/statements.ts`) and posts nothing. The engine is pure fu
 tested against a hand-worked company; every ratio returns a value or a reason, never ∞/NaN.
 **Consequences:** Statements are never held back from a customer; analysis can be sold, trialled and
 improved on its own, and removed from an edition with no side effects.
+
+## ADR-013 · Budgets: money-based flexible budget, JSON month arrays, approval lock
+**Status:** Accepted · 2026-09-27
+**Context:** Small companies budget money per account, not standard units per product; the variance
+analysis must still separate "we sold less" from "we spent more".
+**Decision:** A new `budget` module/app (reads the ledger, posts nothing). A budget is 12 months from a
+first month; `budget_lines` hold one account (+ optional cost center) with the 12 amounts as a JSON
+array — always read and written whole, so no row per month. The flexible budget uses a sales activity
+index (actual ÷ budgeted revenue); each cost flexes by the account's existing variable share
+(`accounts.variable_bp`, cost of sales 100 % by default, interest and income tax never). An optional
+`budget_sales` table (quantity per month, unit price, unit cost per item) gives price, mix, quantity and
+volume variances on budget contribution, from posted invoices and credit notes. Approval
+(`budget.budgets.approve`, SoD with `write`) locks a budget; changes go through reopen or a copy.
+Overspends are ranked by the flexible-budget variance, not the total, so a volume effect is never
+blamed on a manager.
+**Consequences:** Works with any chart of accounts and without inventory; unit-level standard costing
+(material/labour price and efficiency variances) stays out until there is manufacturing.
