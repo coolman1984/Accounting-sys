@@ -248,7 +248,10 @@ export function TaxSummaryPage() {
 
 export const taxModule: WebModule = {
   id: 'tax',
-  nav: [{ to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'accounting', order: 40, perm: 'tax.codes.read', app: 'tax' }],
+  nav: [
+    { to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'tax', order: 10, perm: 'tax.codes.read', app: 'tax' },
+    { to: '/reports/tax', label: 'reports.taxSummary', icon: FileSpreadsheet, section: 'tax', order: 20, perm: 'tax.reports.read', app: 'tax' },
+  ],
   routes: [
     { path: '/taxes', element: <TaxesPage /> },
     { path: '/reports/tax', element: <TaxSummaryPage /> },

@@ -12,9 +12,10 @@ import { AgingPage } from '../../engines/parties/Aging';
 export const arModule: WebModule = {
   id: 'ar',
   nav: [
-    { to: '/sales/invoices', label: 'nav.invoices', icon: FileText, section: 'sales', order: 10, perm: 'ar.invoices.read', app: 'ar' },
-    { to: '/sales/credit-notes', label: 'nav.creditNotes', icon: FileMinus, section: 'sales', order: 20, perm: 'ar.credits.read', app: 'ar' },
-    { to: '/customers', label: 'nav.customers', icon: Users, section: 'sales', order: 30, perm: 'ar.customers.read', app: 'ar' },
+    { to: '/sales/invoices', label: 'nav.invoices', icon: FileText, section: 'ar', order: 10, perm: 'ar.invoices.read', app: 'ar' },
+    { to: '/sales/credit-notes', label: 'nav.creditNotes', icon: FileMinus, section: 'ar', order: 20, perm: 'ar.credits.read', app: 'ar' },
+    { to: '/customers', label: 'nav.customers', icon: Users, section: 'ar', order: 30, perm: 'ar.customers.read', app: 'ar' },
+    { to: '/reports/aging/receivable', label: 'reports.agingReceivable', icon: Clock, section: 'ar', order: 60, perm: 'ar.reports.read', app: 'ar' },
   ],
   routes: [
     ...documentRoutes('sales_invoice'),

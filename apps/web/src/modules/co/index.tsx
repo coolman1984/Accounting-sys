@@ -216,7 +216,10 @@ function CostCenterReport() {
 /** Controlling (like SAP CO, kept small): cost centers on ledger lines and a P&L per center. */
 export const coModule: WebModule = {
   id: 'co',
-  nav: [{ to: '/cost-centers', label: 'nav.costCenters', icon: Target, section: 'accounting', order: 30, perm: 'co.costcenters.read', app: 'co' }],
+  nav: [
+    { to: '/cost-centers', label: 'nav.costCenters', icon: Target, section: 'co', order: 10, perm: 'co.costcenters.read', app: 'co' },
+    { to: '/reports/cost-centers', label: 'co.report', icon: PieChart, section: 'co', order: 20, perm: 'co.reports.read', app: 'co' },
+  ],
   routes: [
     { path: '/cost-centers', element: <CostCentersPage /> },
     { path: '/reports/cost-centers', element: <CostCenterReport /> },

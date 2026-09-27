@@ -9,9 +9,10 @@ import { AgingPage } from '../../engines/parties/Aging';
 export const apModule: WebModule = {
   id: 'ap',
   nav: [
-    { to: '/purchases/bills', label: 'nav.bills', icon: ReceiptText, section: 'purchases', order: 10, perm: 'ap.bills.read', app: 'ap' },
-    { to: '/purchases/debit-notes', label: 'nav.debitNotes', icon: FilePlus, section: 'purchases', order: 20, perm: 'ap.debits.read', app: 'ap' },
-    { to: '/suppliers', label: 'nav.suppliers', icon: Truck, section: 'purchases', order: 30, perm: 'ap.suppliers.read', app: 'ap' },
+    { to: '/purchases/bills', label: 'nav.bills', icon: ReceiptText, section: 'ap', order: 10, perm: 'ap.bills.read', app: 'ap' },
+    { to: '/purchases/debit-notes', label: 'nav.debitNotes', icon: FilePlus, section: 'ap', order: 20, perm: 'ap.debits.read', app: 'ap' },
+    { to: '/suppliers', label: 'nav.suppliers', icon: Truck, section: 'ap', order: 30, perm: 'ap.suppliers.read', app: 'ap' },
+    { to: '/reports/aging/payable', label: 'reports.agingPayable', icon: Clock, section: 'ap', order: 60, perm: 'ap.reports.read', app: 'ap' },
   ],
   routes: [
     ...documentRoutes('purchase_bill'),

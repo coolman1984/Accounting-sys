@@ -44,12 +44,45 @@
   gap: 1px;
 }
 .nav-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   padding: 16px 10px 6px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
+}
+.nav-section:hover {
+  color: var(--text-muted);
+}
+.nav-section > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.nav-code {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.nav-chevron {
+  transition: transform 0.15s var(--ease);
+}
+.nav-section[aria-expanded='false'] .nav-chevron {
+  transform: rotate(-90deg);
+}
+[dir='rtl'] .nav-section[aria-expanded='false'] .nav-chevron {
+  transform: rotate(90deg);
 }
 [dir='rtl'] .nav-section {
   letter-spacing: 0;

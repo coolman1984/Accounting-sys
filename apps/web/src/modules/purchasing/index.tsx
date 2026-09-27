@@ -267,7 +267,7 @@ function PoView() {
 
 export const purchasingModule: WebModule = {
   id: 'purchasing',
-  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchases', order: 5, perm: 'purchasing.orders.read', app: 'purchasing' }],
+  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchasing', order: 5, perm: 'purchasing.orders.read', app: 'purchasing' }],
   routes: [
     { path: '/purchasing/orders', element: <PoList /> },
     { path: '/purchasing/orders/new', element: <PoEditor key="new" /> },

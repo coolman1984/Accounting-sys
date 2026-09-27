@@ -432,12 +432,12 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 | Module | Apps | Pages | Files |
 |---|---|---|---|
 | `dashboard` | — | `/` | 1 (268 lines) |
-| `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1666 lines) |
-| `tax` | `tax` | `/reports/tax`, `/taxes` | 1 (264 lines) |
-| `ar` | `ar` | `/customers`, `/customers/:id`, `/documents/:id`, `/reports/aging/receivable` | 1 (40 lines) |
-| `ap` | `ap` | `/documents/:id`, `/reports/aging/payable`, `/suppliers`, `/suppliers/:id` | 1 (36 lines) |
+| `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1671 lines) |
+| `tax` | `tax` | `/reports/tax`, `/taxes` | 1 (267 lines) |
+| `ar` | `ar` | `/customers`, `/customers/:id`, `/documents/:id`, `/reports/aging/receivable` | 1 (41 lines) |
+| `ap` | `ap` | `/documents/:id`, `/reports/aging/payable`, `/suppliers`, `/suppliers/:id` | 1 (37 lines) |
 | `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1675 lines) |
-| `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (232 lines) |
+| `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (235 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

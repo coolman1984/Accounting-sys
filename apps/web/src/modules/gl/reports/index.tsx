@@ -68,7 +68,12 @@ function ReportsHub() {
 export const reportsModule: WebModule = {
   id: 'gl-reports',
   // The hub is open to everyone: each tile shows only for those allowed to open it.
-  nav: [{ to: '/reports', label: 'nav.reports', icon: BarChart3, section: 'insights', order: 10 }],
+  nav: [
+    { to: '/reports/trial-balance', label: 'reports.trialBalance', icon: Scale, section: 'gl', order: 30, perm: 'gl.reports.read' },
+    { to: '/reports/income-statement', label: 'reports.incomeStatement', icon: TrendingUp, section: 'gl', order: 40, perm: 'gl.reports.read' },
+    { to: '/reports/balance-sheet', label: 'reports.balanceSheet', icon: Landmark, section: 'gl', order: 50, perm: 'gl.reports.read' },
+    { to: '/reports', label: 'nav.reports', icon: BarChart3, section: 'insights', order: 10, end: true },
+  ],
   routes: [
     { path: '/reports', element: <ReportsHub /> },
     { path: '/reports/trial-balance', element: <TrialBalancePage /> },

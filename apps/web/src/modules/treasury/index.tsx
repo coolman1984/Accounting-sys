@@ -103,10 +103,10 @@ const routesFor = (direction: Direction) => {
 export const treasuryModule: WebModule = {
   id: 'treasury',
   nav: [
-    { to: '/receipts', label: 'nav.receipts', icon: ArrowDownLeft, section: 'banking', order: 10, perm: 'treasury.receipts.read', app: 'treasury' },
-    { to: '/payments', label: 'nav.payments', icon: ArrowUpRight, section: 'banking', order: 20, perm: 'treasury.payments.read', app: 'treasury' },
-    { to: '/bank/transfers', label: 'nav.transfers', icon: ArrowLeftRight, section: 'banking', order: 30, perm: 'treasury.transfers.read', app: 'treasury' },
-    { to: '/bank', label: 'nav.bank', icon: Landmark, section: 'banking', order: 40, perm: 'treasury.statements.read', app: 'treasury', end: true },
+    { to: '/receipts', label: 'nav.receipts', icon: ArrowDownLeft, section: 'treasury', order: 10, perm: 'treasury.receipts.read', app: 'treasury' },
+    { to: '/payments', label: 'nav.payments', icon: ArrowUpRight, section: 'treasury', order: 20, perm: 'treasury.payments.read', app: 'treasury' },
+    { to: '/bank/transfers', label: 'nav.transfers', icon: ArrowLeftRight, section: 'treasury', order: 30, perm: 'treasury.transfers.read', app: 'treasury' },
+    { to: '/bank', label: 'nav.bank', icon: Landmark, section: 'treasury', order: 40, perm: 'treasury.statements.read', app: 'treasury', end: true },
   ],
   routes: [
     ...routesFor('in'),

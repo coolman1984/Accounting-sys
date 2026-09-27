@@ -119,7 +119,7 @@ function JournalList() {
 
 export const journalModule: WebModule = {
   id: 'journal',
-  nav: [{ to: '/journal', label: 'nav.journal', icon: BookOpen, section: 'accounting', order: 20, perm: 'gl.journal.read' }],
+  nav: [{ to: '/journal', label: 'nav.journal', icon: BookOpen, section: 'gl', order: 20, perm: 'gl.journal.read' }],
   routes: [
     { path: '/journal', element: <JournalList /> },
     { path: '/journal/new', element: <JournalEditor /> },

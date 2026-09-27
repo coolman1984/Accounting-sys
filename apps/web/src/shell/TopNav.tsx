@@ -23,7 +23,7 @@ export function TopNav({ sections }: { sections: { s: NavSection; items: NavItem
             </NavLink>
           ))
         ) : (
-          <SectionMenu key={s} label={t('nav.' + s)} items={items} active={items.some(within)} within={within} />
+          <SectionMenu key={s} label={t('sections.' + s)} items={items} active={items.some(within)} within={within} />
         ),
       )}
     </nav>

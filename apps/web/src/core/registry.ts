@@ -6,7 +6,8 @@ import type { LucideIcon } from 'lucide-react';
  * pages and command-palette actions through one small object. The shell
  * composes whatever modules are installed — nothing is hard-wired.
  */
-export type NavSection = 'overview' | 'sales' | 'purchases' | 'inventory' | 'banking' | 'accounting' | 'insights' | 'admin';
+/** Menu sections follow the professional modules (SAP / Odoo style), each with its short module code. */
+export type NavSection = 'overview' | 'gl' | 'ar' | 'ap' | 'treasury' | 'tax' | 'co' | 'purchasing' | 'inventory' | 'insights' | 'admin';
 
 /** Shown only when one of these apps is on (see the Apps page). */
 export type AppGate = string | string[];
@@ -88,6 +89,18 @@ export interface WebModule {
   slots?: Slots;
 }
 
-export const SECTION_ORDER: NavSection[] = ['overview', 'sales', 'purchases', 'inventory', 'banking', 'accounting', 'insights', 'admin'];
+export const SECTION_ORDER: NavSection[] = ['overview', 'gl', 'ar', 'ap', 'treasury', 'tax', 'co', 'purchasing', 'inventory', 'insights', 'admin'];
+
+/** The short code shown next to each section title, as in SAP (FI-GL, FI-AR, FI-AP, TR, CO, MM …). */
+export const SECTION_CODE: Partial<Record<NavSection, string>> = {
+  gl: 'GL',
+  ar: 'AR',
+  ap: 'AP',
+  treasury: 'TR',
+  tax: 'TX',
+  co: 'CO',
+  purchasing: 'MM',
+  inventory: 'IM',
+};
 
 export type Page = ComponentType;

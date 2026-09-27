@@ -275,6 +275,9 @@ All reports are computed from posted ledger movements:
   group by any column with subtotals, show/hide columns, saved favourite views
   and CSV export of exactly what is shown — the same grid on every list.
 * **Menus on the side or across the top** (Odoo-style dropdowns), switched
-  with one click and remembered per computer.
+  with one click and remembered per computer. Menus are grouped by professional
+  module like SAP — GL, AR, AP, TR, TX, CO, MM, IM — with the module code beside
+  each title (`SECTION_ORDER` / `SECTION_CODE` in `web/src/core/registry.ts`);
+  side sections fold and remember it.
 * Printable invoices and reports; CSV export (Excel-friendly UTF-8 BOM).
 * Responsive down to phones (slide-in navigation).

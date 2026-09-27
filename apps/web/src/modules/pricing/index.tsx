@@ -327,7 +327,7 @@ function PriceListEditor() {
 
 export const pricingModule: WebModule = {
   id: 'pricing',
-  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.lists.read', app: 'pricing' }],
+  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'ar', order: 50, perm: 'pricing.lists.read', app: 'pricing' }],
   routes: [
     { path: '/sales/price-lists', element: <PriceListsPage /> },
     { path: '/sales/price-lists/new', element: <PriceListEditor key="new" /> },

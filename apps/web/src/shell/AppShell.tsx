@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
-import { KeyRound, LogOut, Menu, PanelLeft, PanelTop, Search } from 'lucide-react';
+import { ChevronDown, KeyRound, LogOut, Menu, PanelLeft, PanelTop, Search } from 'lucide-react';
 import { useI18n } from '../core/i18n';
 import { useSession } from '../core/session';
 import { api } from '../core/api';
-import { SECTION_ORDER, type Command, type NavItem } from '../core/registry';
+import { SECTION_CODE, SECTION_ORDER, type Command, type NavItem, type NavSection } from '../core/registry';
 import { Kbd, LangToggle, Logo, modKey, ThemeToggle } from '../ui/Brand';
 import { CommandPalette } from './CommandPalette';
 import { ChangePasswordDialog } from './ChangePassword';
@@ -19,6 +19,8 @@ const readLayout = (): Layout => {
     return 'sidebar';
   }
 };
+
+const FOLD_KEY = 'mizan.nav.folded';
 
 export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[] }) {
   const { t } = useI18n();
@@ -71,6 +73,30 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
     );
   }, [nav, allowed, hasApp]);
 
+  // Sections fold like SAP's module tree; the choice is remembered on this computer.
+  // The section holding the open page never folds, so you always see where you are.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]'));
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleSection = (s: NavSection) =>
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      try {
+        localStorage.setItem(FOLD_KEY, JSON.stringify([...next]));
+      } catch {
+        /* private window — folding just is not remembered */
+      }
+      return next;
+    });
+  const here = (n: NavItem) => (n.end ? location.pathname === n.to : location.pathname === n.to || location.pathname.startsWith(n.to + '/'));
+  const folded = (s: NavSection, items: NavItem[]) => collapsed.has(s) && !items.some(here);
+
   const initials = (user?.displayName ?? '?')
     .split(/\s+/)
     .map((w) => w[0])
@@ -87,8 +113,19 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
         <nav className="nav">
           {sections.map(({ s, items }) => (
             <div key={s} style={{ display: 'contents' }}>
-              {s !== 'overview' && <div className="nav-section">{t('nav.' + s)}</div>}
-              {items.map((n) => {
+              {s !== 'overview' && (
+                <button
+                  type="button"
+                  className="nav-section"
+                  aria-expanded={!folded(s, items)}
+                  onClick={() => toggleSection(s)}
+                >
+                  <span>{t('sections.' + s)}</span>
+                  {SECTION_CODE[s] && <span className="nav-code">{SECTION_CODE[s]}</span>}
+                  <ChevronDown size={13} className="nav-chevron" />
+                </button>
+              )}
+              {!folded(s, items) && items.map((n) => {
                 const Icon = n.icon;
                 return (
                   <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>

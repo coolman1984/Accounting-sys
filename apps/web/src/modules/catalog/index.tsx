@@ -488,7 +488,7 @@ export const catalogModule: WebModule = {
       label: 'nav.items',
       icon: Package,
       // Products sit with stock when Inventory is on, otherwise with what the company does.
-      section: (has) => (has('inventory') ? 'inventory' : has('ar') ? 'sales' : 'purchases'),
+      section: (has) => (has('inventory') ? 'inventory' : has('ar') ? 'ar' : 'ap'),
       order: 10,
       perm: 'catalog.items.read',
     },

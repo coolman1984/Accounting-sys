@@ -15,6 +15,11 @@ Every change adds a line under **[Unreleased]** in the same commit.
   - reconciled statements are locked (database triggers) and their entries cannot be reversed until reopened;
   - "not at the bank yet" amount explains the gap between the statement and the books;
   - new rights `treasury.transfers.*` and `treasury.statements.*`; health checks for statements and matches.
+- **Menus by professional module, like SAP:** General ledger (GL), Receivables (AR), Payables (AP),
+  Treasury (TR), Tax (TX), Controlling (CO), Purchasing (MM), Inventory (IM), Analytics, Administration —
+  each with its module code. Sections fold and unfold (remembered per computer); the section of the open
+  page always stays open. Each module's own reports sit in its section (trial balance, ageing, VAT
+  summary, profit by cost center). Same grouping in the top-menu layout.
 
 ## 2026-09-27 — Professional modules, roles, editions, docs (PR #3)
 
