@@ -20,6 +20,8 @@ Every change adds a line under **[Unreleased]** in the same commit.
   `CLAUDE.md` rules, a docs test and a Stop hook that regenerates the map.
 - Receivables / payables overview widgets on the home page; ageing pages per side.
 - ERP research document (`docs/research/ERP-RESEARCH.md`).
+- Pages opened by link respect roles and apps: a clear "No access to this page" message
+  (the gate follows the closest menu item or report tile).
 
 ### Changed
 - Permission keys are now `module.object.action` (e.g. `ar.invoices.post`, `treasury.payments.post`);
@@ -35,6 +37,9 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Reversing a journal entry now keeps its cost centers, even after CO is switched off.
 - Invoice editor showed no line when the Tax app was off.
 - Purchase-order editor asked for a warehouse when Inventory was off.
+- Opening a forbidden page by link showed an endless spinner.
+- Role picker showed a role's name and description run together; administrators no longer get
+  duty-split warnings (they hold everything by design).
 
 ## 2026-09-27 — Power lists, apps and health (PR #2)
 

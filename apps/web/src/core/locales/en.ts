@@ -146,6 +146,8 @@ const en = {
     costCenters: 'Cost centers',
   },
   shell: {
+    noAccess: 'No access to this page',
+    noAccessText: 'Your role does not open this page, or its app is switched off. Ask your administrator if you need it.',
     menu: 'Main menu',
     menuTop: 'Menus across the top',
     menuSide: 'Menus on the side',
@@ -229,7 +231,7 @@ const en = {
     revenue: 'Revenue',
     expenses: 'Expenses',
     overdueInvoices: 'Overdue invoices',
-    overdueCount: '{n} invoices overdue',
+    overdueCount: 'Overdue: {n}',
     billsDue: 'Bills due within 7 days',
     cashAccounts: 'Cash & bank accounts',
     recent: 'Recent activity',

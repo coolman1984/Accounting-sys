@@ -1653,6 +1653,15 @@
 .role-option input {
   margin-top: 3px;
 }
+.role-option > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.role-option .faint {
+  font-size: 12px;
+  line-height: 1.35;
+}
 
 /* Role editor: one section per module, one row per object, one cell per action */
 .perm-matrix {

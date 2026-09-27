@@ -173,9 +173,9 @@ export function JournalEditor() {
               <thead>
                 <tr>
                   <th className="shrink center">#</th>
-                  <th style={{ width: '30%' }}>{t('common.account')}</th>
+                  <th style={{ width: cc.on ? '24%' : '30%' }}>{t('common.account')}</th>
                   <th>{t('common.description')}</th>
-                  <th style={{ width: '18%' }}>{t('journal.partyNeeded')}</th>
+                  <th style={{ width: cc.on ? '16%' : '18%' }}>{t('journal.partyNeeded')}</th>
                   {cc.on && <th style={{ width: 160 }}>{t('co.costCenter')}</th>}
                   <th className="end" style={{ width: 140 }}>
                     {t('common.debit')}

@@ -27,6 +27,22 @@ export interface NavItem {
 export interface PageRoute {
   path: string;
   element: ReactNode;
+  /** Who may open it. Left out, it follows the menu item or report tile whose link is the longest prefix of the path. */
+  perm?: string;
+  app?: AppGate;
+}
+
+/** The permission gate for a page: its own, else the closest menu item / report tile above it. */
+export function gateFor(route: PageRoute, links: { to: string; perm?: string; app?: AppGate }[]): { perm?: string; app?: AppGate } {
+  if (route.perm || route.app) return { perm: route.perm, app: route.app };
+  const clean = (p: string) => p.split('?')[0];
+  let best: { to: string; perm?: string; app?: AppGate } | undefined;
+  for (const l of links) {
+    const to = clean(l.to);
+    if (to === '/') continue;
+    if ((route.path === to || route.path.startsWith(to + '/')) && (!best || to.length > clean(best.to).length)) best = l;
+  }
+  return best ? { perm: best.perm, app: best.app } : {};
 }
 
 export interface Command {

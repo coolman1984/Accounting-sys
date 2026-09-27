@@ -116,7 +116,8 @@ function UsersPanel() {
             </thead>
             <tbody>
               {users.map((u) => {
-                const sod = cat ? conflicts(new Set(u.permissions), cat.sod) : [];
+                const isAdmin = u.role_ids.some((id) => byId.get(id)?.key === 'admin');
+                const sod = cat && !isAdmin ? conflicts(new Set(u.permissions), cat.sod) : [];
                 return (
                   <tr key={u.id}>
                     <td>
@@ -188,7 +189,9 @@ function UserDialog({ open, user, roles, cat, onClose }: { open: boolean; user: 
   });
   // What the chosen roles add up to, and any duty that should be split between two people.
   const perms = new Set(roles.filter((r) => f.roleIds.includes(r.id)).flatMap((r) => r.permissions));
-  const sod = cat ? conflicts(perms, cat.sod) : [];
+  // An administrator holds everything by design — warning them adds noise, not safety.
+  const isAdmin = roles.some((r) => r.key === 'admin' && f.roleIds.includes(r.id));
+  const sod = cat && !isAdmin ? conflicts(perms, cat.sod) : [];
   return (
     <Dialog
       open={open}

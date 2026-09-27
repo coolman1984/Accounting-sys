@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import { ShieldX } from 'lucide-react';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nProvider } from './core/i18n';
@@ -11,6 +12,7 @@ import { AppShell } from './shell/AppShell';
 import { LoginPage } from './modules/auth/Login';
 import { SetupPage } from './modules/auth/Setup';
 import { webModules } from './modules';
+import { gateFor, type AppGate } from './core/registry';
 import { useI18n } from './core/i18n';
 import { ModulesProvider } from './core/slots';
 
@@ -29,16 +31,29 @@ function NotFound() {
   );
 }
 
+/** Opening a page by its link still respects roles and apps — a clear message instead of an empty page. */
+function Guard({ gate, children }: { gate: { perm?: string; app?: AppGate }; children: ReactNode }) {
+  const { allowed } = useSession();
+  const { t } = useI18n();
+  if (allowed(gate)) return <>{children}</>;
+  return (
+    <div className="page">
+      <EmptyState icon={<ShieldX size={22} />} title={t('shell.noAccess')} text={t('shell.noAccessText')} />
+    </div>
+  );
+}
+
 function Routed() {
   const { status } = useSession();
   const router = useMemo(() => {
     const nav = webModules.flatMap((m) => m.nav ?? []);
     const commands = webModules.flatMap((m) => m.commands ?? []);
     const pages = webModules.flatMap((m) => m.routes);
+    const links = [...nav, ...webModules.flatMap((m) => m.reports ?? [])];
     return createBrowserRouter([
       {
         element: <AppShell nav={nav} commands={commands} />,
-        children: [...pages.map((p) => ({ path: p.path, element: p.element })), { path: '*', element: <NotFound /> }],
+        children: [...pages.map((p) => ({ path: p.path, element: <Guard gate={gateFor(p, links)}>{p.element}</Guard> })), { path: '*', element: <NotFound /> }],
       },
     ]);
   }, []);

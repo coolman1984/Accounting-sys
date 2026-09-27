@@ -18,6 +18,8 @@ non-obvious cause or a tool behaved unexpectedly.
 
 - **A screen that waits for optional data must not wait forever.** The invoice editor waited for tax
   codes before adding the first line; with Tax off it never appeared. Gate on `hasApp()` too.
+- **Hiding a menu item is not access control on the page.** A typed or bookmarked link skipped the
+  menu and spun forever on a 403. Every route is gated (`gateFor` in `core/registry.ts`).
 - **Reference lists vs. management rights.** Guarding `GET /taxes` with `tax.codes.read` blocked a
   sales clerk from choosing VAT. Lists used to fill documents are `auth` + `assertApp`.
 - **Permission objects cannot be both a leaf and a branch** in the dictionaries
