@@ -6,6 +6,27 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Multi-currency** (new `fx` app, IAS 21 simplified): currencies and daily rates; invoices, bills,
+  credit notes, receipts and payments in any currency with their own rate; bank/cash accounts kept in a
+  foreign currency; realised exchange gains/losses booked with the payment; month-end revaluation of
+  open foreign items and foreign cash (reversed next day); transfers across currencies; foreign-currency
+  bank reconciliation; journal lines carry the foreign amount.
+- **Full statement set**: analytical income statement (gross profit, operating profit, EBIT, interest,
+  profit before tax, income tax, net profit, EBITDA memo), statement of changes in equity, common-size
+  (vertical) view of the income statement and balance sheet, cash flow and equity in the GL menu.
+- **Financial analysis** (new `analysis` app): 50 ratios in liquidity, solvency, efficiency, profitability,
+  cash flow & growth, break-even & leverage and per-share groups — each with meaning, formula, status and
+  the previous period; DuPont (3 and 5 parts); cash conversion cycle; Altman Z'' distress score;
+  plain-language accountant's notes; data-quality checks; break-even what-if; monthly trend.
+- Account settings for analysis: variable share % of each expense (cost behaviour) and a rent/lease tag.
+- New account subtypes: short-term investments, short-term borrowings, dividends, interest expense,
+  income tax; charts made earlier gain these accounts automatically.
+- Research: `docs/research/FINANCIAL-ANALYSIS.md` (formulas, edge cases, built-in vs add-on decision).
+
+### Fixed
+- Health check for document settlements now also covers credit notes and base-currency amounts.
+
+### Added
 - **Banking** (Treasury app, new `bank` module):
   - transfers between cash and bank accounts, with bank charges, draft → post → void;
   - bank reconciliation: statements per account, CSV import with column guessing

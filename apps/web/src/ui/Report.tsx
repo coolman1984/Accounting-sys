@@ -133,6 +133,17 @@ export function ReportFrame({
 }
 
 /** A statement section: account rows + subtotal line. */
+/** Common-size: a line as a share of the base (revenue for the income statement, total assets for the balance sheet). */
+export interface CommonSize {
+  base: number;
+  compareBase?: number | null;
+}
+const Pct = ({ v, base }: { v: number; base: number | null | undefined }) => (
+  <td className="end faint num" style={{ fontSize: 12.5, width: 70 }}>
+    {base ? `${((v / base) * 100).toFixed(1)}%` : '—'}
+  </td>
+);
+
 export function Section({
   title,
   rows,
@@ -141,6 +152,7 @@ export function Section({
   showCompare,
   from,
   to,
+  pct,
 }: {
   title: string;
   rows: StatementRow[];
@@ -149,12 +161,14 @@ export function Section({
   showCompare?: boolean;
   from?: string;
   to?: string;
+  pct?: CommonSize | null;
 }) {
   const { pick, t } = useI18n();
+  const cols = 2 + (showCompare ? 1 : 0) + (pct ? (showCompare ? 2 : 1) : 0);
   return (
     <>
       <tr className="group-row">
-        <td colSpan={showCompare ? 3 : 2}>{title}</td>
+        <td colSpan={cols}>{title}</td>
       </tr>
       {rows.map((r) => (
         <tr key={r.id}>
@@ -169,11 +183,13 @@ export function Section({
           <td className="end">
             <Money v={r.amount} parens />
           </td>
+          {pct && <Pct v={r.amount} base={pct.base} />}
           {showCompare && (
             <td className="end muted">
               <Money v={r.compare ?? 0} parens />
             </td>
           )}
+          {showCompare && pct && <Pct v={r.compare ?? 0} base={pct.compareBase} />}
         </tr>
       ))}
       <tr className="total-row">
@@ -183,28 +199,46 @@ export function Section({
         <td className="end">
           <Money v={total} parens />
         </td>
+        {pct && <Pct v={total} base={pct.base} />}
         {showCompare && (
           <td className="end muted">
             <Money v={compareTotal ?? 0} parens />
           </td>
         )}
+        {showCompare && pct && <Pct v={compareTotal ?? 0} base={pct.compareBase} />}
       </tr>
     </>
   );
 }
 
-export function TotalLine({ label, value, compare, showCompare, grand }: { label: string; value: number; compare?: number | null; showCompare?: boolean; grand?: boolean }) {
+export function TotalLine({
+  label,
+  value,
+  compare,
+  showCompare,
+  grand,
+  pct,
+}: {
+  label: string;
+  value: number;
+  compare?: number | null;
+  showCompare?: boolean;
+  grand?: boolean;
+  pct?: CommonSize | null;
+}) {
   return (
     <tr className={grand ? 'grand-row' : 'total-row'}>
       <td>{label}</td>
       <td className="end">
         <Money v={value} parens />
       </td>
+      {pct && <Pct v={value} base={pct.base} />}
       {showCompare && (
         <td className="end">
           <Money v={compare ?? 0} parens />
         </td>
       )}
+      {showCompare && pct && <Pct v={compare ?? 0} base={pct.compareBase} />}
     </tr>
   );
 }

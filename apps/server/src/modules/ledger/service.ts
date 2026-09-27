@@ -297,6 +297,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
           parent_id: parentId,
           is_group: !!t.group,
           is_active: true,
+          analysis_tag: t.tag ?? null,
           created_at: nowIso(),
         });
         if (t.role) defaults[t.role] = id;

@@ -9,6 +9,8 @@ export interface TemplateAccount {
   group?: boolean;
   /** Key in the default-account map (see DefaultAccountKey). */
   role?: DefaultAccountKey;
+  /** Analysis tag (rent is a fixed charge for coverage ratios). */
+  tag?: 'lease';
   children?: TemplateAccount[];
 }
 
@@ -142,7 +144,7 @@ export const STANDARD_CHART: TemplateAccount[] = [
         code: '52', en: 'Operating Expenses', ar: 'المصروفات التشغيلية', type: 'expense', subtype: 'operating_expense', group: true,
         children: [
           { code: '5210', en: 'Salaries & Wages', ar: 'الرواتب والأجور', type: 'expense', subtype: 'operating_expense' },
-          { code: '5220', en: 'Rent', ar: 'الإيجار', type: 'expense', subtype: 'operating_expense' },
+          { code: '5220', en: 'Rent', ar: 'الإيجار', type: 'expense', subtype: 'operating_expense', tag: 'lease' },
           { code: '5230', en: 'Utilities', ar: 'الكهرباء والمياه والمرافق', type: 'expense', subtype: 'operating_expense' },
           { code: '5240', en: 'Telephone & Internet', ar: 'الهاتف والإنترنت', type: 'expense', subtype: 'operating_expense' },
           { code: '5250', en: 'Office Supplies', ar: 'أدوات مكتبية', type: 'expense', subtype: 'operating_expense' },

@@ -218,8 +218,8 @@ Reasons:
    and removed from an edition with no side effects.
 4. **Right audience.** Micro businesses on the basic edition may not want 40 ratios;
    growing companies, their banks and investors do — they buy the upgrade.
-5. **Upsell path.** With the app off, the dashboard shows one line inviting the owner to
-   switch it on (a trial is just switching it on in Apps).
+5. **Upsell path.** The Apps page presents it with its benefits; a trial is simply switching
+   it on, and switching it off loses nothing (it stores no data of its own besides share data).
 
 Pricing guidance (for the business, not in code): include it in the "Trade" and "Full"
 editions, offer it as an add-on to "Finance".

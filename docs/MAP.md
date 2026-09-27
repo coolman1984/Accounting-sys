@@ -20,6 +20,7 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **ap** | `ap` | — | `ap`, `catalog` |
 | **co** | `co` | — | `co` |
 | **fx** | `fx` | — | `fx` |
+| **analysis** | `analysis` | — | `analysis` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -29,8 +30,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 31 | one folder per module (below) |
-| `apps/server/src/test/` | 12 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 33 | one folder per module (below) |
+| `apps/server/src/test/` | 13 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -85,7 +86,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (181), `index.ts` (252), `reports.ts` (208), `schema.ts` (180), `service.ts` (729), `statements.ts` (268)
+- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (208), `schema.ts` (180), `service.ts` (730), `statements.ts` (268)
 
 <details><summary>25 routes</summary>
 
@@ -447,6 +448,27 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 
 </details>
 
+### `analysis` — apps/server/src/modules/analysis/
+
+- **Apps:** `analysis` · **Depends on:** `ledger` · **Health checks:** no
+- **Permissions:** `analysis.reports.read`, `analysis.settings.manage`
+- **Role templates:** `financial_analyst`
+- **Tables / views:** —
+- **Provides services:** —
+- **Files:** `engine.ts` (395), `index.ts` (267)
+
+<details><summary>5 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/analysis` | `analysis.reports.read` |
+| GET | `/api/analysis/trend` | `analysis.reports.read` |
+| GET | `/api/analysis/settings` | `analysis.reports.read` |
+| PUT | `/api/analysis/settings` | `analysis.settings.manage` |
+| GET | `/api/analysis/break-even` | `analysis.reports.read` |
+
+</details>
+
 ## Web layout
 
 | Folder | Files | What lives there |
@@ -461,13 +483,14 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | Module | Apps | Pages | Files |
 |---|---|---|---|
 | `dashboard` | — | `/` | 1 (268 lines) |
-| `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1734 lines) |
+| `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/equity-changes`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1849 lines) |
 | `tax` | `tax` | `/reports/tax`, `/taxes` | 1 (267 lines) |
 | `ar` | `ar` | `/customers`, `/customers/:id`, `/documents/:id`, `/reports/aging/receivable` | 1 (41 lines) |
 | `ap` | `ap` | `/documents/:id`, `/reports/aging/payable`, `/suppliers`, `/suppliers/:id` | 1 (37 lines) |
 | `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1738 lines) |
 | `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (235 lines) |
 | `fx` | `fx` | `/currencies`, `/fx/revaluation` | 1 (305 lines) |
+| `analysis` | `analysis` | `/analysis`, `/analysis/break-even`, `/analysis/trend` | 1 (499 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

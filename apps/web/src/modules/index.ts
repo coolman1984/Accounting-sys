@@ -7,6 +7,7 @@ import { apModule } from './ap';
 import { treasuryModule } from './treasury';
 import { coModule } from './co';
 import { fxModule } from './fx';
+import { analysisModule } from './analysis';
 import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
 import { purchasingModule } from './purchasing';
@@ -28,6 +29,7 @@ export const webModules: WebModule[] = [
   treasuryModule,
   coModule,
   fxModule,
+  analysisModule,
   catalogModule,
   inventoryModule,
   purchasingModule,

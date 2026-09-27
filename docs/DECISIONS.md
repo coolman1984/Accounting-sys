@@ -81,3 +81,24 @@ refusing reversals through the `journal.reversed` event (listeners run inside th
 CSV files are parsed in the browser, so the server receives clean JSON lines and needs no upload handling.
 **Consequences:** GL stays untouched and removable-module rules hold; a GL-only edition simply has no
 reconciliation. Voided pairs are hidden from the open items instead of needing a manual tick.
+
+## ADR-011 · Multi-currency: document currency + base figures, IAS 21 simplified
+**Status:** Accepted · 2026-09-27
+**Decision:** Each invoice/bill/payment keeps its currency, its rate (× 1,000,000) and its foreign
+figures; base figures are computed once per line and are what journals, stock, tax, ageing and reports
+read, so every journal balances by construction. Settlements store both amounts; the last settlement
+of a document takes the exact base remainder. Realised differences are booked by the payment;
+unrealised ones by a revaluation run into separate adjustment accounts (receivables / payables),
+reversed the next day, so ageing stays at historical values. Foreign cash is revalued in the account.
+**Consequences:** Rounding never leaves stray cents; currencies with 0 or 3 decimals are held at the
+company's precision (documented limitation).
+
+## ADR-012 · Financial analysis is a separate paid app; statements stay in the core
+**Status:** Accepted · 2026-09-27
+**Context:** Research in `docs/research/FINANCIAL-ANALYSIS.md` (Part 4).
+**Decision:** Every statement (including changes in equity and common-size views) is core GL. The
+ratio engine, notes, break-even and trend live in the `analysis` module/app, which only reads the
+ledger (through `ledger/statements.ts`) and posts nothing. The engine is pure functions (`engine.ts`),
+tested against a hand-worked company; every ratio returns a value or a reason, never ∞/NaN.
+**Consequences:** Statements are never held back from a customer; analysis can be sold, trialled and
+improved on its own, and removed from an edition with no side effects.

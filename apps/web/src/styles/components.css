@@ -1818,3 +1818,146 @@
 .recon-grid tr.dim td {
   opacity: 0.45;
 }
+
+/* Financial analysis */
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.dot-good {
+  background: var(--success);
+}
+.dot-watch {
+  background: var(--warning);
+}
+.dot-risk {
+  background: var(--danger);
+}
+.dot-info {
+  background: var(--primary);
+  opacity: 0.5;
+}
+.analysis-top {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+}
+@media (max-width: 800px) {
+  .analysis-top {
+    grid-template-columns: 1fr;
+  }
+}
+.health-score .zone {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+.zone-safe {
+  color: var(--success);
+}
+.zone-grey {
+  color: var(--warning);
+}
+.zone-distress {
+  color: var(--danger);
+}
+.findings ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px 14px 14px;
+  display: grid;
+  gap: 8px;
+}
+.finding {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.finding svg {
+  flex: none;
+  margin-top: 2px;
+}
+.finding-risk svg {
+  color: var(--danger);
+}
+.finding-watch svg {
+  color: var(--warning);
+}
+.finding-good svg {
+  color: var(--success);
+}
+.ratio-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 520px) {
+  .ratio-groups {
+    grid-template-columns: 1fr;
+  }
+}
+.ratio-table td,
+.ratio-table th {
+  vertical-align: top;
+}
+.ratio-detail td {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+}
+.dupont {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.dupont > div {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 120px;
+}
+.dupont span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.dupont strong {
+  font-size: 18px;
+}
+.dupont b {
+  color: var(--text-faint);
+  font-size: 18px;
+}
+.dupont-result {
+  background: var(--primary-soft);
+  border-color: var(--primary) !important;
+}
+.be-bars {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.be-bars > div {
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+}
+.be-bars i {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
+.be-bars .be i {
+  background: var(--warning);
+}
+.be-bars .target i {
+  background: var(--success);
+}
