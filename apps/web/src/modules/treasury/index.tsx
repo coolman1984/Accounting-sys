@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Landmark, Plus } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
@@ -12,6 +12,8 @@ import { SimpleStatus } from '../../ui/Badge';
 import { Money } from '../../ui/Money';
 import { PaymentEditor } from './PaymentEditor';
 import { PaymentView } from './PaymentView';
+import { TransfersPage } from './transfers';
+import { BankPage, StatementPage } from './reconcile';
 
 function PaymentList({ direction }: { direction: Direction }) {
   const { t, pick } = useI18n();
@@ -101,14 +103,24 @@ const routesFor = (direction: Direction) => {
 export const treasuryModule: WebModule = {
   id: 'treasury',
   nav: [
-    { to: '/receipts', label: 'nav.receipts', icon: ArrowDownLeft, section: 'banking', order: 10, perm: 'treasury.receipts.read', app: 'treasury' },
-    { to: '/payments', label: 'nav.payments', icon: ArrowUpRight, section: 'banking', order: 20, perm: 'treasury.payments.read', app: 'treasury' },
+    { to: '/receipts', label: 'nav.receipts', icon: ArrowDownLeft, section: 'treasury', order: 10, perm: 'treasury.receipts.read', app: 'treasury' },
+    { to: '/payments', label: 'nav.payments', icon: ArrowUpRight, section: 'treasury', order: 20, perm: 'treasury.payments.read', app: 'treasury' },
+    { to: '/bank/transfers', label: 'nav.transfers', icon: ArrowLeftRight, section: 'treasury', order: 30, perm: 'treasury.transfers.read', app: 'treasury' },
+    { to: '/bank', label: 'nav.bank', icon: Landmark, section: 'treasury', order: 40, perm: 'treasury.statements.read', app: 'treasury', end: true },
   ],
-  routes: [...routesFor('in'), ...routesFor('out')],
+  routes: [
+    ...routesFor('in'),
+    ...routesFor('out'),
+    { path: '/bank', element: <BankPage /> },
+    { path: '/bank/statements/:id', element: <StatementPage /> },
+    { path: '/bank/transfers', element: <TransfersPage /> },
+  ],
   commands: [
     { id: 'new-receipt', label: 'payments.in.new', icon: ArrowDownLeft, group: 'create', to: '/receipts/new', perm: 'treasury.receipts.write', app: 'treasury', keywords: 'receipt receive قبض تحصيل' },
     { id: 'new-payment', label: 'payments.out.new', icon: ArrowUpRight, group: 'create', to: '/payments/new', perm: 'treasury.payments.write', app: 'treasury', keywords: 'pay expense صرف دفع' },
     { id: 'go-receipts', label: 'nav.receipts', icon: ArrowDownLeft, group: 'navigate', to: '/receipts', perm: 'treasury.receipts.read', app: 'treasury' },
     { id: 'go-payments', label: 'nav.payments', icon: ArrowUpRight, group: 'navigate', to: '/payments', perm: 'treasury.payments.read', app: 'treasury' },
+    { id: 'go-transfers', label: 'nav.transfers', icon: ArrowLeftRight, group: 'navigate', to: '/bank/transfers', perm: 'treasury.transfers.read', app: 'treasury', keywords: 'transfer bank cash تحويل بنك خزينة' },
+    { id: 'go-bank', label: 'nav.bank', icon: Landmark, group: 'navigate', to: '/bank', perm: 'treasury.statements.read', app: 'treasury', keywords: 'bank reconciliation statement مطابقة كشف بنك تسوية بنكية' },
   ],
 };

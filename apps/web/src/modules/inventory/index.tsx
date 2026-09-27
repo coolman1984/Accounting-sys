@@ -16,7 +16,7 @@ export const inventoryModule: WebModule = {
   id: 'inventory',
   nav: [
     { to: '/inventory', label: 'nav.stock', icon: Boxes, section: 'inventory', order: 0, perm: 'inventory.stock.read', app: 'inventory', end: true },
-    { to: '/inventory/receipts', label: 'nav.goodsReceipts', icon: PackageCheck, section: 'purchases', order: 6, perm: 'inventory.receipts.read', app: 'inventory' },
+    { to: '/inventory/receipts', label: 'nav.goodsReceipts', icon: PackageCheck, section: 'purchasing', order: 6, perm: 'inventory.receipts.read', app: 'inventory' },
     { to: '/inventory/landed-costs', label: 'nav.landedCosts', icon: Ship, section: 'inventory', order: 25, perm: 'inventory.stock.read', app: 'inventory' },
     { to: '/inventory/operations', label: 'nav.operations', icon: ClipboardList, section: 'inventory', order: 20, perm: 'inventory.stock.read', app: 'inventory' },
     { to: '/inventory/warehouses', label: 'nav.warehouses', icon: Warehouse, section: 'inventory', order: 30, perm: 'inventory.stock.read', app: 'inventory' },

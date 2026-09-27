@@ -38,7 +38,7 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
     const e = err as { statusCode?: number; message?: string; code?: string };
     const msg = e.message ?? '';
     // Database-level guards (triggers / constraints) are the last line of defense.
-    if (msg.includes('ledger:') || msg.includes('documents:') || msg.includes('payments:') || msg.includes('audit log')) {
+    if (msg.includes('ledger:') || msg.includes('documents:') || msg.includes('payments:') || msg.includes('bank:') || msg.includes('audit log')) {
       return reply.status(409).send({ error: { code: 'integrity', message: msg, details: null } });
     }
     if (msg.includes('FOREIGN KEY constraint failed')) {

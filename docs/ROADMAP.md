@@ -61,7 +61,7 @@ away.
 
 ## Phase 2 — Operations
 
-- [ ] **Banking**: bank transfers between accounts, bank reconciliation,
+- [x] **Banking**: bank transfers between accounts, bank reconciliation,
       statement import (CSV)
 - [ ] **Multi-currency**: document currency + exchange rate, realised /
       unrealised FX gains & losses

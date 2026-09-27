@@ -183,7 +183,7 @@ function ChartPage() {
 
 export const accountsModule: WebModule = {
   id: 'accounts',
-  nav: [{ to: '/accounts', label: 'nav.chartOfAccounts', icon: ListTree, section: 'accounting', order: 10, perm: 'gl.accounts.read' }],
+  nav: [{ to: '/accounts', label: 'nav.chartOfAccounts', icon: ListTree, section: 'gl', order: 10, perm: 'gl.accounts.read' }],
   routes: [{ path: '/accounts', element: <ChartPage /> }],
   commands: [{ id: 'go-accounts', label: 'nav.chartOfAccounts', icon: ListTree, group: 'navigate', to: '/accounts', perm: 'gl.accounts.read', keywords: 'coa chart دليل حسابات' }],
 };

@@ -6,6 +6,24 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Banking** (Treasury app, new `bank` module):
+  - transfers between cash and bank accounts, with bank charges, draft → post → void;
+  - bank reconciliation: statements per account, CSV import with column guessing
+    (English/Arabic headers, one signed or separate in/out columns, date format), automatic matching
+    by amount and date (±10 days, reference first), manual match/unmatch, one-click entries for bank
+    charges and interest, finish only when every line is matched and the balances agree;
+  - reconciled statements are locked (database triggers) and their entries cannot be reversed until reopened;
+  - "not at the bank yet" amount explains the gap between the statement and the books;
+  - new rights `treasury.transfers.*` and `treasury.statements.*`; health checks for statements and matches.
+- **Menus by professional module, like SAP:** General ledger (GL), Receivables (AR), Payables (AP),
+  Treasury (TR), Tax (TX), Controlling (CO), Purchasing (MM), Inventory (IM), Analytics, Administration —
+  each with its module code. Sections fold and unfold (remembered per computer); the section of the open
+  page always stays open. Each module's own reports sit in its section (trial balance, ageing, VAT
+  summary, profit by cost center). Same grouping in the top-menu layout.
+
+## 2026-09-27 — Professional modules, roles, editions, docs (PR #3)
+
+### Added
 - **Professional modules** like SAP/Odoo: General ledger (GL), Receivables (AR), Payables (AP),
   Treasury, Tax and Controlling (CO, cost centers) are separate modules and separate apps,
   next to Inventory, Purchase orders and Price lists.
