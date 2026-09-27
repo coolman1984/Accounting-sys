@@ -1,7 +1,9 @@
 import type { ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, nowIso } from '../../kernel/dates.js';
-import { computeLine, divRound, sum } from '../../kernel/money.js';
+import { computeLine, divRound, fxToBase, sum } from '../../kernel/money.js';
+import { ON_DEMAND } from '../ledger/chart-template.js';
+import type {} from '../../contracts/fx.js';
 import type { JournalLineInput } from '../ledger/service.js';
 import type { DocKindInfo, DocSide, DocSideInfo, Document, DocumentLine, DocumentsService as DocumentsContract } from '../../contracts/documents.js';
 import type { Tax } from '../../contracts/tax.js';
@@ -42,6 +44,9 @@ export interface DocInput {
   againstDocumentId?: number | null;
   /** Default warehouse for stock lines. */
   warehouseId?: number | null;
+  /** Document currency (default: the company's) and its rate (default: the day's rate). */
+  currency?: string | null;
+  exchangeRate?: number | null;
   lines: DocLineInput[];
 }
 
@@ -66,6 +71,8 @@ export interface ComputedLine {
   net: number;
   tax: number;
   total: number;
+  base_net: number;
+  base_tax: number;
 }
 
 export type DocumentsService = ReturnType<typeof createDocuments>;
@@ -88,7 +95,25 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     return db.get<Document>('SELECT * FROM documents WHERE id = ?', [id]) ?? notFound('document', id);
   }
 
-  function computeLines(input: DocInput): ComputedLine[] {
+  const baseCurrency = () => services.get('settings').company().baseCurrency;
+  const fxOn = () => services.has('fx') && apps.isEnabled('fx');
+
+  /** Currency and rate of a document; credit notes take the currency and rate of the document they correct. */
+  function currencyOf(input: DocInput): { currency: string; rate: number } {
+    const currency = (input.currency ?? baseCurrency()).toUpperCase();
+    const orig = input.againstDocumentId ? get(input.againstDocumentId) : null;
+    if (orig && orig.currency !== currency) fail('fx.currency_mismatch', `A correction must be in ${orig.currency}, like ${orig.number}`, { currency: orig.currency });
+    if (currency === baseCurrency()) return { currency, rate: 1_000_000 };
+    if (!fxOn()) fail('fx.unavailable', 'Multi-currency is switched off');
+    const fx = services.get('fx');
+    fx.assertCurrency(currency);
+    if (orig) return { currency, rate: orig.exchange_rate };
+    const rate = input.exchangeRate ?? fx.rate(currency, input.date);
+    if (!Number.isSafeInteger(rate) || rate <= 0) fail('fx.invalid_rate', 'Invalid exchange rate');
+    return { currency, rate };
+  }
+
+  function computeLines(input: DocInput, fxRate = 1_000_000): ComputedLine[] {
     const side = KIND_INFO[input.kind].side;
     if (input.lines.length === 0) fail('document.no_lines', 'Add at least one line');
     return input.lines.map((l, i) => {
@@ -157,6 +182,8 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
         ext,
         cost_center_id: costCenterId,
         ...c,
+        base_net: fxToBase(c.net, fxRate),
+        base_tax: fxToBase(c.tax, fxRate),
       };
     });
   }
@@ -182,12 +209,19 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
 
   function writeDoc(id: number | null, input: DocInput, userId: number | null): number {
     const { due } = validateHeader(input, id);
-    const lines = computeLines(input);
+    const { currency, rate } = currencyOf(input);
+    const lines = computeLines(input, rate);
     const totals = {
       subtotal: sum(lines.map((l) => l.net)),
       discount_total: sum(lines.map((l) => l.discount)),
       tax_total: sum(lines.map((l) => l.tax)),
       total: sum(lines.map((l) => l.total)),
+      // Base totals are sums of converted lines, so the journal balances to the cent.
+      base_subtotal: sum(lines.map((l) => l.base_net)),
+      base_tax_total: sum(lines.map((l) => l.base_tax)),
+      base_total: sum(lines.map((l) => l.base_net + l.base_tax)),
+      currency,
+      exchange_rate: rate,
     };
     const header = {
       kind: input.kind,
@@ -207,7 +241,6 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
       if (docId == null) {
         docId = db.insert('documents', {
           ...header,
-          currency: services.get('settings').company().baseCurrency,
           status: 'draft',
           created_by: userId,
           created_at: nowIso(),
@@ -255,23 +288,25 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
       byAccount.set(k, cur);
     };
     for (const l of lines(doc.id)) {
-      if (l.net !== 0) add(l.account_id, l.cost_center_id ?? null, l.net);
-      if (l.tax !== 0) {
+      if (l.base_net !== 0) add(l.account_id, l.cost_center_id ?? null, l.base_net);
+      if (l.base_tax !== 0) {
         // Posted with the tax it was drafted with, even if the Tax app was switched off since.
         const t = db.get<Tax>('SELECT * FROM taxes WHERE id = ?', [l.tax_id]) ?? notFound('tax', l.tax_id ?? 0);
         const taxAcc = info.side === 'sales' ? t.sales_account_id : t.purchase_account_id;
         if (!taxAcc) fail('tax.account_required', `Tax ${t.code} has no ${info.side === 'sales' ? 'output' : 'input'} account`);
-        add(taxAcc!, null, l.tax);
+        add(taxAcc!, null, l.base_tax);
       }
     }
     const out: JournalLineInput[] = [];
     // Control account line (the party balance).
+    const foreign = doc.currency !== baseCurrency();
     out.push({
       accountId: control,
       partyId: party.id,
-      debit: controlDebit ? doc.total : 0,
-      credit: controlDebit ? 0 : doc.total,
+      debit: controlDebit ? doc.base_total : 0,
+      credit: controlDebit ? 0 : doc.base_total,
       description: party.name,
+      ...(foreign ? { currency: doc.currency, amountFx: controlDebit ? doc.total : -doc.total } : {}),
     });
     for (const { acc, cc, amt } of byAccount.values()) {
       if (amt === 0) continue;
@@ -284,6 +319,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     const doc = get(id);
     if (doc.status !== 'draft') conflict('document.not_draft', 'Document is already posted');
     if (doc.total <= 0) fail('document.zero_total', 'The document total must be greater than zero');
+    if (doc.currency !== baseCurrency() && !fxOn()) fail('fx.unavailable', 'Multi-currency is switched off');
     const info = KIND_INFO[doc.kind];
     const party = parties().get(doc.party_id);
     parties().assertKind(party, info.side === 'sales' ? 'customer' : 'supplier');
@@ -294,8 +330,35 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
          WHERE l.party_id = ? AND a.subtype = 'receivable'`,
         [party.id],
       )!.b;
-      if (bal + doc.total > party.credit_limit) {
-        fail('party.credit_limit', `${party.name} would exceed the credit limit`, { balance: bal, limit: party.credit_limit, total: doc.total });
+      if (bal + doc.base_total > party.credit_limit) {
+        fail('party.credit_limit', `${party.name} would exceed the credit limit`, { balance: bal, limit: party.credit_limit, total: doc.base_total });
+      }
+    }
+
+    // A credit note settles the document it corrects. Both sides are valued in base currency;
+    // any rounding cent between them is an exchange difference, booked in the same entry.
+    const jl = journalLines(doc);
+    let credit: { orig: Document; amount: number; origBase: number; ownBase: number } | null = null;
+    if (doc.against_document_id) {
+      const orig = get(doc.against_document_id);
+      const amount = Math.min(doc.total, orig.total - orig.amount_settled);
+      if (amount > 0) {
+        const origBase = baseFor(orig, amount);
+        const ownBase = baseFor(doc, amount);
+        credit = { orig, amount, origBase, ownBase };
+        const diff = ownBase - origBase;
+        if (diff !== 0) {
+          const control = jl[0].accountId;
+          const sales = info.side === 'sales';
+          // Sales: the receivable must rise by diff (gain when positive). Purchases: the payable must rise (loss when positive).
+          const gain = sales ? diff : -diff;
+          jl.push({ accountId: control, partyId: party.id, debit: sales && diff > 0 ? diff : !sales && diff < 0 ? -diff : 0, credit: sales && diff < 0 ? -diff : !sales && diff > 0 ? diff : 0, description: 'Exchange difference', currency: doc.currency, amountFx: 0 });
+          jl.push(
+            gain > 0
+              ? { accountId: ledger().ensureDefaultAccount('fxGain', ON_DEMAND.fxGain), debit: 0, credit: gain }
+              : { accountId: ledger().ensureDefaultAccount('fxLoss', ON_DEMAND.fxLoss), debit: -gain, credit: 0 },
+          );
+        }
       }
     }
 
@@ -306,7 +369,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
           date: doc.date,
           reference: number,
           memo: `${number} — ${party.name}`,
-          lines: journalLines(doc),
+          lines: jl,
         },
         { sourceType: doc.kind, sourceId: doc.id, userId },
       );
@@ -315,13 +378,9 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
         [number, entryId, nowIso(), nowIso(), id],
       );
       // A credit note raised against an invoice immediately settles it (as far as it's still open).
-      if (doc.against_document_id) {
-        const orig = get(doc.against_document_id);
-        const amount = Math.min(doc.total, orig.total - orig.amount_settled);
-        if (amount > 0) {
-          settle(orig.id, { sourceType: 'credit', sourceId: doc.id, sourceNumber: number, amount, date: doc.date });
-          db.run('UPDATE documents SET amount_settled = amount_settled + ? WHERE id = ?', [amount, doc.id]);
-        }
+      if (credit) {
+        settle(credit.orig.id, { sourceType: 'credit', sourceId: doc.id, sourceNumber: number, amount: credit.amount, date: doc.date, baseAmount: credit.origBase, sourceBaseAmount: credit.ownBase });
+        db.run('UPDATE documents SET amount_settled = amount_settled + ?, base_settled = base_settled + ? WHERE id = ?', [credit.amount, credit.ownBase, doc.id]);
       }
       audit().log({ userId, action: 'post', entity: 'document', entityId: id, summary: number });
       events.emit('document.posted', { documentId: id, kind: doc.kind, userId });
@@ -338,7 +397,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     db.tx(() => {
       // Undo credits this note applied to other documents.
       unsettleSource('credit', id);
-      db.run('UPDATE documents SET amount_settled = 0 WHERE id = ?', [id]);
+      db.run('UPDATE documents SET amount_settled = 0, base_settled = 0 WHERE id = ?', [id]);
       const revId = ledger().reverseEntry(doc.journal_entry_id!, { date: opts.date ?? doc.date, memo: `Void ${doc.number}` }, userId);
       db.run(`UPDATE documents SET status = 'void', void_entry_id = ?, voided_at = ?, updated_at = ? WHERE id = ?`, [
         revId,
@@ -362,9 +421,15 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
 
   // ----------------------------------------------------------- settlements
 
+  /** Base value of settling `amount`: at the document's rate, or exactly what is left when it clears the document. */
+  function baseFor(doc: Document, amount: number): number {
+    if (amount === doc.total - doc.amount_settled) return doc.base_total - doc.base_settled;
+    return fxToBase(amount, doc.exchange_rate);
+  }
+
   function settle(
     documentId: number,
-    s: { sourceType: 'payment' | 'credit'; sourceId: number; sourceNumber: string | null; amount: number; date: string },
+    s: { sourceType: 'payment' | 'credit'; sourceId: number; sourceNumber: string | null; amount: number; date: string; baseAmount?: number; sourceBaseAmount?: number },
   ): void {
     const doc = get(documentId);
     if (doc.status !== 'posted') fail('settlement.not_posted', `${doc.number ?? 'Draft'} is not posted`);
@@ -372,6 +437,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     if (s.amount <= 0 || s.amount > outstanding) {
       fail('settlement.exceeds', `Amount exceeds what is outstanding on ${doc.number}`, { number: doc.number, outstanding });
     }
+    const base = s.baseAmount ?? baseFor(doc, s.amount);
     db.tx(() => {
       db.insert('settlements', {
         document_id: documentId,
@@ -379,21 +445,23 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
         source_id: s.sourceId,
         source_number: s.sourceNumber,
         amount: s.amount,
+        base_amount: base,
+        source_base_amount: s.sourceBaseAmount ?? base,
         date: s.date,
         created_at: nowIso(),
       });
-      db.run('UPDATE documents SET amount_settled = amount_settled + ?, updated_at = ? WHERE id = ?', [s.amount, nowIso(), documentId]);
+      db.run('UPDATE documents SET amount_settled = amount_settled + ?, base_settled = base_settled + ?, updated_at = ? WHERE id = ?', [s.amount, base, nowIso(), documentId]);
     });
   }
 
   function unsettleSource(sourceType: 'payment' | 'credit', sourceId: number): void {
     db.tx(() => {
-      const rows = db.all<{ id: number; document_id: number; amount: number }>(
-        'SELECT id, document_id, amount FROM settlements WHERE source_type = ? AND source_id = ?',
+      const rows = db.all<{ id: number; document_id: number; amount: number; base_amount: number }>(
+        'SELECT id, document_id, amount, base_amount FROM settlements WHERE source_type = ? AND source_id = ?',
         [sourceType, sourceId],
       );
       for (const r of rows) {
-        db.run('UPDATE documents SET amount_settled = amount_settled - ?, updated_at = ? WHERE id = ?', [r.amount, nowIso(), r.document_id]);
+        db.run('UPDATE documents SET amount_settled = amount_settled - ?, base_settled = base_settled - ?, updated_at = ? WHERE id = ?', [r.amount, r.base_amount, nowIso(), r.document_id]);
         db.run('DELETE FROM settlements WHERE id = ?', [r.id]);
       }
     });
@@ -403,6 +471,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     get,
     lines,
     settle,
+    baseFor,
     unsettleSource,
     registerKind: (kind, info) => void kinds.set(kind, info),
     registerSide: (side, info) => void sides.set(side, info),

@@ -10,6 +10,7 @@ const zTransfer = z.object({
   fromAccountId: zId,
   toAccountId: zId,
   amount: zPositiveMinor,
+  toAmount: zPositiveMinor.nullish().transform((v) => v ?? null),
   fee: zMinor.min(0).default(0),
   feeAccountId: zOptId.transform((v) => v ?? null),
   reference: zOptText(100),
@@ -95,6 +96,7 @@ export const bankModule: AppModule = {
       return db.all(
         `SELECT a.id, a.code, a.name_en, a.name_ar, a.subtype, a.is_active,
                 COALESCE((SELECT SUM(debit - credit) FROM ledger l WHERE l.account_id = a.id), 0) AS balance,
+                a.currency, COALESCE((SELECT SUM(amount_fx) FROM ledger l WHERE l.account_id = a.id), 0) AS balance_fx,
                 (SELECT date FROM bank_statements s WHERE s.account_id = a.id AND s.status = 'reconciled' ORDER BY date DESC, id DESC LIMIT 1) AS reconciled_to,
                 (SELECT closing_balance FROM bank_statements s WHERE s.account_id = a.id AND s.status = 'reconciled' ORDER BY date DESC, id DESC LIMIT 1) AS reconciled_balance,
                 (SELECT id FROM bank_statements s WHERE s.account_id = a.id AND s.status = 'open' LIMIT 1) AS open_statement_id,

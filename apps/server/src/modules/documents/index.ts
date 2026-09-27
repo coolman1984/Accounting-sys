@@ -32,6 +32,8 @@ const zDoc = z.object({
   taxInclusive: z.boolean().default(false),
   againstDocumentId: zOptId.transform((v) => v ?? null),
   warehouseId: zOptId.transform((v) => v ?? null),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullish().transform((v) => v ?? null),
+  exchangeRate: z.number().int().positive().nullish().transform((v) => v ?? null),
   lines: z.array(zLine).min(1).max(500),
   post: z.boolean().default(false),
 });
@@ -46,8 +48,12 @@ export const documentsModule: AppModule = {
   health({ db }) {
     const over = db.get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE amount_settled < 0 OR amount_settled > total")!.n;
     const drift = db.get<{ n: number }>(
+      // A credit note's own progress also counts what it applied to the document it corrects.
       `SELECT COUNT(*) n FROM documents d
-       WHERE d.amount_settled <> (SELECT COALESCE(SUM(amount), 0) FROM settlements s WHERE s.document_id = d.id)`,
+       WHERE d.amount_settled <> (SELECT COALESCE(SUM(amount), 0) FROM settlements s WHERE s.document_id = d.id)
+                               + (SELECT COALESCE(SUM(amount), 0) FROM settlements s WHERE s.source_type = 'credit' AND s.source_id = d.id)
+          OR d.base_settled <> (SELECT COALESCE(SUM(base_amount), 0) FROM settlements s WHERE s.document_id = d.id)
+                             + (SELECT COALESCE(SUM(source_base_amount), 0) FROM settlements s WHERE s.source_type = 'credit' AND s.source_id = d.id)`,
     )!.n;
     const unposted = db.get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE status = 'posted' AND journal_entry_id IS NULL")!.n;
     return [
@@ -98,14 +104,15 @@ export const documentsModule: AppModule = {
       const w = 'WHERE ' + where.join(' AND ');
       const rows = db.all(
         `SELECT d.id, d.kind, d.number, d.date, d.due_date, d.reference, d.status, d.subtotal, d.tax_total, d.total,
-                d.amount_settled, d.party_id, pa.name AS party_name
+                d.amount_settled, d.currency, d.exchange_rate, d.base_total, d.base_total - d.base_settled AS base_outstanding,
+                d.party_id, pa.name AS party_name
          FROM documents d JOIN parties pa ON pa.id = d.party_id
          ${w} ORDER BY d.date DESC, d.id DESC LIMIT :limit OFFSET :offset`,
         { ...p, limit, offset },
       );
       const agg = db.get<{ n: number; total: number; outstanding: number }>(
-        `SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN d.status = 'posted' THEN d.total END), 0) total,
-                COALESCE(SUM(CASE WHEN d.status = 'posted' THEN d.total - d.amount_settled END), 0) outstanding
+        `SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN d.status = 'posted' THEN d.base_total END), 0) total,
+                COALESCE(SUM(CASE WHEN d.status = 'posted' THEN d.base_total - d.base_settled END), 0) outstanding
          FROM documents d JOIN parties pa ON pa.id = d.party_id ${w}`,
         p,
       )!;
@@ -206,9 +213,10 @@ export const documentsModule: AppModule = {
       // Sign so that a positive number is what the party owes us (receivable) / we owe them (payable).
       const docs = db.all<{ id: number; kind: string; party_id: number; number: string; date: string; due_date: string; outstanding: number }>(
         `SELECT d.id, d.kind, d.party_id, d.number, d.date, d.due_date,
-                d.total - COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.document_id = d.id AND s.date <= :asOf), 0)
+                d.currency,
+                d.base_total - COALESCE((SELECT SUM(s.base_amount) FROM settlements s WHERE s.document_id = d.id AND s.date <= :asOf), 0)
                         - (CASE WHEN d.kind IN ('sales_credit', 'purchase_credit')
-                                THEN COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.source_type = 'credit' AND s.source_id = d.id AND s.date <= :asOf), 0)
+                                THEN COALESCE((SELECT SUM(s.source_base_amount) FROM settlements s WHERE s.source_type = 'credit' AND s.source_id = d.id AND s.date <= :asOf), 0)
                                 ELSE 0 END) AS outstanding
          FROM documents d
          WHERE d.kind IN (${kinds.map((k) => `'${k}'`).join(',')}) AND d.date <= :asOf
@@ -268,12 +276,12 @@ export const documentsModule: AppModule = {
       const t = today();
       const kind = side === 'sales' ? 'sales_invoice' : 'purchase_bill';
       const overdue = db.get<{ n: number; amount: number }>(
-        `SELECT COUNT(*) n, COALESCE(SUM(total - amount_settled), 0) amount FROM documents
+        `SELECT COUNT(*) n, COALESCE(SUM(base_total - base_settled), 0) amount FROM documents
          WHERE kind = ? AND status = 'posted' AND amount_settled < total AND due_date < ?`,
         [kind, t],
       )!;
       const dueSoon = db.get<{ n: number; amount: number }>(
-        `SELECT COUNT(*) n, COALESCE(SUM(total - amount_settled), 0) amount FROM documents
+        `SELECT COUNT(*) n, COALESCE(SUM(base_total - base_settled), 0) amount FROM documents
          WHERE kind = ? AND status = 'posted' AND amount_settled < total AND due_date BETWEEN ? AND ?`,
         [kind, t, addDays(t, 7)],
       )!;

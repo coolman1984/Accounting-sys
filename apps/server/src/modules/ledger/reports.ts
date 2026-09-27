@@ -3,6 +3,7 @@ import type { ModuleContext, Router } from '../../kernel/modules.js';
 import { addDays, addMonths, endOfMonth, startOfMonth, today } from '../../kernel/dates.js';
 import { parse, zDate, zId } from '../../kernel/validate.js';
 import type { Account, Movement } from './service.js';
+import { createStatements } from './statements.js';
 
 interface Row {
   id: number;
@@ -21,7 +22,8 @@ const netDebit = (m?: Movement) => (m ? m.debit - m.credit : 0);
  * flow) and the ledger figures of the home page. Sub-ledger reports live with
  * their modules (ageing in the billing engine, VAT in Tax, cost centers in CO).
  */
-export function mountGlReports(r: Router, { db, services }: ModuleContext) {
+export function mountGlReports(r: Router, ctx: ModuleContext) {
+    const { db, services } = ctx;
     const ledger = services.get('ledger');
 
     /** Current fiscal year (or the calendar year) for defaults. */
@@ -127,48 +129,8 @@ export function mountGlReports(r: Router, { db, services }: ModuleContext) {
       };
     });
 
-    // -------------------------------------------------------- income statement
-    const incomeStatement = (from: string, to: string, cmp?: { from: string; to: string }) => {
-      const mv = ledger.movements({ from, to, excludeClosing: true });
-      const mc = cmp ? ledger.movements({ from: cmp.from, to: cmp.to, excludeClosing: true }) : null;
-      const accts = postable();
-      const credit = (m: Map<number, Movement>) => (a: Account) => -netDebit(m.get(a.id));
-      const debit = (m: Map<number, Movement>) => (a: Account) => netDebit(m.get(a.id));
-      const section = (filter: (a: Account) => boolean, sign: 'credit' | 'debit') => {
-        const list = accts.filter(filter);
-        const f = sign === 'credit' ? credit : debit;
-        return rowsFor(list, f(mv), mc ? f(mc) : undefined);
-      };
-      const revenue = section((a) => a.type === 'income' && a.subtype === 'operating_income', 'credit');
-      const cogs = section((a) => a.type === 'expense' && a.subtype === 'cogs', 'debit');
-      const opex = section((a) => a.type === 'expense' && (a.subtype === 'operating_expense' || a.subtype === 'depreciation'), 'debit');
-      const otherIncome = section((a) => a.type === 'income' && a.subtype === 'other_income', 'credit');
-      const otherExpense = section((a) => a.type === 'expense' && a.subtype === 'other_expense', 'debit');
-      const t = (k: 'amount' | 'compare') => {
-        const rev = total(revenue, k);
-        const gross = rev - total(cogs, k);
-        const operating = gross - total(opex, k);
-        const net = operating + total(otherIncome, k) - total(otherExpense, k);
-        return {
-          revenue: rev,
-          cogs: total(cogs, k),
-          grossProfit: gross,
-          operatingExpenses: total(opex, k),
-          operatingProfit: operating,
-          otherIncome: total(otherIncome, k),
-          otherExpenses: total(otherExpense, k),
-          netProfit: net,
-        };
-      };
-      return {
-        from,
-        to,
-        compare: cmp ?? null,
-        sections: { revenue, cogs, operatingExpenses: opex, otherIncome, otherExpenses: otherExpense },
-        totals: t('amount'),
-        compareTotals: cmp ? t('compare') : null,
-      };
-    };
+    // --------------------------------------------------------------- statements
+    const st = createStatements(ctx);
 
     r.get('/reports/income-statement', 'gl.reports.read', ({ query }) => {
       const def = currentYear();
@@ -177,96 +139,24 @@ export function mountGlReports(r: Router, { db, services }: ModuleContext) {
         query,
       );
       const cmp = q.compareFrom && q.compareTo ? { from: q.compareFrom, to: q.compareTo } : undefined;
-      return incomeStatement(q.from, q.to, cmp);
+      return st.incomeStatement(q.from, q.to, cmp);
     });
-
-    // ----------------------------------------------------------- balance sheet
-    const balanceSheet = (asOf: string, compareAsOf?: string | null) => {
-      const mv = ledger.movements({ to: asOf });
-      const mc = compareAsOf ? ledger.movements({ to: compareAsOf }) : null;
-      const accts = postable();
-      const dr = (m: Map<number, Movement>) => (a: Account) => netDebit(m.get(a.id));
-      const cr = (m: Map<number, Movement>) => (a: Account) => -netDebit(m.get(a.id));
-      const sec = (subs: string[], side: 'dr' | 'cr') => {
-        const f = side === 'dr' ? dr : cr;
-        return rowsFor(accts.filter((a) => subs.includes(a.subtype)), f(mv), mc ? f(mc) : undefined);
-      };
-      const currentAssets = sec(['cash', 'bank', 'receivable', 'inventory', 'current_asset'], 'dr');
-      const nonCurrentAssets = sec(['fixed_asset', 'accumulated_depreciation', 'non_current_asset'], 'dr');
-      const currentLiabilities = sec(['payable', 'current_liability'], 'cr');
-      const nonCurrentLiabilities = sec(['non_current_liability'], 'cr');
-      const equity = sec(['equity', 'retained_earnings'], 'cr');
-      // Profit not yet closed into retained earnings.
-      const unclosed = (m: Map<number, Movement>) =>
-        -accts.filter((a) => a.type === 'income' || a.type === 'expense').reduce((s, a) => s + netDebit(m.get(a.id)), 0);
-      const earnings = unclosed(mv);
-      const earningsCmp = mc ? unclosed(mc) : undefined;
-      const t = (k: 'amount' | 'compare', e: number) => {
-        const assets = total(currentAssets, k) + total(nonCurrentAssets, k);
-        const liabilities = total(currentLiabilities, k) + total(nonCurrentLiabilities, k);
-        const eq = total(equity, k) + e;
-        return {
-          currentAssets: total(currentAssets, k),
-          nonCurrentAssets: total(nonCurrentAssets, k),
-          assets,
-          currentLiabilities: total(currentLiabilities, k),
-          nonCurrentLiabilities: total(nonCurrentLiabilities, k),
-          liabilities,
-          equity: eq,
-          liabilitiesAndEquity: liabilities + eq,
-          balanced: assets === liabilities + eq,
-        };
-      };
-      return {
-        asOf,
-        compareAsOf: compareAsOf ?? null,
-        sections: { currentAssets, nonCurrentAssets, currentLiabilities, nonCurrentLiabilities, equity },
-        currentEarnings: earnings,
-        compareCurrentEarnings: earningsCmp ?? null,
-        totals: t('amount', earnings),
-        compareTotals: mc ? t('compare', earningsCmp!) : null,
-      };
-    };
 
     r.get('/reports/balance-sheet', 'gl.reports.read', ({ query }) => {
       const q = parse(z.object({ asOf: zDate.default(today()), compareAsOf: zDate.nullish() }), query);
-      return balanceSheet(q.asOf, q.compareAsOf);
+      return st.balanceSheet(q.asOf, q.compareAsOf);
     });
 
-    // --------------------------------------------------------------- cash flow
     r.get('/reports/cash-flow', 'gl.reports.read', ({ query }) => {
       const def = currentYear();
       const q = parse(z.object({ from: zDate.default(def.from), to: zDate.default(def.to) }), query);
-      const mv = ledger.movements({ from: q.from, to: q.to, excludeClosing: true });
-      const before = ledger.movements({ to: addDays(q.from, -1) });
-      const accts = postable();
-      const isCash = (a: Account) => a.subtype === 'cash' || a.subtype === 'bank';
-      const flow = (a: Account) => -netDebit(mv.get(a.id)); // cash effect of a change in a non-cash account
-      const pick = (subs: string[]) => rowsFor(accts.filter((a) => subs.includes(a.subtype)), flow);
+      return st.cashFlow(q.from, q.to);
+    });
 
-      const netIncome = -accts.filter((a) => a.type === 'income' || a.type === 'expense').reduce((s, a) => s + netDebit(mv.get(a.id)), 0);
-      const nonCash = pick(['accumulated_depreciation']);
-      const workingCapital = pick(['receivable', 'inventory', 'current_asset', 'payable', 'current_liability']);
-      const investing = pick(['fixed_asset', 'non_current_asset']);
-      const financing = pick(['non_current_liability', 'equity', 'retained_earnings']);
-
-      const operatingTotal = netIncome + total(nonCash) + total(workingCapital);
-      const investingTotal = total(investing);
-      const financingTotal = total(financing);
-      const netChange = operatingTotal + investingTotal + financingTotal;
-      const cashAccts = accts.filter(isCash);
-      const openingCash = cashAccts.reduce((s, a) => s + netDebit(before.get(a.id)), 0);
-      const cashChange = cashAccts.reduce((s, a) => s + netDebit(mv.get(a.id)), 0);
-      return {
-        ...q,
-        operating: { netIncome, nonCash, workingCapital, total: operatingTotal },
-        investing: { rows: investing, total: investingTotal },
-        financing: { rows: financing, total: financingTotal },
-        netChange,
-        openingCash,
-        closingCash: openingCash + cashChange,
-        reconciled: netChange === cashChange,
-      };
+    r.get('/reports/equity-changes', 'gl.reports.read', ({ query }) => {
+      const def = currentYear();
+      const q = parse(z.object({ from: zDate.default(def.from), to: zDate.default(def.to) }), query);
+      return st.equityChanges(q.from, q.to);
     });
 
     // ------------------------------------------------------------------- aging

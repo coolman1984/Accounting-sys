@@ -552,7 +552,7 @@ export const inventoryModule: AppModule = {
       const sales = db.all<{ item_id: number; qty: number; revenue: number }>(
         `SELECT l.item_id,
                 SUM(CASE WHEN d.kind = 'sales_invoice' THEN l.base_quantity ELSE -l.base_quantity END) qty,
-                SUM(CASE WHEN d.kind = 'sales_invoice' THEN l.net ELSE -l.net END) revenue
+                SUM(CASE WHEN d.kind = 'sales_invoice' THEN l.base_net ELSE -l.base_net END) revenue
          FROM document_lines l JOIN documents d ON d.id = l.document_id
          WHERE d.kind IN ('sales_invoice', 'sales_credit') AND d.status = 'posted' AND l.item_id IS NOT NULL
            AND d.date BETWEEN ? AND ? GROUP BY l.item_id`,

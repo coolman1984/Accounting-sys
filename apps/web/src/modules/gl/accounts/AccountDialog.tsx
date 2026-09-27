@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useCurrencies } from '../../../ui/Currency';
 import { useI18n } from '../../../core/i18n';
 import { useApi, useApiMutation, useErrorText } from '../../../core/hooks';
 import { api } from '../../../core/api';
 import type { Account, AccountType } from '../../../core/types';
 import { Dialog } from '../../../ui/Dialog';
 import { Button } from '../../../ui/Button';
-import { Checkbox, Field, Input, Select, Textarea } from '../../../ui/Field';
+import { Checkbox, DecimalInput, Field, Input, Select, Textarea } from '../../../ui/Field';
 import { AccountPicker } from '../../../ui/Pickers';
 import { useToast } from '../../../ui/Toast';
 
@@ -29,6 +30,7 @@ export function AccountDialog({
   const toast = useToast();
   const errText = useErrorText();
   const { data: meta } = useApi<Meta>('/accounts/meta');
+  const cur = useCurrencies();
   const blank = {
     code: '',
     nameEn: '',
@@ -39,6 +41,9 @@ export function AccountDialog({
     isGroup: false,
     isActive: true,
     description: '',
+    currency: '' as string,
+    variableBp: null as number | null,
+    lease: false,
   };
   const [f, setF] = useState(blank);
   const [err, setErr] = useState('');
@@ -57,6 +62,9 @@ export function AccountDialog({
         isGroup: !!account.is_group,
         isActive: !!account.is_active,
         description: account.description ?? '',
+        currency: account.currency ?? '',
+        variableBp: account.variable_bp,
+        lease: account.analysis_tag === 'lease',
       });
     } else if (parent) {
       setF({ ...blank, type: parent.type, subtype: parent.subtype, parentId: parent.id });
@@ -71,7 +79,7 @@ export function AccountDialog({
 
   const submit = () =>
     save.mutate(
-      { ...f, description: f.description || null } as typeof f,
+      { ...f, description: f.description || null, currency: f.currency || null, analysisTag: f.lease ? 'lease' : null } as typeof f,
       {
         onSuccess: () => {
           toast.success(t('common.saved'));
@@ -146,6 +154,34 @@ export function AccountDialog({
             </Select>
           </Field>
         </div>
+        {cur.on && (f.subtype === 'cash' || f.subtype === 'bank') && !f.isGroup && (
+          <Field label={t('fx.accountCurrency')} hint={t('fx.accountCurrencyHint')}>
+            <Select value={f.currency} onChange={(e) => set('currency', e.target.value)} disabled={!!account?.has_postings}>
+              <option value="">{cur.base}</option>
+              {cur.list.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {f.type === 'expense' && !f.isGroup && (
+          <div className="grid-2">
+            <Field label={t('accounts.variableShare')} hint={t('accounts.variableShareHint')}>
+              <DecimalInput
+                trim
+                scale={2}
+                value={f.variableBp}
+                placeholder={f.subtype === 'cogs' ? '100' : '0'}
+                onChange={(v) => set('variableBp', v == null ? null : Math.min(Math.max(v, 0), 10000))}
+              />
+            </Field>
+            <div className="field" style={{ justifyContent: 'flex-end', paddingTop: 26 }}>
+              <Checkbox label={t('accounts.isLease')} checked={f.lease} onChange={(v) => set('lease', v)} />
+            </div>
+          </div>
+        )}
         <Field label={`${t('common.description')} (${t('common.optional')})`}>
           <Textarea value={f.description} onChange={(e) => set('description', e.target.value)} rows={2} />
         </Field>

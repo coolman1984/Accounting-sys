@@ -63,8 +63,10 @@ away.
 
 - [x] **Banking**: bank transfers between accounts, bank reconciliation,
       statement import (CSV)
-- [ ] **Multi-currency**: document currency + exchange rate, realised /
+- [x] **Multi-currency**: document currency + exchange rate, realised /
       unrealised FX gains & losses
+- [x] **Financial analysis app**: full statement set, 50 ratios, DuPont, break-even, distress score, notes
+- [ ] Budgets and variance analysis (flexible budget, price / volume / mix variances)
 - [ ] Projects as a second dimension next to cost centers; budgets per cost center
 - [ ] Recurring invoices and journal templates
 - [ ] Quotations → sales orders → invoices; purchase orders → bills

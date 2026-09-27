@@ -19,6 +19,7 @@ import { useToast } from '../../ui/Toast';
 import { computeLine, KIND_UI } from './kinds';
 import { unitLabel } from '../../core/units';
 import { CostCenterSelect, useCostCenters } from '../../ui/CostCenter';
+import { CurrencyRateFields, RATE_ONE, toBase, useCurrencies } from '../../ui/Currency';
 
 interface Line {
   key: number;
@@ -68,6 +69,11 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   const [notes, setNotes] = useState('');
   const [inclusive, setInclusive] = useState(false);
   const [against, setAgainst] = useState<number | null>(params.get('against') ? Number(params.get('against')) : null);
+  const { base } = useCurrencies();
+  // '' = the company currency until the session is known.
+  const [fx, setFx] = useState<{ currency: string; rate: number }>({ currency: '', rate: RATE_ONE });
+  const currency = fx.currency || base;
+  const foreign = !!currency && currency !== base;
   const [lines, setLines] = useState<Line[]>([]);
   const [showAccounts, setShowAccounts] = useState(false);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
@@ -103,6 +109,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
     setNotes(existing.notes ?? '');
     setInclusive(!!existing.tax_inclusive);
     setAgainst(existing.against_document_id);
+    setFx({ currency: existing.currency, rate: existing.exchange_rate });
     setLines(
       existing.lines.map((l) => ({
         key: ++k,
@@ -137,10 +144,16 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   // Start in the party field only when a blank document opens.
   const [focusParty] = useState(() => !editing && !params.get('party') && !params.get('fromReceipt') && !params.get('fromPo') && !params.get('against'));
 
+  // A correction follows the currency and rate of the document it corrects.
   const { data: originals } = useApi<Paged<DocumentRow>>(
     ui.creditOf && partyId ? '/documents' : null,
     { kind: ui.creditOf, partyId: partyId ?? undefined, status: 'posted', limit: 200 },
   );
+  useEffect(() => {
+    const o = against ? originals?.rows.find((d) => d.id === against) : null;
+    if (o && (o.currency !== currency || o.exchange_rate !== fx.rate)) setFx({ currency: o.currency, rate: o.exchange_rate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [against, originals]);
 
   const rate = (taxId: number | null) => (taxId ? taxes?.find((x) => x.id === taxId)?.rate_bp ?? 0 : 0);
   const computed = lines.map((l) => computeLine(l.quantity ?? 0, l.unitPrice ?? 0, l.discountBp ?? 0, rate(l.taxId), inclusive));
@@ -296,6 +309,8 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
       taxInclusive: inclusive,
       againstDocumentId: against,
       warehouseId: warehouses ? warehouseId : null,
+      currency,
+      exchangeRate: foreign ? fx.rate : null,
       post,
       lines: lines
         .filter((l) => l.itemId || l.description.trim() || l.unitPrice)
@@ -406,7 +421,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                   <option value="">{t('docs.againstNone')}</option>
                   {(originals?.rows ?? []).map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.number} · {fmt(d.total - d.amount_settled)}
+                      {d.number} · {fmt(d.total - d.amount_settled)} {d.currency !== base ? d.currency : ''}
                     </option>
                   ))}
                 </Select>
@@ -423,6 +438,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
                 </Select>
               </Field>
             )}
+            <CurrencyRateFields currency={currency} rate={fx.rate} date={date} onChange={setFx} locked={!!against} />
             <div className="field" style={{ justifyContent: 'flex-end', paddingTop: 26 }}>
               <Checkbox label={t('docs.taxInclusive')} checked={inclusive} onChange={setInclusive} />
             </div>
@@ -572,8 +588,16 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
               )}
               <span className="t-label">{t('docs.taxTotal')}</span>
               <span className="t-value">{fmt(totals.tax)}</span>
-              <span className="t-label t-grand">{t('common.total')}</span>
+              <span className="t-label t-grand">
+                {t('common.total')} {foreign && <span className="faint">{currency}</span>}
+              </span>
               <span className="t-value t-grand">{fmt(totals.total)}</span>
+              {foreign && (
+                <>
+                  <span className="t-label faint">{t('fx.inBase', { base })}</span>
+                  <span className="t-value faint">{fmt(toBase(totals.total, fx.rate))}</span>
+                </>
+              )}
             </div>
           </Card>
         </div>

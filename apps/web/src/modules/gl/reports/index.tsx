@@ -1,12 +1,12 @@
 import { Link } from 'react-router';
-import { BarChart3, BookText, Droplets, Landmark, Scale, TrendingUp } from 'lucide-react';
+import { BarChart3, BookText, Droplets, Landmark, PieChart, Scale, TrendingUp } from 'lucide-react';
 import type { WebModule } from '../../../core/registry';
 import { useI18n } from '../../../core/i18n';
 import { PageHeader } from '../../../ui/Page';
 import { useContributedReports } from '../../../core/slots';
 import { useSession } from '../../../core/session';
 import { GeneralLedgerPage, TrialBalancePage } from './ledgers';
-import { BalanceSheetPage, CashFlowPage, IncomeStatementPage } from './statements';
+import { BalanceSheetPage, CashFlowPage, EquityChangesPage, IncomeStatementPage } from './statements';
 
 const GROUPS = [
   {
@@ -15,6 +15,7 @@ const GROUPS = [
       { to: '/reports/income-statement', title: 'reports.incomeStatement', desc: 'reports.incomeStatementDesc', icon: TrendingUp, color: 'var(--line-blue)' },
       { to: '/reports/balance-sheet', title: 'reports.balanceSheet', desc: 'reports.balanceSheetDesc', icon: Landmark, color: 'var(--line-purple)' },
       { to: '/reports/cash-flow', title: 'reports.cashFlow', desc: 'reports.cashFlowDesc', icon: Droplets, color: 'var(--line-teal)' },
+      { to: '/reports/equity-changes', title: 'reports.equityChanges', desc: 'reports.equityChangesDesc', icon: PieChart, color: 'var(--line-pink)' },
     ],
   },
   {
@@ -72,6 +73,8 @@ export const reportsModule: WebModule = {
     { to: '/reports/trial-balance', label: 'reports.trialBalance', icon: Scale, section: 'gl', order: 30, perm: 'gl.reports.read' },
     { to: '/reports/income-statement', label: 'reports.incomeStatement', icon: TrendingUp, section: 'gl', order: 40, perm: 'gl.reports.read' },
     { to: '/reports/balance-sheet', label: 'reports.balanceSheet', icon: Landmark, section: 'gl', order: 50, perm: 'gl.reports.read' },
+    { to: '/reports/cash-flow', label: 'reports.cashFlow', icon: Droplets, section: 'gl', order: 55, perm: 'gl.reports.read' },
+    { to: '/reports/equity-changes', label: 'reports.equityChanges', icon: PieChart, section: 'gl', order: 58, perm: 'gl.reports.read' },
     { to: '/reports', label: 'nav.reports', icon: BarChart3, section: 'insights', order: 10, end: true },
   ],
   routes: [
@@ -81,6 +84,7 @@ export const reportsModule: WebModule = {
     { path: '/reports/income-statement', element: <IncomeStatementPage /> },
     { path: '/reports/balance-sheet', element: <BalanceSheetPage /> },
     { path: '/reports/cash-flow', element: <CashFlowPage /> },
+    { path: '/reports/equity-changes', element: <EquityChangesPage /> },
   ],
   commands: [
     { id: 'go-reports', label: 'nav.reports', icon: BarChart3, group: 'navigate', to: '/reports', keywords: 'تقارير' },
@@ -88,6 +92,7 @@ export const reportsModule: WebModule = {
     { id: 'go-bs', label: 'reports.balanceSheet', icon: Landmark, group: 'navigate', to: '/reports/balance-sheet', perm: 'gl.reports.read', keywords: 'ميزانية' },
     { id: 'go-tb', label: 'reports.trialBalance', icon: Scale, group: 'navigate', to: '/reports/trial-balance', perm: 'gl.reports.read', keywords: 'ميزان مراجعة' },
     { id: 'go-gl', label: 'reports.generalLedger', icon: BookText, group: 'navigate', to: '/reports/general-ledger', perm: 'gl.reports.read', keywords: 'ledger أستاذ' },
+    { id: 'go-eq', label: 'reports.equityChanges', icon: PieChart, group: 'navigate', to: '/reports/equity-changes', perm: 'gl.reports.read', keywords: 'equity changes حقوق الملكية التغيرات' },
     { id: 'go-cf', label: 'reports.cashFlow', icon: Droplets, group: 'navigate', to: '/reports/cash-flow', perm: 'gl.reports.read', keywords: 'تدفقات نقدية' },
   ],
 };

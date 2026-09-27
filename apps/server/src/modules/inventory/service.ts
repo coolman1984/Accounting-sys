@@ -225,7 +225,7 @@ export function createInventory(ctx: ModuleContext) {
 
         let moves: StockMove[];
         if (doc.kind === 'purchase_bill') {
-          moves = moveIn(engine.allocateIn(item, l.base_quantity, lotsReq, l.line_no), l.net, base);
+          moves = moveIn(engine.allocateIn(item, l.base_quantity, lotsReq, l.line_no), l.base_net, base);
         } else if (doc.kind === 'sales_credit') {
           // Returns against an invoice come back at the cost they left at (and, for tracked items, into the lots they left from).
           const sold = doc.against_document_id
@@ -258,7 +258,7 @@ export function createInventory(ctx: ModuleContext) {
         }
         moves.forEach((m) => moveIds.push(m.id));
         const value = moves.reduce((s, m) => s + m.value, 0);
-        diffs.push({ invAccount: invAcc, counterAccount: cogsAccount(item), amount: value - ledgerEffect(doc.kind, l.net) });
+        diffs.push({ invAccount: invAcc, counterAccount: cogsAccount(item), amount: value - ledgerEffect(doc.kind, l.base_net) });
       }
       linkEntry(moveIds, postDifference(diffs, meta));
     });
@@ -271,7 +271,7 @@ export function createInventory(ctx: ModuleContext) {
    */
   function matchReceipt(
     supplierId: number,
-    l: { id: number; line_no: number; base_quantity: number; net: number; account_id: number },
+    l: { id: number; line_no: number; base_quantity: number; net: number; base_net: number; account_id: number },
     item: Item,
     receiptLineId: number,
     meta: PostMeta,
@@ -289,7 +289,7 @@ export function createInventory(ctx: ModuleContext) {
     }
     const clearing = l.base_quantity === remaining ? g.value - g.billed_value : mulDiv(g.value, l.base_quantity, g.base_quantity);
     db.run('UPDATE goods_receipt_lines SET billed_base = billed_base + ?, billed_value = billed_value + ? WHERE id = ?', [l.base_quantity, clearing, g.id]);
-    const variance = l.net - clearing;
+    const variance = l.base_net - clearing;
     const p = engine.pool(item.id);
     let toInv = p.qty <= 0 ? 0 : p.qty >= l.base_quantity ? variance : mulDiv(variance, p.qty, l.base_quantity);
     if (p.value + toInv < 0) toInv = -p.value;
@@ -329,7 +329,7 @@ export function createInventory(ctx: ModuleContext) {
     if (!moves.length && !matches.length) return;
     const meta: PostMeta = { date, memo: `Void ${doc.number} — cost of goods`, reference: doc.number, sourceType: 'cogs', sourceId: doc.id, userId };
     engine.operation(meta, () => {
-      const lineNet = new Map(docs.lines(doc.id).map((l) => [l.id, l.net]));
+      const lineNet = new Map(docs.lines(doc.id).map((l) => [l.id, l.base_net]));
       const diffs: Diff[] = [];
       const moveIds: number[] = [];
       for (const m of moves) {

@@ -16,6 +16,15 @@ non-obvious cause or a tool behaved unexpectedly.
 
 ## Modules & permissions
 
+- **Name shadowing bit twice in one day**: a tax `rate` hid the exchange `rate` (base amounts came out
+  tiny), and a `z` score hid the `zod` import. Use distinct names (`fxRate`, `zs`) for anything that
+  sounds like an existing variable.
+- **Scripts that edit the dictionaries must anchor on `\n  key: {`** — `'  bank: {'` also matched the
+  nested `'    bank: {'` and inserted a whole section in the wrong block.
+- **A comparison period before the company existed is all zeros** — show no comparison instead.
+- **Seeded accounts need their analysis tags in the template**: a migration only tags accounts that
+  exist when it runs, not charts created later at setup.
+
 - **`useConfirm()` resolves to `{ ok, date? }`, not a boolean.** `if (await confirm(…))` is always true
   and would void or delete without asking. Always test `.ok`.
 - **Header guessing needs word boundaries for short words** ("in" matches "description"), but not for

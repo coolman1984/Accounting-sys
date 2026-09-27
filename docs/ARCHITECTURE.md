@@ -88,6 +88,8 @@ Modules are how the code is built; **apps** are what a company switches on
 | Inventory | inventory | warehouses, lots, receipts, landed costs | — |
 | Purchase orders | purchasing | orders, approval, receive & bill from the order | AP |
 | Price lists | pricing | price lists, minimum price guard | AR |
+| Multi-currency | fx | currencies, rates, foreign documents and payments, revaluation | — |
+| Financial analysis | analysis | ratios, notes, break-even, trend (read-only) | — |
 
 ### Editions — deliver only what was bought
 
@@ -220,6 +222,16 @@ listener refuses to reverse an entry they contain. An entry that was reversed
 (a voided payment or transfer) cancels out with its reversal and is left out of
 the "not yet at the bank" list.
 
+### Multi-currency
+
+Documents and payments keep their currency and rate; each line stores base
+figures (`base_net`, `base_tax`) computed once, and everything that values the
+books reads base figures. Journal lines on foreign items carry `currency` and
+`amount_fx`. Payments credit receivables at each invoice's historical value
+(the last one clears the exact remainder) and book the realised difference.
+The revaluation run re-measures open foreign items and foreign cash at a date,
+posts to adjustment accounts and reverses on the next day. See ADR-011.
+
 ## 5. Reports
 
 All reports are computed from posted ledger movements:
@@ -236,6 +248,14 @@ All reports are computed from posted ledger movements:
 * **Aging** — receivables / payables by days overdue, reconciled to the ledger.
 * **VAT summary** — output vs input tax from posted documents.
 * **Dashboard** — cash, AR, AP, monthly P&L series, overdue, top debtors.
+* **Changes in equity** — capital, retained earnings, dividends and unclosed
+  profit, reconciled to the balance sheet; **common-size** views of the income
+  statement (% of revenue) and balance sheet (% of total assets).
+* **Financial analysis app** — `modules/analysis/engine.ts` (pure) turns a
+  period snapshot into 50 ratios with status, reasons and previous values,
+  DuPont, Z'' score and plain-language findings; `/analysis/break-even` runs
+  what-if scenarios; `/analysis/trend` gives 12 months. Statements are shared
+  from `modules/ledger/statements.ts`.
 
 ## 6. Security & multi-user
 

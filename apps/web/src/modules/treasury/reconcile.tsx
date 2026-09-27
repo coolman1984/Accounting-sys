@@ -28,6 +28,8 @@ interface BankAccount {
   subtype: 'cash' | 'bank';
   is_active: number;
   balance: number;
+  currency: string | null;
+  balance_fx: number;
   reconciled_to: string | null;
   reconciled_balance: number | null;
   open_statement_id: number | null;
@@ -304,7 +306,13 @@ export function BankPage() {
               </div>
             </div>
             <div className="bank-balance">
-              <Money v={a.balance} />
+              {a.currency && <span className="faint num" style={{ fontSize: 14, marginInlineEnd: 6 }}>{a.currency}</span>}
+              <Money v={a.currency ? a.balance_fx : a.balance} />
+              {a.currency && (
+                <div className="faint" style={{ fontSize: 12, fontWeight: 400 }}>
+                  ≈ <Money v={a.balance} />
+                </div>
+              )}
             </div>
             <div className="faint" style={{ fontSize: 12.5 }}>
               {a.reconciled_to ? t('bank.reconciledTo', { date: formatDate(a.reconciled_to, locale) }) : t('bank.neverReconciled')}

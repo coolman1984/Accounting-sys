@@ -66,3 +66,11 @@ export function computeLine(l: { quantity: number; unitPrice: number; discountBp
   const tax = inclusive ? after - net : applyRate(net, l.rateBp);
   return { gross, discount, net, tax, total: net + tax };
 }
+
+/** Exchange rates are base units per one foreign unit × 1,000,000. */
+export const FX_RATE_SCALE = 1_000_000n;
+
+/** Foreign minor units → base minor units at `rate` (× 1,000,000), round half away from zero. */
+export function fxToBase(amount: number, rate: number): number {
+  return toSafe(divRound(BigInt(amount) * BigInt(rate), FX_RATE_SCALE));
+}

@@ -58,7 +58,7 @@ export const pricingModule: AppModule = {
       if (e.kind !== 'sales_invoice' || !apps.isEnabled('pricing')) return;
       if (services.get('access').userCan(e.userId, 'pricing.minprice.override')) return;
       const lines = db.all<{ line_no: number; item_id: number; net: number; base_quantity: number; min_sale_price: number; sku: string }>(
-        `SELECT l.line_no, l.item_id, l.net, l.base_quantity, i.min_sale_price, i.sku
+        `SELECT l.line_no, l.item_id, l.base_net AS net, l.base_quantity, i.min_sale_price, i.sku
          FROM document_lines l JOIN items i ON i.id = l.item_id WHERE l.document_id = ? AND i.min_sale_price > 0`,
         [e.documentId],
       );

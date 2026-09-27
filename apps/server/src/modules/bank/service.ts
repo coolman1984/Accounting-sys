@@ -1,6 +1,9 @@
 import type { ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
+import { ON_DEMAND } from '../ledger/chart-template.js';
+import type { JournalLineInput } from '../ledger/service.js';
+import type {} from '../../contracts/fx.js';
 
 export interface Transfer {
   id: number;
@@ -9,6 +12,8 @@ export interface Transfer {
   from_account_id: number;
   to_account_id: number;
   amount: number;
+  /** Received, in the receiving account's currency (only when the two accounts differ in currency). */
+  to_amount: number | null;
   fee: number;
   fee_account_id: number | null;
   reference: string | null;
@@ -22,6 +27,7 @@ export interface TransferInput {
   fromAccountId: number;
   toAccountId: number;
   amount: number;
+  toAmount?: number | null;
   fee: number;
   feeAccountId: number | null;
   reference: string | null;
@@ -72,6 +78,12 @@ export interface BookLine {
 export const SEQ_TRANSFER = 'transfer';
 
 /**
+ * SQL: the amount of ledger line `l` as the bank shows it — in the account's own currency for a
+ * foreign-currency account (needs `accounts a` joined on l.account_id).
+ */
+export const BANK_AMOUNT = (l: string, a: string) => `(CASE WHEN ${a}.currency IS NOT NULL THEN COALESCE(${l}.amount_fx, 0) ELSE ${l}.debit - ${l}.credit END)`;
+
+/**
  * SQL condition: ledger line `l` still waits for the bank. An entry that was reversed
  * (a voided payment or transfer) cancels out with its reversal — the bank never saw
  * either, so the pair is left out unless one of them was already ticked off.
@@ -107,8 +119,10 @@ export function createBanking({ db, services }: ModuleContext) {
 
   function checkTransfer(t: TransferInput) {
     if (t.fromAccountId === t.toAccountId) fail('bank.same_account', 'Choose two different accounts');
-    cashAccount(t.fromAccountId, 'From');
-    cashAccount(t.toAccountId, 'To');
+    const from = cashAccount(t.fromAccountId, 'From');
+    const to = cashAccount(t.toAccountId, 'To');
+    if ((from.currency || to.currency) && !services.has('fx')) fail('fx.unavailable', 'Multi-currency is not installed');
+    if (from.currency !== to.currency && !t.toAmount) fail('bank.to_amount_required', 'Enter the amount received in the other currency');
     if (t.fee > 0) {
       if (!t.feeAccountId) return fail('bank.fee_account', 'Choose the account for the bank charges');
       const f = ledger().account(t.feeAccountId);
@@ -121,6 +135,7 @@ export function createBanking({ db, services }: ModuleContext) {
     from_account_id: t.fromAccountId,
     to_account_id: t.toAccountId,
     amount: t.amount,
+    to_amount: t.toAmount ?? null,
     fee: t.fee,
     fee_account_id: t.fee > 0 ? t.feeAccountId : null,
     reference: t.reference,
@@ -149,15 +164,26 @@ export function createBanking({ db, services }: ModuleContext) {
   function postTransfer(id: number, userId: number | null) {
     const t = transfer(id);
     if (t.status !== 'draft') conflict('bank.not_draft', 'This transfer is already posted');
-    checkTransfer({ date: t.date, fromAccountId: t.from_account_id, toAccountId: t.to_account_id, amount: t.amount, fee: t.fee, feeAccountId: t.fee_account_id, reference: t.reference, memo: t.memo });
+    checkTransfer({ date: t.date, fromAccountId: t.from_account_id, toAccountId: t.to_account_id, amount: t.amount, toAmount: t.to_amount, fee: t.fee, feeAccountId: t.fee_account_id, reference: t.reference, memo: t.memo });
     ledger().assertPostingDate(t.date);
+    const from = ledger().account(t.from_account_id);
+    const to = ledger().account(t.to_account_id);
+    // Each side in base currency at the day's rate; selling or buying currency leaves an exchange difference.
+    const base = (cur: string | null, amt: number) => (cur ? services.get('fx').toBase(amt, services.get('fx').rate(cur, t.date)) : amt);
+    const received = from.currency === to.currency ? t.amount : t.to_amount!;
+    const outBase = base(from.currency, t.amount + t.fee);
+    const inBase = base(to.currency, received);
+    const feeBase = base(from.currency, t.fee);
+    const lines: JournalLineInput[] = [
+      { accountId: t.to_account_id, debit: inBase, credit: 0, description: t.memo, ...(to.currency ? { currency: to.currency, amountFx: received } : {}) },
+      { accountId: t.from_account_id, debit: 0, credit: outBase, description: t.memo, ...(from.currency ? { currency: from.currency, amountFx: -(t.amount + t.fee) } : {}) },
+    ];
+    if (t.fee > 0) lines.push({ accountId: t.fee_account_id!, debit: feeBase, credit: 0, description: t.memo });
+    const diff = outBase - inBase - (t.fee > 0 ? feeBase : 0);
+    if (diff > 0) lines.push({ accountId: ledger().ensureDefaultAccount('fxLoss', ON_DEMAND.fxLoss), debit: diff, credit: 0, description: 'Exchange difference' });
+    if (diff < 0) lines.push({ accountId: ledger().ensureDefaultAccount('fxGain', ON_DEMAND.fxGain), debit: 0, credit: -diff, description: 'Exchange difference' });
     db.tx(() => {
       const number = services.get('sequences').next(SEQ_TRANSFER);
-      const lines = [
-        { accountId: t.to_account_id, debit: t.amount, credit: 0, description: t.memo },
-        { accountId: t.from_account_id, debit: 0, credit: t.amount + t.fee, description: t.memo },
-      ];
-      if (t.fee > 0) lines.push({ accountId: t.fee_account_id!, debit: t.fee, credit: 0, description: t.memo });
       const entryId = ledger().createEntry(
         { date: t.date, reference: number, memo: t.memo ?? `Transfer ${number}`, lines },
         { sourceType: 'transfer', sourceId: id, userId, post: true },
@@ -205,9 +231,10 @@ export function createBanking({ db, services }: ModuleContext) {
   /** Posted ledger lines of the account that no statement has ticked off yet. */
   function uncleared(accountId: number, upTo?: string): BookLine[] {
     return db.all<BookLine>(
-      `SELECT l.id, l.entry_id, l.number, l.date, l.reference, l.memo, l.description, l.source_type, l.debit - l.credit AS amount
-       FROM ledger l
+      `SELECT l.id, l.entry_id, l.number, l.date, l.reference, l.memo, l.description, l.source_type, ${BANK_AMOUNT('l', 'a')} AS amount
+       FROM ledger l JOIN accounts a ON a.id = l.account_id
        WHERE l.account_id = ? ${upTo ? 'AND l.date <= ?' : ''} AND ${UNCLEARED('l')}
+         AND NOT (a.currency IS NOT NULL AND COALESCE(l.amount_fx, 0) = 0)
        ORDER BY l.date, l.id`,
       upTo ? [accountId, upTo] : [accountId],
     );
@@ -281,7 +308,7 @@ export function createBanking({ db, services }: ModuleContext) {
     const s = statement(l.statement_id);
     assertOpen(s);
     if (l.journal_line_id) conflict('bank.already_matched', 'This statement line is already matched');
-    const b = db.get<{ account_id: number; amount: number }>('SELECT account_id, debit - credit AS amount FROM ledger WHERE id = ?', [journalLineId]);
+    const b = db.get<{ account_id: number; amount: number }>(`SELECT l.account_id, ${BANK_AMOUNT('l', 'a')} AS amount FROM ledger l JOIN accounts a ON a.id = l.account_id WHERE l.id = ?`, [journalLineId]);
     if (!b || b.account_id !== s.account_id) fail('bank.wrong_account', 'That entry is not on this bank account');
     if (db.get('SELECT 1 FROM bank_statement_lines WHERE journal_line_id = ?', [journalLineId])) conflict('bank.line_taken', 'That entry is already matched to another statement line');
     if (b!.amount !== l.amount) fail('bank.amount_mismatch', 'The amounts differ', { statement: l.amount, book: b!.amount });
@@ -336,9 +363,11 @@ export function createBanking({ db, services }: ModuleContext) {
     if (counter.subtype === 'receivable' || counter.subtype === 'payable') {
       fail('bank.use_payment', 'Money from customers or to suppliers is recorded as a receipt or payment');
     }
+    const bank = ledger().account(s.account_id);
     return db.tx(() => {
       const desc = input.description ?? l.description;
-      const amt = Math.abs(l.amount);
+      // A foreign-currency account: the statement is in that currency, the books in base at the day's rate.
+      const amt = bank.currency ? services.get('fx').toBase(Math.abs(l.amount), services.get('fx').rate(bank.currency, l.date)) : Math.abs(l.amount);
       const bankLine = l.amount > 0 ? { debit: amt, credit: 0 } : { debit: 0, credit: amt };
       const entryId = ledger().createEntry(
         {
@@ -346,7 +375,7 @@ export function createBanking({ db, services }: ModuleContext) {
           reference: l.reference,
           memo: desc,
           lines: [
-            { accountId: s.account_id, ...bankLine, description: desc },
+            { accountId: s.account_id, ...bankLine, description: desc, ...(bank.currency ? { currency: bank.currency, amountFx: l.amount } : {}) },
             { accountId: counter.id, debit: bankLine.credit, credit: bankLine.debit, description: desc, costCenterId: input.costCenterId },
           ],
         },
@@ -366,7 +395,7 @@ export function createBanking({ db, services }: ModuleContext) {
        FROM bank_statement_lines WHERE statement_id = ?`,
       [id],
     )!;
-    const book = db.get<{ b: number }>('SELECT COALESCE(SUM(debit - credit), 0) b FROM ledger WHERE account_id = ? AND date <= ?', [s.account_id, s.date])!.b;
+    const book = db.get<{ b: number }>(`SELECT COALESCE(SUM(${BANK_AMOUNT('l', 'a')}), 0) b FROM ledger l JOIN accounts a ON a.id = l.account_id WHERE l.account_id = ? AND l.date <= ?`, [s.account_id, s.date])!.b;
     const unclearedTotal = uncleared(s.account_id, s.date).reduce((x, b) => x + b.amount, 0);
     return {
       linesTotal: t.total,

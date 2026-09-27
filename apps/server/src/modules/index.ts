@@ -10,6 +10,8 @@ import { arModule } from './ar/index.js';
 import { apModule } from './ap/index.js';
 import { coModule } from './co/index.js';
 import { bankModule } from './bank/index.js';
+import { fxModule } from './fx/index.js';
+import { analysisModule } from './analysis/index.js';
 import { inventoryModule } from './inventory/index.js';
 import { purchasingModule } from './purchasing/index.js';
 import { pricingModule } from './pricing/index.js';
@@ -34,4 +36,6 @@ export const modules: AppModule[] = [
   apModule,
   coModule,
   bankModule,
+  fxModule,
+  analysisModule,
 ];
