@@ -6,6 +6,16 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Cash forecast** (new `cashflow` app): cash and bank today, then 13 weeks or 12 months of expected
+  receipts and payments — open invoices (moved by each customer's real payment delay), bills, open
+  purchase orders, planned items (payroll, rent, loans, tax, with repeats) and post-dated entries;
+  lowest point, first shortfall under the minimum cash, funding needed, doubtful invoices listed apart;
+  regular payments found in the books are suggested as planned items.
+- **Manufacturing** (new `mfg` app, needs Inventory): recipes with materials (+ scrap), labour and
+  variable/fixed overhead rates and their standard cost; production orders that consume materials and
+  add the product at full cost in one entry (reversible); variances for material price and usage, labour
+  rate and efficiency, overhead efficiency; period report with overhead applied vs actual (spending,
+  efficiency, volume, under/over-absorbed). New "Production (PP)" menu section.
 - **Budgets & variance analysis** (new `budget` app): monthly budgets by account (and cost center),
   started empty, from a copy, or from 12 past months with a growth rate (seasons matched by calendar
   month; unfinished months estimated); approval locks a budget (separate approve right). Budget vs actual
@@ -30,6 +40,19 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Research: `docs/research/FINANCIAL-ANALYSIS.md` (formulas, edge cases, built-in vs add-on decision).
 
 ### Fixed
+- Journal entries of bank transfers opened a stock operation; goods receipts, landed costs, bank
+  statements and production orders now link to their own page.
+- A receipt or payment for a party that is only a customer (or only a supplier) no longer asks which one.
+- Reversing an entry, voiding a document or closing the year failed when one of its accounts had been
+  deactivated since; copies of posted entries now keep their accounts (new postings are still refused).
+- Editing one field of a user (e.g. the name) reactivated a deactivated user and reset their language
+  (zod 4 applies defaults inside `.partial()`); a username clash on edit is now a clear message.
+- Database guards of inventory, purchasing and manufacturing (and duplicate values) answered
+  "Unexpected server error"; every guard now returns its reason (409).
+- A credit note whose invoice was voided while it was a draft is refused with a clear message.
+- Dashboard cash per account counted entries dated in the future (total and breakdown now agree).
+- Login answers in the same time whether or not the username exists; the failed-attempts list is bounded.
+- Purchase order lines refuse a unit of measure without an item.
 - Health check for document settlements now also covers credit notes and base-currency amounts.
 
 ### Added

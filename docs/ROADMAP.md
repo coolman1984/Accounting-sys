@@ -67,6 +67,8 @@ away.
       unrealised FX gains & losses
 - [x] **Financial analysis app**: full statement set, 50 ratios, DuPont, break-even, distress score, notes
 - [x] Budgets and variance analysis (flexible budget, price / volume / mix variances)
+- [x] **Cash forecast**: 13 weeks / 12 months from open invoices and bills (customer payment habits), purchase orders, planned items and post-dated entries; minimum-cash alert
+- [x] **Manufacturing**: recipes (BOM) with standard costs, production orders through stock, material / labour / overhead variances
 - [ ] Projects as a second dimension next to cost centers; budgets per cost center
 - [ ] Recurring invoices and journal templates
 - [ ] Quotations → sales orders → invoices; purchase orders → bills
@@ -76,7 +78,6 @@ away.
 - [ ] **Fixed assets**: register, depreciation schedules, automatic postings
 - [ ] **Payroll** (basic): employees, salary components, monthly posting
 - [ ] **Cheques** (post-dated cheques receivable / payable — common in the region)
-- [ ] Budgets vs actuals
 - [ ] E-invoicing adapters (e.g. Egyptian ETA / Saudi ZATCA) as separate modules
 
 ## Phase 4 — Platform

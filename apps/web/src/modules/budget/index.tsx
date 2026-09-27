@@ -418,7 +418,7 @@ function BudgetEditor() {
           </>
         }
       />
-      <div className="budget-kpis">
+      <div className="kpi-strip">
         <div>
           <span>{t('budget.revenue')}</span>
           <strong>{fmt(revenue)}</strong>
@@ -782,7 +782,7 @@ function VariancePage() {
         )}
       </div>
 
-      <div className="budget-kpis">
+      <div className="kpi-strip">
         <div>
           <span>{t('budget.staticProfit')}</span>
           <strong>{fmt(v.totals.staticProfit)}</strong>

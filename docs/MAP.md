@@ -22,6 +22,8 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **fx** | `fx` | — | `fx` |
 | **analysis** | `analysis` | — | `analysis` |
 | **budget** | `budget` | — | `budget` |
+| **cashflow** | `cashflow` | — | `cashflow` |
+| **mfg** | `manufacturing` | `inventory` | `mfg` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -31,8 +33,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 35 | one folder per module (below) |
-| `apps/server/src/test/` | 14 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 39 | one folder per module (below) |
+| `apps/server/src/test/` | 17 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -45,7 +47,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `audit_log`, `role_permissions`, `roles`, `sequences`, `sessions`, `settings`, `user_roles`, `users`
 - **Provides services:** `access`, `audit`, `backup`, `sequences`, `settings`
 - **Events:** emits `system.setup` · listens —
-- **Files:** `auth.ts` (182), `index.ts` (490), `schema.ts` (95), `settings.ts` (116)
+- **Files:** `auth.ts` (188), `index.ts` (502), `schema.ts` (95), `settings.ts` (116)
 
 <details><summary>25 routes</summary>
 
@@ -87,7 +89,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (208), `schema.ts` (180), `service.ts` (730), `statements.ts` (268)
+- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (732), `statements.ts` (268)
 
 <details><summary>25 routes</summary>
 
@@ -174,7 +176,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `document_lines`, `documents`, `settlements`
 - **Provides services:** `documents`
 - **Events:** emits `document.posted`, `document.voided` · listens `system.setup`
-- **Files:** `index.ts` (306), `schema.ts` (170), `service.ts` (482)
+- **Files:** `index.ts` (306), `schema.ts` (170), `service.ts` (484)
 
 <details><summary>9 routes</summary>
 
@@ -201,7 +203,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `payment_allocations`, `payments`
 - **Provides services:** `payments`
 - **Events:** emits `payment.posted`, `payment.voided` · listens `system.setup`
-- **Files:** `index.ts` (544)
+- **Files:** `index.ts` (546)
 
 <details><summary>9 routes</summary>
 
@@ -228,7 +230,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `goods_receipt_lines`, `goods_receipts`, `landed_cost_allocations`, `landed_cost_targets`, `landed_costs`, `lot_levels`, `receipt_matches`, `stock_doc_lines`, `stock_docs`, `stock_levels`, `stock_lots`, `stock_moves`, `stock_moves_v2`, `stock_values`, `warehouses`
 - **Provides services:** `inventory`
 - **Events:** emits `stock.receipt.posted`, `stock.receipt.voided` · listens `document.posted`, `document.voided`
-- **Files:** `engine.ts` (555), `index.ts` (865), `schema.ts` (308), `service.ts` (866)
+- **Files:** `engine.ts` (555), `index.ts` (865), `schema.ts` (308), `service.ts` (952)
 
 <details><summary>39 routes</summary>
 
@@ -285,7 +287,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `purchase_order_lines`, `purchase_orders`
 - **Provides services:** `purchasing`
 - **Events:** emits — · listens `document.posted`, `document.voided`, `stock.receipt.posted`, `stock.receipt.voided`
-- **Files:** `index.ts` (408)
+- **Files:** `index.ts` (409)
 
 <details><summary>9 routes</summary>
 
@@ -498,6 +500,62 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 
 </details>
 
+### `cashflow` — apps/server/src/modules/cashflow/
+
+- **Apps:** `cashflow` · **Depends on:** `ledger` · **Health checks:** no
+- **Permissions:** `cashflow.forecast.read`, `cashflow.plan.write`
+- **Role templates:** `cash_manager`
+- **Tables / views:** `cash_plan`, `cashflow_settings`
+- **Provides services:** —
+- **Files:** `engine.ts` (149), `index.ts` (283)
+
+<details><summary>8 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/cashflow/forecast` | `cashflow.forecast.read` |
+| GET | `/api/cashflow/plan` | `cashflow.forecast.read` |
+| POST | `/api/cashflow/plan` | `cashflow.plan.write` |
+| PUT | `/api/cashflow/plan/:id` | `cashflow.plan.write` |
+| DELETE | `/api/cashflow/plan/:id` | `cashflow.plan.write` |
+| GET | `/api/cashflow/settings` | `cashflow.forecast.read` |
+| PUT | `/api/cashflow/settings` | `cashflow.plan.write` |
+| GET | `/api/cashflow/suggestions` | `cashflow.plan.write` |
+
+</details>
+
+### `manufacturing` — apps/server/src/modules/manufacturing/
+
+- **Apps:** `mfg` · **Depends on:** `ledger`, `catalog`, `inventory` · **Health checks:** yes
+- **Permissions:** `mfg.boms.read`, `mfg.boms.write`, `mfg.orders.read`, `mfg.orders.write`, `mfg.orders.post`, `mfg.reports.read`, `mfg.settings.manage`
+- **Role templates:** `production_planner`
+- **Tables / views:** `bom_lines`, `boms`, `mfg_settings`, `production_order_lines`, `production_orders`
+- **Provides services:** —
+- **Files:** `engine.ts` (184), `index.ts` (625)
+
+<details><summary>16 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/mfg/boms` | `mfg.boms.read` |
+| GET | `/api/mfg/boms/:id` | `mfg.boms.read` |
+| POST | `/api/mfg/boms` | `mfg.boms.write` |
+| PUT | `/api/mfg/boms/:id` | `mfg.boms.write` |
+| DELETE | `/api/mfg/boms/:id` | `mfg.boms.write` |
+| POST | `/api/mfg/boms/:id/update-standards` | `mfg.boms.write` |
+| GET | `/api/mfg/orders` | `mfg.orders.read` |
+| GET | `/api/mfg/orders/:id` | `mfg.orders.read` |
+| POST | `/api/mfg/orders` | `mfg.orders.write` |
+| PUT | `/api/mfg/orders/:id` | `mfg.orders.write` |
+| POST | `/api/mfg/orders/:id/complete` | `mfg.orders.post` |
+| POST | `/api/mfg/orders/:id/void` | `mfg.orders.post` |
+| DELETE | `/api/mfg/orders/:id` | `mfg.orders.write` |
+| GET | `/api/mfg/variances` | `mfg.reports.read` |
+| GET | `/api/mfg/settings` | `mfg.orders.read` |
+| PUT | `/api/mfg/settings` | `mfg.settings.manage` |
+
+</details>
+
 ## Web layout
 
 | Folder | Files | What lives there |
@@ -521,6 +579,8 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | `fx` | `fx` | `/currencies`, `/fx/revaluation` | 1 (305 lines) |
 | `analysis` | `analysis` | `/analysis`, `/analysis/break-even`, `/analysis/trend` | 1 (499 lines) |
 | `budget` | `budget` | `/budgets`, `/budgets/:id`, `/budgets/:id/variance` | 1 (989 lines) |
+| `cashflow` | `cashflow` | `/cashflow`, `/cashflow/plan` | 1 (586 lines) |
+| `manufacturing` | `mfg` | `/mfg/boms`, `/mfg/boms/:id`, `/mfg/orders`, `/mfg/orders/:id`, `/mfg/variances` | 1 (1005 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

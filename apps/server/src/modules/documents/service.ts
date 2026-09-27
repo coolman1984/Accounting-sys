@@ -341,6 +341,8 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     let credit: { orig: Document; amount: number; origBase: number; ownBase: number } | null = null;
     if (doc.against_document_id) {
       const orig = get(doc.against_document_id);
+      // The original may have been voided while this note was a draft.
+      if (orig.status !== 'posted') fail('document.against_invalid', 'The original document must be a posted document of the same party');
       const amount = Math.min(doc.total, orig.total - orig.amount_settled);
       if (amount > 0) {
         const origBase = baseFor(orig, amount);

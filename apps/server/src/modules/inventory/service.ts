@@ -3,6 +3,7 @@ import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { lineAmount } from '../../kernel/money.js';
 import type { Item } from '../../contracts/catalog.js';
+import type { ProductionInput, ProductionResult } from '../../contracts/inventory.js';
 import { KIND_INFO, type DocKind, type DocumentLine } from '../../contracts/documents.js';
 import { STOCK_SEQ, type StockDocKind } from './schema.js';
 import { createEngine, mulDiv, split, type Diff, type PostMeta, type StockMove } from './engine.js';
@@ -805,8 +806,93 @@ export function createInventory(ctx: ModuleContext) {
     });
   }
 
+  // ------------------------------------------------------------ production
+  /**
+   * One production run as one inventory operation: components go out at their moving-average cost, the
+   * finished product comes in at materials + conversion (labour and overhead applied, credited to the
+   * given accounts). One balanced journal entry; nothing nets to the adjustment account on posting.
+   */
+  function produce(input: ProductionInput): ProductionResult {
+    ledger().assertPostingDate(input.date);
+    const output = catalog().item(input.output.itemId);
+    if (!catalog().isStockItem(output)) fail('stock.not_stock_item', `${output.sku} is not a stock item`, { sku: output.sku });
+    if (input.output.qty <= 0) fail('stock.invalid_qty', 'Invalid quantity');
+    activeWarehouse(input.output.warehouseId);
+    for (const c of input.components) activeWarehouse(c.warehouseId);
+    const conversion = input.conversion.filter((c) => c.amount !== 0);
+    if (conversion.some((c) => c.amount < 0 || !Number.isSafeInteger(c.amount))) fail('validation', 'Conversion costs cannot be negative');
+    const meta: PostMeta = { date: input.date, memo: input.memo, reference: input.reference, sourceType: 'production', sourceId: input.sourceId, userId: input.userId };
+    const adj = engine.adjustmentAccount();
+    return engine.operation(meta, () => {
+      const diffs: Diff[] = [];
+      const moveIds: number[] = [];
+      const componentValues: number[] = [];
+      input.components.forEach((c, i) => {
+        if (c.qty <= 0) return componentValues.push(0);
+        const item = catalog().item(c.itemId);
+        const lots = engine.parseLots(c.lots ?? null, 1000, i + 1);
+        const parts = engine.allocateOut(item, c.warehouseId, c.qty, lots, { date: input.date, allowExpired: false, line: i + 1 });
+        const moves = moveOut(parts, { date: input.date, itemId: item.id, warehouseId: c.warehouseId, sourceType: 'production', sourceId: input.sourceId, sourceLineId: c.lineId ?? null, userId: input.userId });
+        let value = 0;
+        for (const m of moves) {
+          moveIds.push(m.id);
+          value += -m.value;
+          diffs.push({ invAccount: inventoryAccount(item), counterAccount: adj, amount: m.value });
+        }
+        componentValues.push(value);
+      });
+      const materials = componentValues.reduce((a, v) => a + v, 0);
+      const conv = conversion.reduce((a, c) => a + c.amount, 0);
+      const outLots = engine.parseLots(input.output.lots ?? null, 1000, 0);
+      const parts = engine.allocateIn(output, input.output.qty, outLots, 0);
+      const inMoves = moveIn(parts, materials + conv, { date: input.date, itemId: output.id, warehouseId: input.output.warehouseId, sourceType: 'production', sourceId: input.sourceId, userId: input.userId });
+      for (const m of inMoves) {
+        moveIds.push(m.id);
+        diffs.push({ invAccount: inventoryAccount(output), counterAccount: adj, amount: m.value });
+      }
+      for (const c of conversion) diffs.push({ invAccount: c.accountId, counterAccount: adj, amount: -c.amount });
+      const entry = postDifference(diffs, meta);
+      linkEntry(moveIds, entry);
+      return { entryId: entry, componentValues, materials, conversion: conv, outputValue: materials + conv };
+    });
+  }
+
+  /**
+   * Undo a production run: the product goes back out at its current average, the components come back
+   * at the value they left with, the applied conversion is taken back. A product whose average moved
+   * since leaves the difference on the inventory adjustment account.
+   */
+  function reverseProduction(sourceId: number, date: string, conversion: { accountId: number; amount: number }[], memo: string, reference: string | null, userId: number | null): number | null {
+    ledger().assertPostingDate(date);
+    const meta: PostMeta = { date, memo, reference, sourceType: 'production', sourceId, userId };
+    const adj = engine.adjustmentAccount();
+    return engine.operation(meta, () => {
+      const moves = db.all<StockMove>("SELECT * FROM stock_moves WHERE source_type = 'production' AND source_id = ? AND is_reversal = 0 ORDER BY id DESC", [sourceId]);
+      if (!moves.length) conflict('stock.not_posted', 'Nothing to reverse');
+      const diffs: Diff[] = [];
+      const moveIds: number[] = [];
+      for (const m of moves) {
+        const rev = reverseMove(m, date, userId)!;
+        moveIds.push(rev.id);
+        diffs.push({ invAccount: inventoryAccount(catalog().item(m.item_id)), counterAccount: adj, amount: rev.value });
+      }
+      for (const c of conversion) if (c.amount) diffs.push({ invAccount: c.accountId, counterAccount: adj, amount: c.amount });
+      const entry = postDifference(diffs, meta);
+      linkEntry(moveIds, entry);
+      return entry;
+    });
+  }
+
+  /** Current average cost of one unit (1000 base qty), or the purchase price when none is in stock. */
+  function unitCost(itemId: number): number {
+    return engine.averageValue(catalog().item(itemId), 1000);
+  }
+
   return {
     engine,
+    produce,
+    reverseProduction,
+    unitCost,
     warehouse,
     defaultWarehouse: engine.defaultWarehouse,
     level: engine.level,

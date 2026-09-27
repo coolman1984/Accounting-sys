@@ -183,8 +183,9 @@ export function mountGlReports(r: Router, ctx: ModuleContext) {
       const year = currentYear();
       const cashAccounts = db.all(
         `SELECT a.id, a.code, a.name_en, a.name_ar, COALESCE(SUM(l.debit - l.credit), 0) AS balance
-         FROM accounts a LEFT JOIN ledger l ON l.account_id = a.id
+         FROM accounts a LEFT JOIN ledger l ON l.account_id = a.id AND l.date <= ?
          WHERE a.subtype IN ('cash', 'bank') AND a.is_group = 0 GROUP BY a.id ORDER BY a.code`,
+        [t],
       );
       const recent = db.all(
         `SELECT id, number, date, memo, source_type, total FROM journal_entries WHERE status = 'posted'

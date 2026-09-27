@@ -37,7 +37,7 @@ export function hashPassword(password: string): string {
 
 export function verifyPassword(password: string, stored: string): boolean {
   const [alg, n, r, p, salt, hash] = stored.split('$');
-  if (alg !== 'scrypt') return false;
+  if (alg !== 'scrypt' || !salt || !hash) return false;
   const expected = Buffer.from(hash, 'base64');
   const actual = scryptSync(password, Buffer.from(salt, 'base64'), expected.length, {
     N: Number(n),
@@ -48,6 +48,9 @@ export function verifyPassword(password: string, stored: string): boolean {
 }
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+/** A valid hash of a random password: verified against when the username does not exist. */
+const DUMMY_HASH = hashPassword(randomBytes(12).toString('hex'));
 
 interface UserRow {
   id: number;
@@ -119,7 +122,10 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
         throw new AppError('auth.locked', 'Too many attempts, try again in a minute', 429);
       }
       const u = db.get<UserRow>('SELECT * FROM users WHERE username = ?', [username]);
-      if (!u || !u.is_active || !verifyPassword(password, u.password_hash)) {
+      // Hash even for an unknown user, so the response time does not tell which usernames exist.
+      const ok = verifyPassword(password, u?.password_hash ?? DUMMY_HASH);
+      if (!u || !u.is_active || !ok) {
+        if (failures.size > 5000) for (const [k, v] of failures) if (v.until < Date.now()) failures.delete(k);
         const count = (f?.count ?? 0) + 1;
         failures.set(key, { count, until: count >= 5 ? Date.now() + 60_000 : 0 });
         throw new AppError('auth.invalid', 'Wrong username or password', 401);
