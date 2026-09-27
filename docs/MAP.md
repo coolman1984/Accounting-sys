@@ -676,6 +676,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | `budget` | `budget` | `/budgets`, `/budgets/:id`, `/budgets/:id/variance` | 1 (989 lines) |
 | `cashflow` | `cashflow` | `/cashflow`, `/cashflow/plan` | 1 (586 lines) |
 | `manufacturing` | `mfg` | `/mfg/boms`, `/mfg/boms/:id`, `/mfg/orders`, `/mfg/orders/:id`, `/mfg/variances` | 1 (1005 lines) |
+| `assets` | `assets` | `/fixed-assets`, `/fixed-assets/:id`, `/fixed-assets/categories`, `/fixed-assets/depreciation`, `/fixed-assets/report` | 1 (925 lines) |
+| `payroll` | `payroll` | `/payroll/components`, `/payroll/employees`, `/payroll/employees/:id`, `/payroll/runs`, `/payroll/runs/:id` | 1 (1039 lines) |
+| `cheques` | `cheques` | `/cheques/:id`, `/cheques/issued`, `/cheques/new`, `/cheques/portfolio`, `/cheques/received` | 1 (582 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

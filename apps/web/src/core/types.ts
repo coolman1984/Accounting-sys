@@ -253,7 +253,7 @@ export interface DocumentFull extends Omit<DocumentRow, 'party_name'> {
   warehouse_id: number | null;
   party: Party;
   lines: DocumentLine[];
-  settlements: { id: number; source_type: 'payment' | 'credit'; source_id: number; source_number: string | null; amount: number; date: string }[];
+  settlements: { id: number; source_type: 'payment' | 'credit' | 'cheque'; source_id: number; source_number: string | null; amount: number; date: string }[];
   applied: { id: number; document_id: number; amount: number; date: string; number: string }[];
   posted_at: string | null;
   created_at: string;

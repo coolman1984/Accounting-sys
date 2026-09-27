@@ -75,6 +75,14 @@ non-obvious cause or a tool behaved unexpectedly.
   modules and turned their guards into 500s.
 - **A regression test must fail without the fix** — stash the fix and run the test once before trusting it.
 
+- **A page route must not start with `/assets`** — Vite serves the built bundles from `/assets/`, so the
+  static handler answered "Not found" for `/assets/3`. Fixed-asset pages live at `/fixed-assets`
+  (a test now scans the web routes).
+- **Posted journal entries are immutable, even their source id** — insert the owning row first and pass
+  its id to `createEntry`, instead of updating the entry afterwards.
+- **Payroll amounts are kept to the piaster** — hand calculations rounded to whole pounds disagree by
+  cents; derive test expectations in minor units.
+
 ## Tools
 
 - `@fastify/static` pre-indexes files at start; after a rebuild use `wildcard: true`, and `res.header`

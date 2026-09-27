@@ -1,5 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { acc, setupCompany, type TestClient } from './helpers.js';
 
 /** Regression tests for the bugs found in the full code review (one test per finding). */
@@ -82,5 +84,12 @@ describe('code review regressions', () => {
     const d = await c.get('/api/reports/dashboard');
     const sumAccounts = d.cashAccounts.reduce((s: number, a: any) => s + a.balance, 0);
     assert.equal(sumAccounts, d.cash);
+  });
+
+  test('no page route starts with /assets (the built bundles are served from there)', () => {
+    const root = join(import.meta.dirname, '../../../web/src');
+    const walk = (d: string): string[] => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : f.endsWith('.tsx') ? [join(d, f)] : []));
+    const bad = walk(root).filter((f) => /path: '\/assets(\/|')/.test(readFileSync(f, 'utf8')));
+    assert.deepEqual(bad, []);
   });
 });

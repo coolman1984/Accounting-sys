@@ -7,7 +7,7 @@ import type { LucideIcon } from 'lucide-react';
  * composes whatever modules are installed — nothing is hard-wired.
  */
 /** Menu sections follow the professional modules (SAP / Odoo style), each with its short module code. */
-export type NavSection = 'overview' | 'gl' | 'ar' | 'ap' | 'treasury' | 'tax' | 'co' | 'purchasing' | 'inventory' | 'production' | 'insights' | 'admin';
+export type NavSection = 'overview' | 'gl' | 'assets' | 'ar' | 'ap' | 'treasury' | 'tax' | 'co' | 'purchasing' | 'inventory' | 'production' | 'hr' | 'insights' | 'admin';
 
 /** Shown only when one of these apps is on (see the Apps page). */
 export type AppGate = string | string[];
@@ -89,7 +89,7 @@ export interface WebModule {
   slots?: Slots;
 }
 
-export const SECTION_ORDER: NavSection[] = ['overview', 'gl', 'ar', 'ap', 'treasury', 'tax', 'co', 'purchasing', 'inventory', 'production', 'insights', 'admin'];
+export const SECTION_ORDER: NavSection[] = ['overview', 'gl', 'assets', 'ar', 'ap', 'treasury', 'tax', 'co', 'purchasing', 'inventory', 'production', 'hr', 'insights', 'admin'];
 
 /** The short code shown next to each section title, as in SAP (FI-GL, FI-AR, FI-AP, TR, CO, MM …). */
 export const SECTION_CODE: Partial<Record<NavSection, string>> = {
@@ -102,6 +102,8 @@ export const SECTION_CODE: Partial<Record<NavSection, string>> = {
   purchasing: 'MM',
   inventory: 'IM',
   production: 'PP',
+  assets: 'AA',
+  hr: 'HR',
 };
 
 export type Page = ComponentType;

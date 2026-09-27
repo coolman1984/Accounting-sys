@@ -11,6 +11,9 @@ import { analysisModule } from './analysis';
 import { budgetModule } from './budget';
 import { cashflowModule } from './cashflow';
 import { manufacturingModule } from './manufacturing';
+import { assetsModule } from './assets';
+import { payrollModule } from './payroll';
+import { chequesModule } from './cheques';
 import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
 import { purchasingModule } from './purchasing';
@@ -36,6 +39,9 @@ export const webModules: WebModule[] = [
   budgetModule,
   cashflowModule,
   manufacturingModule,
+  assetsModule,
+  payrollModule,
+  chequesModule,
   catalogModule,
   inventoryModule,
   purchasingModule,

@@ -17,8 +17,8 @@ import { useToast } from '../../ui/Toast';
 import { BalanceChart } from '../../ui/Chart';
 import { DataGrid, type Column } from '../../ui/DataGrid';
 
-type Source = 'receivables' | 'payables' | 'orders' | 'planned' | 'booked';
-const SOURCES: Source[] = ['receivables', 'payables', 'orders', 'planned', 'booked'];
+type Source = 'receivables' | 'payables' | 'orders' | 'cheques' | 'payroll' | 'planned' | 'booked';
+const SOURCES: Source[] = ['receivables', 'payables', 'orders', 'cheques', 'payroll', 'planned', 'booked'];
 const CATEGORIES = ['payroll', 'rent', 'tax', 'loan', 'capex', 'owner', 'utilities', 'other'] as const;
 
 interface Flow {
