@@ -27,11 +27,35 @@ export interface AppModule {
   /** The apps (switchable features) this module provides or adds to. */
   apps?: AppManifest[];
   /**
+   * Ready-made job roles this module suggests (the admin creates a role from
+   * one in a click). Permissions may end in ".*" (every action of that object
+   * or module); keys of modules that are not installed are dropped.
+   */
+  roles?: RoleTemplate[];
+  /** Pairs of permissions one person should not hold together (segregation of duties). */
+  sod?: [string, string][];
+  /**
    * Self-checks of the module's own data (e.g. "stock value equals the
    * inventory accounts"). Each module is checked on its own, so a fault
    * points straight at the part of the system that has it.
    */
   health?(ctx: ModuleContext): HealthCheck[];
+}
+
+export interface RoleTemplate {
+  /** Stable id, also the translation key (roles.templates.<id>). */
+  id: string;
+  permissions: string[];
+}
+
+/** What the kernel knows about each installed module (read-only, for admin screens and docs). */
+export interface ModuleInfo {
+  id: string;
+  dependsOn: string[];
+  permissions: string[];
+  apps: string[];
+  roles: RoleTemplate[];
+  sod: [string, string][];
 }
 
 export interface HealthCheck {
@@ -59,6 +83,8 @@ export interface ModuleContext {
   permissions: readonly string[];
   /** Which apps are switched on. */
   apps: AppRegistry;
+  /** Every installed module, in boot order. */
+  installed: readonly ModuleInfo[];
 }
 
 export interface SessionUser {

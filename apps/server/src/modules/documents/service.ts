@@ -1,9 +1,13 @@
 import type { ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, nowIso } from '../../kernel/dates.js';
-import { applyRate, divRound, lineAmount, netOfInclusive, sum } from '../../kernel/money.js';
+import { computeLine, divRound, sum } from '../../kernel/money.js';
 import type { JournalLineInput } from '../ledger/service.js';
+import type { DocKindInfo, DocSide, DocSideInfo, Document, DocumentLine, DocumentsService as DocumentsContract } from '../../contracts/documents.js';
+import type { Tax } from '../../contracts/tax.js';
 import { KIND_INFO, type DocKind } from './schema.js';
+
+export type { Document } from '../../contracts/documents.js';
 
 export interface DocLineInput {
   itemId?: number | null;
@@ -18,6 +22,8 @@ export interface DocLineInput {
   warehouseId?: number | null;
   /** Alternative unit of measure (null = the item's base unit); quantity and price are in this unit. */
   unitId?: number | null;
+  /** Controlling dimension (CO module). */
+  costCenterId?: number | null;
   /**
    * Extension data other modules attach to a line (lots/serials, links to goods
    * receipts or purchase orders). Stored as-is; the owning module validates it.
@@ -39,31 +45,6 @@ export interface DocInput {
   lines: DocLineInput[];
 }
 
-export interface Document {
-  id: number;
-  kind: DocKind;
-  number: string | null;
-  party_id: number;
-  date: string;
-  due_date: string;
-  reference: string | null;
-  notes: string | null;
-  currency: string;
-  tax_inclusive: number;
-  status: 'draft' | 'posted' | 'void';
-  subtotal: number;
-  discount_total: number;
-  tax_total: number;
-  total: number;
-  amount_settled: number;
-  against_document_id: number | null;
-  journal_entry_id: number | null;
-  void_entry_id: number | null;
-  warehouse_id: number | null;
-  created_at: string;
-  posted_at: string | null;
-}
-
 export interface ComputedLine {
   item_id: number | null;
   description: string;
@@ -79,21 +60,12 @@ export interface ComputedLine {
   /** Quantity in the item's base unit (x1000) — what stock moves use. */
   base_quantity: number;
   ext: string | null;
+  cost_center_id: number | null;
   gross: number;
   discount: number;
   net: number;
   tax: number;
   total: number;
-}
-
-/** Pure line math — also used by the web app preview (mirrored in TypeScript there). */
-export function computeLine(l: { quantity: number; unitPrice: number; discountBp: number; rateBp: number }, inclusive: boolean) {
-  const gross = lineAmount(l.quantity, l.unitPrice);
-  const discount = applyRate(gross, l.discountBp);
-  const after = gross - discount;
-  const net = inclusive ? netOfInclusive(after, l.rateBp) : after;
-  const tax = inclusive ? after - net : applyRate(net, l.rateBp);
-  return { gross, discount, net, tax, total: net + tax };
 }
 
 export type DocumentsService = ReturnType<typeof createDocuments>;
@@ -104,6 +76,13 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
   const parties = () => services.get('parties');
   const catalog = () => services.get('catalog');
   const audit = () => services.get('audit');
+  // Without the Tax app lines carry no tax; without CO no cost center.
+  const taxOn = () => services.has('tax') && apps.isEnabled('tax');
+  const tax = (id: number): Tax => (taxOn() ? services.get('tax').get(id) : fail('tax.unavailable', 'Taxes are not in use'));
+
+  // AR and AP plug in the document kinds they sell; an unregistered kind cannot be used.
+  const kinds = new Map<DocKind, DocKindInfo>();
+  const sides = new Map<DocSide, DocSideInfo>();
 
   function get(id: number): Document {
     return db.get<Document>('SELECT * FROM documents WHERE id = ?', [id]) ?? notFound('document', id);
@@ -147,13 +126,18 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
       }
 
       let rate = 0;
-      const taxId = l.taxId ?? null;
+      const taxId = taxOn() ? l.taxId ?? null : null;
       if (taxId) {
-        const tax = catalog().tax(taxId);
-        if (!tax.is_active) fail('document.inactive_tax', `Line ${n}: tax ${tax.code} is inactive`, { line: n });
-        const okScope = tax.scope === 'both' || tax.scope === side;
-        if (!okScope) fail('document.tax_scope', `Line ${n}: tax ${tax.code} is not for ${side}`, { line: n });
-        rate = tax.rate_bp;
+        const t = tax(taxId);
+        if (!t.is_active) fail('document.inactive_tax', `Line ${n}: tax ${t.code} is inactive`, { line: n });
+        const okScope = t.scope === 'both' || t.scope === side;
+        if (!okScope) fail('document.tax_scope', `Line ${n}: tax ${t.code} is not for ${side}`, { line: n });
+        rate = t.rate_bp;
+      }
+      const costCenterId = l.costCenterId ?? null;
+      if (costCenterId) {
+        if (!services.has('costCenters') || !apps.isEnabled('co')) fail('co.unavailable', `Line ${n}: cost centers are not in use`, { line: n });
+        services.get('costCenters').assertUsable(costCenterId);
       }
       const discountBp = l.discountBp ?? 0;
       const c = computeLine({ quantity: l.quantity, unitPrice: l.unitPrice, discountBp, rateBp: rate }, !!input.taxInclusive);
@@ -171,6 +155,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
         unit_factor: factor,
         base_quantity: baseQty,
         ext,
+        cost_center_id: costCenterId,
         ...c,
       };
     });
@@ -248,8 +233,8 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     writeDoc(id, input, userId);
   }
 
-  function lines(id: number): (ComputedLine & { id: number; line_no: number })[] {
-    return db.all('SELECT * FROM document_lines WHERE document_id = ? ORDER BY line_no', [id]);
+  function lines(id: number): DocumentLine[] {
+    return db.all<DocumentLine>('SELECT * FROM document_lines WHERE document_id = ? ORDER BY line_no', [id]);
   }
 
   /** Build the balanced journal for a document. */
@@ -261,15 +246,22 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     // revenue/tax credit. Bills and customer credit notes are the mirror image.
     const controlDebit = info.sign === 1;
 
-    const byAccount = new Map<number, number>();
-    const add = (acc: number, amt: number) => byAccount.set(acc, (byAccount.get(acc) ?? 0) + amt);
+    // One journal line per account and cost center.
+    const byAccount = new Map<string, { acc: number; cc: number | null; amt: number }>();
+    const add = (acc: number, cc: number | null, amt: number) => {
+      const k = `${acc}:${cc ?? ''}`;
+      const cur = byAccount.get(k) ?? { acc, cc, amt: 0 };
+      cur.amt += amt;
+      byAccount.set(k, cur);
+    };
     for (const l of lines(doc.id)) {
-      if (l.net !== 0) add(l.account_id, l.net);
+      if (l.net !== 0) add(l.account_id, l.cost_center_id ?? null, l.net);
       if (l.tax !== 0) {
-        const tax = catalog().tax(l.tax_id!);
-        const taxAcc = info.side === 'sales' ? tax.sales_account_id : tax.purchase_account_id;
-        if (!taxAcc) fail('tax.account_required', `Tax ${tax.code} has no ${info.side === 'sales' ? 'output' : 'input'} account`);
-        add(taxAcc!, l.tax);
+        // Posted with the tax it was drafted with, even if the Tax app was switched off since.
+        const t = db.get<Tax>('SELECT * FROM taxes WHERE id = ?', [l.tax_id]) ?? notFound('tax', l.tax_id ?? 0);
+        const taxAcc = info.side === 'sales' ? t.sales_account_id : t.purchase_account_id;
+        if (!taxAcc) fail('tax.account_required', `Tax ${t.code} has no ${info.side === 'sales' ? 'output' : 'input'} account`);
+        add(taxAcc!, null, l.tax);
       }
     }
     const out: JournalLineInput[] = [];
@@ -281,9 +273,9 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
       credit: controlDebit ? 0 : doc.total,
       description: party.name,
     });
-    for (const [acc, amt] of byAccount) {
+    for (const { acc, cc, amt } of byAccount.values()) {
       if (amt === 0) continue;
-      out.push({ accountId: acc, debit: controlDebit ? 0 : amt, credit: controlDebit ? amt : 0 });
+      out.push({ accountId: acc, costCenterId: cc, debit: controlDebit ? 0 : amt, credit: controlDebit ? amt : 0 });
     }
     return out;
   }
@@ -407,5 +399,14 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     });
   }
 
-  return { get, lines, create, update, post, void: voidDoc, remove, settle, unsettleSource, journalLines };
+  const contract: DocumentsContract = {
+    get,
+    lines,
+    settle,
+    unsettleSource,
+    registerKind: (kind, info) => void kinds.set(kind, info),
+    registerSide: (side, info) => void sides.set(side, info),
+    kind: (kind) => kinds.get(kind) ?? null,
+  };
+  return { ...contract, side: (side: DocSide) => sides.get(side) ?? null, create, update, post, void: voidDoc, remove, journalLines };
 }

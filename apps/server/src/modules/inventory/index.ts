@@ -7,12 +7,6 @@ import { paging, parse, zDate, zId, zOptId, zOptText } from '../../kernel/valida
 import { migrations, STOCK_DOC_KINDS, STOCK_SEQ } from './schema.js';
 import { createInventory, type InventoryService } from './service.js';
 
-declare module '../../kernel/services.js' {
-  interface ServiceMap {
-    inventory: InventoryService;
-  }
-}
-
 const zWarehouse = z.object({
   code: z.string().trim().min(1).max(20),
   nameEn: z.string().trim().min(1).max(100),
@@ -96,8 +90,26 @@ export const inventoryModule: AppModule = {
   id: 'inventory',
   dependsOn: ['ledger', 'catalog', 'documents'],
   migrations,
-  permissions: ['inventory.read', 'inventory.write', 'inventory.post'],
-  apps: [{ id: 'inventory', order: 40, permissions: ['inventory', 'catalog', 'parties'] }],
+  permissions: [
+    'inventory.stock.read',
+    'inventory.operations.write',
+    'inventory.operations.post',
+    'inventory.receipts.read',
+    'inventory.receipts.write',
+    'inventory.receipts.post',
+    'inventory.landed.write',
+    'inventory.landed.post',
+    'inventory.warehouses.manage',
+  ],
+  apps: [{ id: 'inventory', order: 40, permissions: ['inventory', 'catalog'] }],
+  roles: [
+    {
+      id: 'storekeeper',
+      permissions: ['inventory.stock.read', 'inventory.operations.write', 'inventory.receipts.read', 'inventory.receipts.write', 'catalog.items.read', 'ap.suppliers.read'],
+    },
+    { id: 'inventory_controller', permissions: ['inventory.*', 'catalog.items.*', 'ap.suppliers.read'] },
+  ],
+  sod: [['inventory.operations.write', 'inventory.operations.post']],
   health({ db, services }) {
     const stock = db.get<{ v: number }>('SELECT COALESCE(SUM(value), 0) v FROM stock_values')!.v;
     const gl = db.get<{ b: number }>(
@@ -144,11 +156,12 @@ export const inventoryModule: AppModule = {
   },
 
   routes(r, { db, services }) {
-    const inv = services.get('inventory');
+    // The registry exposes the public contract; the module itself uses its full service.
+    const inv = services.get('inventory') as unknown as InventoryService;
     const audit = services.get('audit');
 
     // ------------------------------------------------------------ warehouses
-    r.get('/inventory/warehouses', 'inventory.read', () =>
+    r.get('/inventory/warehouses', 'inventory.stock.read', () =>
       db.all(
         `SELECT w.*,
                 (SELECT COUNT(*) FROM stock_levels l WHERE l.warehouse_id = w.id AND l.qty > 0) AS items,
@@ -182,8 +195,8 @@ export const inventoryModule: AppModule = {
       });
     };
 
-    r.post('/inventory/warehouses', 'inventory.write', ({ body, user }) => ({ id: saveWarehouse(null, parse(zWarehouse, body), user.id) }));
-    r.put('/inventory/warehouses/:id', 'inventory.write', ({ params, body, user }) => {
+    r.post('/inventory/warehouses', 'inventory.warehouses.manage', ({ body, user }) => ({ id: saveWarehouse(null, parse(zWarehouse, body), user.id) }));
+    r.put('/inventory/warehouses/:id', 'inventory.warehouses.manage', ({ params, body, user }) => {
       inv.warehouse(Number(params.id));
       return { id: saveWarehouse(Number(params.id), parse(zWarehouse, body), user.id) };
     });
@@ -191,14 +204,14 @@ export const inventoryModule: AppModule = {
     // ---------------------------------------------------------- stock on hand
 
     /** Quantities by item for one warehouse (or all), used for availability hints while typing documents. */
-    r.get('/inventory/levels', 'inventory.read', ({ query }) => {
+    r.get('/inventory/levels', 'inventory.stock.read', ({ query }) => {
       const rows = query.warehouseId
         ? db.all<{ item_id: number; qty: number }>('SELECT item_id, qty FROM stock_levels WHERE warehouse_id = ?', [Number(query.warehouseId)])
         : db.all<{ item_id: number; qty: number }>('SELECT item_id, SUM(qty) qty FROM stock_levels GROUP BY item_id');
       return Object.fromEntries(rows.map((x) => [x.item_id, x.qty]));
     });
 
-    r.get('/inventory/stock', 'inventory.read', ({ query }) => {
+    r.get('/inventory/stock', 'inventory.stock.read', ({ query }) => {
       const wh = query.warehouseId ? Number(query.warehouseId) : null;
       const where = ["i.kind = 'product'", 'i.track_stock = 1'];
       const p: Record<string, string | number> = {};
@@ -234,7 +247,7 @@ export const inventoryModule: AppModule = {
       };
     });
 
-    r.get('/inventory/summary', 'inventory.read', () => {
+    r.get('/inventory/summary', 'inventory.stock.read', () => {
       const items = db.all<{ qty: number; value: number; reorder_level: number }>(
         `SELECT COALESCE(v.qty, 0) qty, COALESCE(v.value, 0) value, i.reorder_level FROM items i LEFT JOIN stock_values v ON v.item_id = i.id
          WHERE i.kind = 'product' AND i.track_stock = 1 AND i.is_active = 1`,
@@ -261,7 +274,7 @@ export const inventoryModule: AppModule = {
     });
 
     // ------------------------------------------------------------- item card
-    r.get('/inventory/items/:id', 'inventory.read', ({ params }) => {
+    r.get('/inventory/items/:id', 'inventory.stock.read', ({ params }) => {
       const item = services.get('catalog').item(Number(params.id));
       const p = inv.pool(item.id);
       const levels = db.all<{ warehouse_id: number; code: string; name_en: string; name_ar: string; qty: number }>(
@@ -288,7 +301,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** The stock card (كارت الصنف): every movement with running balances. */
-    r.get('/inventory/items/:id/card', 'inventory.read', ({ params, query }) => {
+    r.get('/inventory/items/:id/card', 'inventory.stock.read', ({ params, query }) => {
       const itemId = Number(params.id);
       services.get('catalog').item(itemId);
       const q = parse(z.object({ from: zDate.nullish(), to: zDate.nullish(), warehouseId: zOptId }), query);
@@ -343,7 +356,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** Stock movements & cost entries produced by a sales/purchase document or stock document. */
-    r.get('/inventory/by-source', 'inventory.read', ({ query }) => {
+    r.get('/inventory/by-source', 'inventory.stock.read', ({ query }) => {
       const q = parse(z.object({ type: z.string(), id: zId }), query);
       return db.all(
         `SELECT m.id, m.date, m.qty, m.value, m.is_reversal, m.item_id, i.sku, i.name_en, i.name_ar, w.code AS warehouse_code,
@@ -359,7 +372,7 @@ export const inventoryModule: AppModule = {
     });
 
     // ------------------------------------------------------ stock documents
-    r.get('/inventory/operations', 'inventory.read', ({ query }) => {
+    r.get('/inventory/operations', 'inventory.stock.read', ({ query }) => {
       const { limit, offset } = paging(query);
       const where: string[] = [];
       const p: Record<string, string | number> = {};
@@ -381,7 +394,7 @@ export const inventoryModule: AppModule = {
       return { rows, total };
     });
 
-    r.get('/inventory/operations/:id', 'inventory.read', ({ params }) => {
+    r.get('/inventory/operations/:id', 'inventory.stock.read', ({ params }) => {
       const d = inv.stockDoc(Number(params.id));
       const lines = db.all(
         `SELECT l.*, i.sku, i.name_en, i.name_ar, i.unit, i.tracking, u.name_en AS unit_name_en, u.name_ar AS unit_name_ar,
@@ -404,9 +417,9 @@ export const inventoryModule: AppModule = {
       };
     });
 
-    r.post('/inventory/operations', 'inventory.write', ({ body, user }) => {
+    r.post('/inventory/operations', 'inventory.operations.write', ({ body, user }) => {
       const input = parse(zStockDoc, body);
-      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      if (input.post && !user.permissions.has('inventory.operations.post')) forbidden('inventory.operations.post');
       const id = db.tx(() => {
         const id = inv.createDoc(input, user.id);
         if (input.post) inv.postDoc(id, user.id);
@@ -415,10 +428,10 @@ export const inventoryModule: AppModule = {
       return { id };
     });
 
-    r.put('/inventory/operations/:id', 'inventory.write', ({ params, body, user }) => {
+    r.put('/inventory/operations/:id', 'inventory.operations.write', ({ params, body, user }) => {
       const id = Number(params.id);
       const input = parse(zStockDoc, body);
-      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      if (input.post && !user.permissions.has('inventory.operations.post')) forbidden('inventory.operations.post');
       db.tx(() => {
         inv.updateDoc(id, input, user.id);
         if (input.post) inv.postDoc(id, user.id);
@@ -426,18 +439,18 @@ export const inventoryModule: AppModule = {
       return { id };
     });
 
-    r.post('/inventory/operations/:id/post', 'inventory.post', ({ params, user }) => {
+    r.post('/inventory/operations/:id/post', 'inventory.operations.post', ({ params, user }) => {
       inv.postDoc(Number(params.id), user.id);
       return { ok: true };
     });
 
-    r.post('/inventory/operations/:id/void', 'inventory.post', ({ params, body, user }) => {
+    r.post('/inventory/operations/:id/void', 'inventory.operations.post', ({ params, body, user }) => {
       const input = parse(z.object({ date: zDate.nullish() }), body ?? {});
       inv.voidDoc(Number(params.id), input, user.id);
       return { ok: true };
     });
 
-    r.delete('/inventory/operations/:id', 'inventory.write', ({ params, user }) => {
+    r.delete('/inventory/operations/:id', 'inventory.operations.write', ({ params, user }) => {
       inv.removeDoc(Number(params.id), user.id);
       return { ok: true };
     });
@@ -445,7 +458,7 @@ export const inventoryModule: AppModule = {
     // --------------------------------------------------------------- reports
 
     /** Stock valuation at a date, reconciled with the inventory accounts in the ledger. */
-    r.get('/inventory/reports/valuation', 'inventory.read', ({ query }) => {
+    r.get('/inventory/reports/valuation', 'inventory.stock.read', ({ query }) => {
       const q = parse(z.object({ asOf: zDate.default(today()), warehouseId: zOptId }), query);
       const rows = db.all<any>(
         `SELECT i.id, i.sku, i.name_en, i.name_ar, i.unit, c.name_en AS category_name_en, c.name_ar AS category_name_ar,
@@ -482,7 +495,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** Opening, in, out and closing for each item over a period. */
-    r.get('/inventory/reports/movement', 'inventory.read', ({ query }) => {
+    r.get('/inventory/reports/movement', 'inventory.stock.read', ({ query }) => {
       const y = today().slice(0, 4);
       const q = parse(z.object({ from: zDate.default(`${y}-01-01`), to: zDate.default(`${y}-12-31`), warehouseId: zOptId }), query);
       const wh = q.warehouseId ? 'AND m.warehouse_id = :wh' : '';
@@ -513,7 +526,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** What to buy: items at or below their reorder level. */
-    r.get('/inventory/reports/reorder', 'inventory.read', ({ query }) => {
+    r.get('/inventory/reports/reorder', 'inventory.stock.read', ({ query }) => {
       const wh = query.warehouseId ? Number(query.warehouseId) : null;
       const rows = db.all<any>(
         `SELECT i.id, i.sku, i.name_en, i.name_ar, i.unit, i.reorder_level, i.reorder_qty, i.purchase_price,
@@ -533,7 +546,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** Gross profit per item: revenue from sales documents vs the cost of the goods that left. */
-    r.get('/inventory/reports/profitability', 'inventory.read', ({ query }) => {
+    r.get('/inventory/reports/profitability', 'inventory.stock.read', ({ query }) => {
       const y = today().slice(0, 4);
       const q = parse(z.object({ from: zDate.default(`${y}-01-01`), to: zDate.default(`${y}-12-31`) }), query);
       const sales = db.all<{ item_id: number; qty: number; revenue: number }>(
@@ -578,7 +591,7 @@ export const inventoryModule: AppModule = {
 
     // ------------------------------------------------------ lots & serials
     /** Lots in stock (optionally for one item / warehouse) — used by lot pickers. */
-    r.get('/inventory/lots', 'inventory.read', ({ query }) => {
+    r.get('/inventory/lots', 'inventory.stock.read', ({ query }) => {
       const where = ['ll.qty > 0'];
       const p: Record<string, string | number> = {};
       if (query.itemId) (where.push('l.item_id = :item'), (p.item = Number(query.itemId)));
@@ -592,7 +605,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** Near-expiry and expired stock, valued at average cost. */
-    r.get('/inventory/reports/expiry', 'inventory.read', ({ query }) => {
+    r.get('/inventory/reports/expiry', 'inventory.stock.read', ({ query }) => {
       const days = Math.min(Math.max(Number(query.days ?? 90) || 90, 0), 3650);
       const t = today();
       const until = addDays(t, days);
@@ -623,7 +636,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** Trace a lot or serial number from the supplier to the customer (recalls, warranty). */
-    r.get('/inventory/trace', 'inventory.read', ({ query }) => {
+    r.get('/inventory/trace', 'inventory.stock.read', ({ query }) => {
       const code = String(query.q ?? '').trim();
       if (!code) return { lots: [] };
       const lots = db.all<any>(
@@ -675,7 +688,7 @@ export const inventoryModule: AppModule = {
       };
     };
 
-    r.get('/inventory/receipts', 'inventory.read', ({ query }) => {
+    r.get('/inventory/receipts', 'inventory.receipts.read', ({ query }) => {
       const { limit, offset } = paging(query);
       const where: string[] = [];
       const p: Record<string, string | number> = {};
@@ -696,11 +709,11 @@ export const inventoryModule: AppModule = {
       return { rows, total };
     });
 
-    r.get('/inventory/receipts/:id', 'inventory.read', ({ params }) => receiptView(Number(params.id)));
+    r.get('/inventory/receipts/:id', 'inventory.receipts.read', ({ params }) => receiptView(Number(params.id)));
 
-    r.post('/inventory/receipts', 'inventory.write', ({ body, user }) => {
+    r.post('/inventory/receipts', 'inventory.receipts.write', ({ body, user }) => {
       const input = parse(zReceipt, body);
-      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      if (input.post && !user.permissions.has('inventory.receipts.post')) forbidden('inventory.receipts.post');
       const id = db.tx(() => {
         const id = inv.createReceipt(input, user.id);
         if (input.post) inv.postReceipt(id, user.id);
@@ -709,10 +722,10 @@ export const inventoryModule: AppModule = {
       return { id };
     });
 
-    r.put('/inventory/receipts/:id', 'inventory.write', ({ params, body, user }) => {
+    r.put('/inventory/receipts/:id', 'inventory.receipts.write', ({ params, body, user }) => {
       const id = Number(params.id);
       const input = parse(zReceipt, body);
-      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      if (input.post && !user.permissions.has('inventory.receipts.post')) forbidden('inventory.receipts.post');
       db.tx(() => {
         inv.updateReceipt(id, input, user.id);
         if (input.post) inv.postReceipt(id, user.id);
@@ -720,23 +733,23 @@ export const inventoryModule: AppModule = {
       return { id };
     });
 
-    r.post('/inventory/receipts/:id/post', 'inventory.post', ({ params, user }) => {
+    r.post('/inventory/receipts/:id/post', 'inventory.receipts.post', ({ params, user }) => {
       inv.postReceipt(Number(params.id), user.id);
       return { ok: true };
     });
 
-    r.post('/inventory/receipts/:id/void', 'inventory.post', ({ params, body, user }) => {
+    r.post('/inventory/receipts/:id/void', 'inventory.receipts.post', ({ params, body, user }) => {
       inv.voidReceipt(Number(params.id), parse(z.object({ date: zDate.nullish() }), body ?? {}), user.id);
       return { ok: true };
     });
 
-    r.delete('/inventory/receipts/:id', 'inventory.write', ({ params, user }) => {
+    r.delete('/inventory/receipts/:id', 'inventory.receipts.write', ({ params, user }) => {
       inv.removeReceipt(Number(params.id), user.id);
       return { ok: true };
     });
 
     /** Received but not yet invoiced — reconciled with the GRNI account. */
-    r.get('/inventory/reports/grni', 'inventory.read', ({ query }) => {
+    r.get('/inventory/reports/grni', 'inventory.receipts.read', ({ query }) => {
       const asOf = String(query.asOf ?? today());
       const rows = db.all<any>(
         `SELECT l.id, r.id AS receipt_id, r.number, r.date, pa.name AS supplier_name, i.sku, i.name_en, i.name_ar,
@@ -754,7 +767,7 @@ export const inventoryModule: AppModule = {
     });
 
     // --------------------------------------------------------- landed costs
-    r.get('/inventory/landed-costs', 'inventory.read', ({ query }) => {
+    r.get('/inventory/landed-costs', 'inventory.stock.read', ({ query }) => {
       const { limit, offset } = paging(query);
       const rows = db.all(
         `SELECT lc.*, a.code AS counter_code, a.name_en AS counter_name_en, a.name_ar AS counter_name_ar,
@@ -767,7 +780,7 @@ export const inventoryModule: AppModule = {
     });
 
     /** Purchases that can carry landed costs (recent posted bills and receipts with stock items). */
-    r.get('/inventory/landed-costs/candidates', 'inventory.read', ({ query }) => {
+    r.get('/inventory/landed-costs/candidates', 'inventory.stock.read', ({ query }) => {
       const since = String(query.since ?? addDays(today(), -365));
       return db.all(
         `SELECT 'purchase_bill' AS source_type, d.id AS source_id, d.number, d.date, pa.name AS supplier_name,
@@ -785,7 +798,7 @@ export const inventoryModule: AppModule = {
       );
     });
 
-    r.get('/inventory/landed-costs/:id', 'inventory.read', ({ params }) => {
+    r.get('/inventory/landed-costs/:id', 'inventory.stock.read', ({ params }) => {
       const lc = inv.landedCost(Number(params.id));
       const targets = db.all(
         `SELECT t.source_type, t.source_id, COALESCE(d.number, r.number) AS number, COALESCE(d.date, r.date) AS date, COALESCE(p1.name, p2.name) AS supplier_name
@@ -811,9 +824,9 @@ export const inventoryModule: AppModule = {
       };
     });
 
-    r.post('/inventory/landed-costs', 'inventory.write', ({ body, user }) => {
+    r.post('/inventory/landed-costs', 'inventory.landed.write', ({ body, user }) => {
       const input = parse(zLanded, body);
-      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      if (input.post && !user.permissions.has('inventory.landed.post')) forbidden('inventory.landed.post');
       const id = db.tx(() => {
         const id = inv.createLandedCost(input, user.id);
         if (input.post) inv.postLandedCost(id, user.id);
@@ -822,10 +835,10 @@ export const inventoryModule: AppModule = {
       return { id };
     });
 
-    r.put('/inventory/landed-costs/:id', 'inventory.write', ({ params, body, user }) => {
+    r.put('/inventory/landed-costs/:id', 'inventory.landed.write', ({ params, body, user }) => {
       const id = Number(params.id);
       const input = parse(zLanded, body);
-      if (input.post && !user.permissions.has('inventory.post')) forbidden('inventory.post');
+      if (input.post && !user.permissions.has('inventory.landed.post')) forbidden('inventory.landed.post');
       db.tx(() => {
         inv.updateLandedCost(id, input, user.id);
         if (input.post) inv.postLandedCost(id, user.id);
@@ -833,17 +846,17 @@ export const inventoryModule: AppModule = {
       return { id };
     });
 
-    r.post('/inventory/landed-costs/:id/post', 'inventory.post', ({ params, user }) => {
+    r.post('/inventory/landed-costs/:id/post', 'inventory.landed.post', ({ params, user }) => {
       inv.postLandedCost(Number(params.id), user.id);
       return { ok: true };
     });
 
-    r.post('/inventory/landed-costs/:id/void', 'inventory.post', ({ params, body, user }) => {
+    r.post('/inventory/landed-costs/:id/void', 'inventory.landed.post', ({ params, body, user }) => {
       inv.voidLandedCost(Number(params.id), parse(z.object({ date: zDate.nullish() }), body ?? {}), user.id);
       return { ok: true };
     });
 
-    r.delete('/inventory/landed-costs/:id', 'inventory.write', ({ params, user }) => {
+    r.delete('/inventory/landed-costs/:id', 'inventory.landed.write', ({ params, user }) => {
       inv.removeLandedCost(Number(params.id), user.id);
       return { ok: true };
     });

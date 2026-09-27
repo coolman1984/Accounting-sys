@@ -15,7 +15,7 @@ import {
   type SequenceService,
   type SettingsService,
 } from './settings.js';
-import { createAccess, hashPassword, ROLES, validatePassword, verifyPassword, type AccessService } from './auth.js';
+import { BUILTIN_ROLES, createAccess, expandPermissions, hashPassword, permissionsForRule, validatePassword, verifyPassword, type AccessService, type RoleRule } from './auth.js';
 
 export const VERSION = '0.1.0';
 export const SESSION_COOKIE = 'mizan_sid';
@@ -76,8 +76,8 @@ export function lanUrls(port: number): string[] {
 export const systemModule: AppModule = {
   id: 'system',
   migrations,
-  permissions: ['settings.read', 'settings.manage', 'users.manage', 'audit.read', 'system.backup'],
-  apps: [{ id: 'accounting', core: true, order: 0, permissions: ['settings', 'users', 'audit', 'system'] }],
+  permissions: ['admin.settings.read', 'admin.settings.manage', 'admin.users.manage', 'admin.audit.read', 'admin.backup.manage'],
+  apps: [{ id: 'gl', core: true, order: 0, permissions: ['admin'] }],
   health({ db, services }) {
     const quick = db.get<{ quick_check: string }>('PRAGMA quick_check')?.quick_check;
     const last = services.get('backup').list()[0];
@@ -126,7 +126,7 @@ export const systemModule: AppModule = {
     });
   },
 
-  routes(r, { db, services, events, config, apps }) {
+  routes(r, { db, services, events, config, apps, installed }) {
     const settings = services.get('settings');
     const access = services.get('access');
     const audit = services.get('audit');
@@ -156,6 +156,7 @@ export const systemModule: AppModule = {
           locale: input.locale,
           created_at: new Date().toISOString(),
         });
+        db.run("INSERT INTO user_roles (user_id, role_id) SELECT ?, id FROM roles WHERE key = 'admin'", [userId]);
         events.emit('system.setup', {
           locale: input.locale,
           fiscalYearStart: input.fiscalYearStart,
@@ -225,66 +226,166 @@ export const systemModule: AppModule = {
       return { ok: true };
     });
 
-    // ---------- Users ----------
+    // ---------- Users & roles ----------
     const zUser = z.object({
       username: z.string().trim().min(3).max(50).regex(/^[a-zA-Z0-9._-]+$/),
       displayName: z.string().trim().min(1).max(100),
-      role: z.enum(ROLES as [string, ...string[]]),
+      /** Roles the user holds (ids). `role` (a built-in key) is still accepted from older clients. */
+      roleIds: z.array(z.number().int().positive()).max(50).optional(),
+      role: z.enum(BUILTIN_ROLES).optional(),
       locale: z.enum(['en', 'ar']).default('en'),
       isActive: z.boolean().default(true),
     });
 
-    r.get('/users', 'users.manage', () =>
-      db.all(
-        'SELECT id, username, display_name, role, locale, is_active, created_at, last_login_at FROM users ORDER BY username',
-      ),
+    const roleIdsOf = (userId: number) => db.all<{ role_id: number }>('SELECT role_id FROM user_roles WHERE user_id = ?', [userId]).map((r) => r.role_id);
+    const resolveRoles = (input: { roleIds?: number[]; role?: string }): number[] | undefined => {
+      if (input.roleIds) {
+        for (const id of input.roleIds) if (!db.get('SELECT 1 FROM roles WHERE id = ?', [id])) notFound('role', id);
+        return [...new Set(input.roleIds)];
+      }
+      if (input.role) return [db.get<{ id: number }>('SELECT id FROM roles WHERE key = ?', [input.role])!.id];
+      return undefined;
+    };
+    const adminRoleId = () => db.get<{ id: number }>("SELECT id FROM roles WHERE key = 'admin'")!.id;
+    /** At least one active user must keep the Administrator role (no locking yourself out). */
+    const assertAdminLeft = () => {
+      const n = db.get<{ n: number }>(
+        'SELECT COUNT(*) n FROM users u JOIN user_roles ur ON ur.user_id = u.id WHERE ur.role_id = ? AND u.is_active = 1',
+        [adminRoleId()],
+      )!.n;
+      if (n === 0) fail('user.last_admin', 'At least one active administrator is required');
+    };
+    // users.role is legacy (NOT NULL, three values): keep it roughly in line for old reports.
+    const legacyRole = (roleIds: number[]) => {
+      const keys = roleIds.map((id) => db.get<{ key: string | null }>('SELECT key FROM roles WHERE id = ?', [id])?.key);
+      return keys.includes('admin') ? 'admin' : keys.includes('accountant') ? 'accountant' : 'viewer';
+    };
+
+    r.get('/users', 'admin.users.manage', () =>
+      db
+        .all<{ id: number }>('SELECT id, username, display_name, role, locale, is_active, created_at, last_login_at FROM users ORDER BY username')
+        .map((u) => ({ ...u, role_ids: roleIdsOf(u.id), permissions: [...access.permissionsOf(u.id)] })),
     );
 
-    r.post('/users', 'users.manage', ({ user, body }) => {
+    r.post('/users', 'admin.users.manage', ({ user, body }) => {
       const input = parse(zUser.extend({ password: z.string() }), body);
       validatePassword(input.password);
       if (db.get('SELECT 1 FROM users WHERE username = ?', [input.username])) conflict('user.exists', 'Username already taken');
+      const roleIds = resolveRoles(input) ?? [];
       return db.tx(() => {
         const id = db.insert('users', {
           username: input.username,
           display_name: input.displayName,
           password_hash: hashPassword(input.password),
-          role: input.role,
+          role: legacyRole(roleIds),
           locale: input.locale,
           is_active: input.isActive,
           created_at: new Date().toISOString(),
         });
-        audit.log({ userId: user.id, action: 'create', entity: 'user', entityId: id, summary: input.username });
+        for (const rid of roleIds) db.run('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rid]);
+        audit.log({ userId: user.id, action: 'create', entity: 'user', entityId: id, summary: input.username, data: { roleIds } });
         return { id };
       });
     });
 
-    r.put('/users/:id', 'users.manage', ({ user, params, body }) => {
+    r.put('/users/:id', 'admin.users.manage', ({ user, params, body }) => {
       const id = Number(params.id);
       const input = parse(zUser.partial(), body);
-      const target = db.get<{ role: string; is_active: number }>('SELECT role, is_active FROM users WHERE id = ?', [id]);
-      if (!target) return notFound('user', id);
-      const losingAdmin =
-        target.role === 'admin' && ((input.role && input.role !== 'admin') || input.isActive === false);
-      if (losingAdmin) {
-        const admins = db.get<{ n: number }>("SELECT COUNT(*) n FROM users WHERE role = 'admin' AND is_active = 1")!.n;
-        if (admins <= 1) fail('user.last_admin', 'At least one active administrator is required');
-      }
+      if (!db.get('SELECT 1 FROM users WHERE id = ?', [id])) return notFound('user', id);
+      const roleIds = resolveRoles(input);
       db.tx(() => {
         db.update('users', id, {
           username: input.username,
           display_name: input.displayName,
-          role: input.role,
+          role: roleIds ? legacyRole(roleIds) : undefined,
           locale: input.locale,
           is_active: input.isActive,
         });
-        if (input.isActive === false || input.role) access.revokeAll(id);
+        if (roleIds) {
+          db.run('DELETE FROM user_roles WHERE user_id = ?', [id]);
+          for (const rid of roleIds) db.run('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rid]);
+        }
+        assertAdminLeft();
+        if (input.isActive === false || roleIds) access.revokeAll(id);
         audit.log({ userId: user.id, action: 'update', entity: 'user', entityId: id, data: input });
       });
       return { ok: true };
     });
 
-    r.post('/users/:id/password', 'users.manage', ({ user, params, body }) => {
+    // Roles: built-in ones follow a rule (and pick up new modules by themselves); custom ones list permissions.
+    const zRole = z.object({
+      name: z.string().trim().min(1).max(80),
+      description: z.string().trim().max(500).nullish().transform((v) => v || null),
+      permissions: z.array(z.string()).max(2000),
+    });
+    const all = () => access.allPermissions();
+
+    r.get('/roles', 'admin.users.manage', () =>
+      db
+        .all<{ id: number; key: string | null; name: string; description: string | null; rule: RoleRule | null }>('SELECT * FROM roles ORDER BY key IS NULL, id')
+        .map((role) => ({
+          ...role,
+          builtin: !!role.key,
+          permissions: role.rule
+            ? permissionsForRule(role.rule, all())
+            : db.all<{ permission: string }>('SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission', [role.id]).map((p) => p.permission),
+          users: db.get<{ n: number }>('SELECT COUNT(*) n FROM user_roles WHERE role_id = ?', [role.id])!.n,
+        })),
+    );
+
+    /** The permission catalogue for the role editor: every key with its module, plus templates and SoD pairs. */
+    r.get('/permissions', 'admin.users.manage', () => ({
+      modules: installed.filter((m) => m.permissions.length).map((m) => ({ id: m.id, apps: m.apps, permissions: m.permissions })),
+      templates: installed.flatMap((m) => m.roles.map((t) => ({ id: t.id, module: m.id, permissions: expandPermissions(t.permissions, all()) }))),
+      sod: installed.flatMap((m) => m.sod).filter(([a, b]) => all().includes(a) && all().includes(b)),
+    }));
+
+    const savePermissions = (roleId: number, perms: string[]) => {
+      const unknown = perms.filter((p) => !all().includes(p));
+      if (unknown.length) fail('role.unknown_permission', `Unknown permission ${unknown[0]}`, { permission: unknown[0] });
+      db.run('DELETE FROM role_permissions WHERE role_id = ?', [roleId]);
+      for (const p of new Set(perms)) db.run('INSERT INTO role_permissions (role_id, permission) VALUES (?, ?)', [roleId, p]);
+    };
+
+    r.post('/roles', 'admin.users.manage', ({ user, body }) => {
+      const input = parse(zRole, body);
+      if (db.get('SELECT 1 FROM roles WHERE name = ? COLLATE NOCASE', [input.name])) conflict('role.duplicate', 'A role with this name exists');
+      return db.tx(() => {
+        const id = db.insert('roles', { name: input.name, description: input.description, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+        savePermissions(id, input.permissions);
+        audit.log({ userId: user.id, action: 'create', entity: 'role', entityId: id, summary: input.name, data: { permissions: input.permissions } });
+        return { id };
+      });
+    });
+
+    r.put('/roles/:id', 'admin.users.manage', ({ user, params, body }) => {
+      const id = Number(params.id);
+      const cur = db.get<{ key: string | null; name: string }>('SELECT key, name FROM roles WHERE id = ?', [id]) ?? notFound('role', id);
+      if (cur.key) conflict('role.builtin', 'Built-in roles cannot be changed — copy it into a new role');
+      const input = parse(zRole, body);
+      const dup = db.get<{ id: number }>('SELECT id FROM roles WHERE name = ? COLLATE NOCASE', [input.name]);
+      if (dup && dup.id !== id) conflict('role.duplicate', 'A role with this name exists');
+      db.tx(() => {
+        db.update('roles', id, { name: input.name, description: input.description, updated_at: new Date().toISOString() });
+        savePermissions(id, input.permissions);
+        audit.log({ userId: user.id, action: 'update', entity: 'role', entityId: id, summary: input.name, data: { permissions: input.permissions } });
+      });
+      // New rights apply on the next request; nobody needs to log in again.
+      return { ok: true };
+    });
+
+    r.delete('/roles/:id', 'admin.users.manage', ({ user, params }) => {
+      const id = Number(params.id);
+      const cur = db.get<{ key: string | null; name: string }>('SELECT key, name FROM roles WHERE id = ?', [id]) ?? notFound('role', id);
+      if (cur.key) conflict('role.builtin', 'Built-in roles cannot be deleted');
+      db.tx(() => {
+        db.run('DELETE FROM roles WHERE id = ?', [id]);
+        audit.log({ userId: user.id, action: 'delete', entity: 'role', entityId: id, summary: cur.name });
+      });
+      return { ok: true };
+    });
+
+    r.post('/users/:id/password', 'admin.users.manage', ({ user, params, body }) => {
       const id = Number(params.id);
       const input = parse(z.object({ password: z.string() }), body);
       validatePassword(input.password);
@@ -303,7 +404,7 @@ export const systemModule: AppModule = {
       lockDate: settings.lockDate(),
     }));
 
-    r.put('/settings/company', 'settings.manage', ({ user, body }) => {
+    r.put('/settings/company', 'admin.settings.manage', ({ user, body }) => {
       const current = settings.company();
       const input = parse(zCompany.omit({ moneyScale: true, baseCurrency: true }), body);
       // Currency and decimals are fixed at setup: changing them would reinterpret every stored amount.
@@ -315,7 +416,7 @@ export const systemModule: AppModule = {
       return next;
     });
 
-    r.put('/settings/lock-date', 'settings.manage', ({ user, body }) => {
+    r.put('/settings/lock-date', 'admin.settings.manage', ({ user, body }) => {
       const input = parse(z.object({ lockDate: zDate.nullable() }), body);
       db.tx(() => {
         settings.set('lockDate', input.lockDate);
@@ -324,9 +425,9 @@ export const systemModule: AppModule = {
       return { lockDate: input.lockDate };
     });
 
-    r.get('/sequences', 'settings.read', () => services.get('sequences').list());
+    r.get('/sequences', 'admin.settings.read', () => services.get('sequences').list());
 
-    r.put('/sequences/:key', 'settings.manage', ({ user, params, body }) => {
+    r.put('/sequences/:key', 'admin.settings.manage', ({ user, params, body }) => {
       const input = parse(
         z.object({
           prefix: z.string().max(10).optional(),
@@ -343,7 +444,7 @@ export const systemModule: AppModule = {
     });
 
     // ---------- Audit trail ----------
-    r.get('/audit', 'audit.read', ({ query }) => {
+    r.get('/audit', 'admin.audit.read', ({ query }) => {
       const { limit, offset } = paging(query, 100);
       const where: string[] = [];
       const p: Record<string, string | number> = { limit, offset };
@@ -372,13 +473,13 @@ export const systemModule: AppModule = {
 
     // ---------- Backups ----------
     const backup = services.get('backup');
-    r.get('/system/backups', 'system.backup', () => backup.list());
-    r.post('/system/backups', 'system.backup', ({ user }) => {
+    r.get('/system/backups', 'admin.backup.manage', () => backup.list());
+    r.post('/system/backups', 'admin.backup.manage', ({ user }) => {
       const b = backup.create('manual');
       audit.log({ userId: user.id, action: 'backup', entity: 'system', summary: b.name });
       return b;
     });
-    r.get('/system/backups/:name', 'system.backup', ({ params, reply }) => {
+    r.get('/system/backups/:name', 'admin.backup.manage', ({ params, reply }) => {
       const file = backup.path(params.name);
       reply.header('content-type', 'application/octet-stream');
       reply.header('content-disposition', `attachment; filename="${params.name}"`);

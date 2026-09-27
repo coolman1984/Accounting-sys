@@ -53,3 +53,16 @@ function toSafe(v: bigint): number {
   }
   return Number(v);
 }
+
+/**
+ * Line math for any priced line (invoice, bill, purchase order): quantity ×
+ * price, less discount, then tax — or tax backed out of an inclusive price.
+ */
+export function computeLine(l: { quantity: number; unitPrice: number; discountBp: number; rateBp: number }, inclusive: boolean) {
+  const gross = lineAmount(l.quantity, l.unitPrice);
+  const discount = applyRate(gross, l.discountBp);
+  const after = gross - discount;
+  const net = inclusive ? netOfInclusive(after, l.rateBp) : after;
+  const tax = inclusive ? after - net : applyRate(net, l.rateBp);
+  return { gross, discount, net, tax, total: net + tax };
+}

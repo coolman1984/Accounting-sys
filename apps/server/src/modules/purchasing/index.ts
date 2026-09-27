@@ -2,9 +2,8 @@ import { z } from 'zod';
 import type { AppModule, ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, forbidden, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
-import { divRound, sum } from '../../kernel/money.js';
+import { computeLine, divRound, sum } from '../../kernel/money.js';
 import { paging, parse, zBp, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
-import { computeLine } from '../documents/service.js';
 
 export interface PurchaseOrder {
   id: number;
@@ -89,7 +88,7 @@ declare module '../../kernel/services.js' {
  * bills) and what has been invoiced. Orders never touch the books — they only
  * track the commitment.
  */
-function createPurchasing({ db, services }: ModuleContext) {
+function createPurchasing({ db, services, apps }: ModuleContext) {
   const catalog = () => services.get('catalog');
   const audit = () => services.get('audit');
 
@@ -109,8 +108,8 @@ function createPurchasing({ db, services }: ModuleContext) {
       if (!description) fail('document.line_description', `Line ${n}: description is required`, { line: n });
       const factor = item ? catalog().unitFactor(item, l.unitId) : 1000;
       let rate = 0;
-      if (l.taxId) {
-        const tax = catalog().tax(l.taxId);
+      if (l.taxId && services.has('tax') && apps.isEnabled('tax')) {
+        const tax = services.get('tax').get(l.taxId);
         if (tax.scope === 'sales') fail('document.tax_scope', `Line ${n}: tax ${tax.code} is not for purchases`, { line: n });
         rate = tax.rate_bp;
       }
@@ -210,9 +209,17 @@ function createPurchasing({ db, services }: ModuleContext) {
 
 export const purchasingModule: AppModule = {
   id: 'purchasing',
-  dependsOn: ['documents', 'inventory', 'parties', 'catalog'],
-  permissions: ['purchasing.read', 'purchasing.write', 'purchasing.approve'],
-  apps: [{ id: 'purchasing', order: 50, requires: ['purchases'], permissions: ['purchasing'] }],
+  // Inventory is optional: with it, goods receipts count as received; without it, bills do.
+  dependsOn: ['documents', 'parties', 'catalog'],
+  permissions: ['purchasing.orders.read', 'purchasing.orders.write', 'purchasing.orders.approve'],
+  apps: [{ id: 'purchasing', order: 50, requires: ['ap'], permissions: ['purchasing'] }],
+  roles: [
+    {
+      id: 'purchasing_officer',
+      permissions: ['purchasing.orders.read', 'purchasing.orders.write', 'ap.suppliers.read', 'ap.suppliers.write', 'catalog.items.read', 'inventory.stock.read', 'inventory.receipts.read'],
+    },
+  ],
+  sod: [['purchasing.orders.write', 'purchasing.orders.approve']],
   health({ db }) {
     const over = db.get<{ n: number }>(
       'SELECT COUNT(*) n FROM purchase_order_lines WHERE received_base > base_quantity OR billed_base > base_quantity OR received_base < 0 OR billed_base < 0',
@@ -316,7 +323,7 @@ export const purchasingModule: AppModule = {
   routes(r, { db, services }) {
     const po = services.get('purchasing');
 
-    r.get('/purchase-orders', 'purchasing.read', ({ query }) => {
+    r.get('/purchase-orders', 'purchasing.orders.read', ({ query }) => {
       const { limit, offset } = paging(query);
       const where: string[] = [];
       const p: Record<string, string | number> = {};
@@ -336,7 +343,7 @@ export const purchasingModule: AppModule = {
       return { rows, total };
     });
 
-    r.get('/purchase-orders/:id', 'purchasing.read', ({ params }) => {
+    r.get('/purchase-orders/:id', 'purchasing.orders.read', ({ params }) => {
       const o = po.get(Number(params.id));
       const lines = db.all<any>(
         `SELECT l.*, i.sku, i.name_en, i.name_ar, i.unit AS base_unit, i.tracking, u.name_en AS unit_name_en, u.name_ar AS unit_name_ar, t.code AS tax_code
@@ -344,7 +351,7 @@ export const purchasingModule: AppModule = {
          WHERE l.po_id = ? ORDER BY l.line_no`,
         [o.id],
       );
-      const receipts = db.all('SELECT id, number, date, status FROM goods_receipts WHERE po_id = ? ORDER BY id', [o.id]);
+      const receipts = services.has('inventory') ? db.all('SELECT id, number, date, status FROM goods_receipts WHERE po_id = ? ORDER BY id', [o.id]) : [];
       const bills = db.all(
         `SELECT DISTINCT d.id, d.number, d.date, d.status FROM documents d JOIN document_lines l ON l.document_id = d.id
          WHERE d.kind = 'purchase_bill' AND l.ext IS NOT NULL
@@ -360,9 +367,9 @@ export const purchasingModule: AppModule = {
       };
     });
 
-    r.post('/purchase-orders', 'purchasing.write', ({ body, user }) => {
+    r.post('/purchase-orders', 'purchasing.orders.write', ({ body, user }) => {
       const input = parse(zPo, body);
-      if (input.approve && !user.permissions.has('purchasing.approve')) forbidden('purchasing.approve');
+      if (input.approve && !user.permissions.has('purchasing.orders.approve')) forbidden('purchasing.orders.approve');
       const id = db.tx(() => {
         const id = po.create(input, user.id);
         if (input.approve) po.approve(id, user.id);
@@ -371,11 +378,11 @@ export const purchasingModule: AppModule = {
       return { id };
     });
 
-    r.put('/purchase-orders/:id', 'purchasing.write', ({ params, body, user }) => {
+    r.put('/purchase-orders/:id', 'purchasing.orders.write', ({ params, body, user }) => {
       const id = Number(params.id);
       if (po.get(id).status !== 'draft') conflict('po.not_draft', 'Approved orders cannot be edited');
       const input = parse(zPo, body);
-      if (input.approve && !user.permissions.has('purchasing.approve')) forbidden('purchasing.approve');
+      if (input.approve && !user.permissions.has('purchasing.orders.approve')) forbidden('purchasing.orders.approve');
       db.tx(() => {
         po.update(id, input, user.id);
         if (input.approve) po.approve(id, user.id);
@@ -383,11 +390,11 @@ export const purchasingModule: AppModule = {
       return { id };
     });
 
-    r.post('/purchase-orders/:id/approve', 'purchasing.approve', ({ params, user }) => (po.approve(Number(params.id), user.id), { ok: true }));
-    r.post('/purchase-orders/:id/close', 'purchasing.write', ({ params, user }) => (po.setStatus(Number(params.id), 'closed', user.id), { ok: true }));
-    r.post('/purchase-orders/:id/reopen', 'purchasing.write', ({ params, user }) => (po.setStatus(Number(params.id), 'open', user.id), { ok: true }));
-    r.post('/purchase-orders/:id/cancel', 'purchasing.write', ({ params, user }) => (po.setStatus(Number(params.id), 'cancelled', user.id), { ok: true }));
-    r.delete('/purchase-orders/:id', 'purchasing.write', ({ params, user }) => {
+    r.post('/purchase-orders/:id/approve', 'purchasing.orders.approve', ({ params, user }) => (po.approve(Number(params.id), user.id), { ok: true }));
+    r.post('/purchase-orders/:id/close', 'purchasing.orders.write', ({ params, user }) => (po.setStatus(Number(params.id), 'closed', user.id), { ok: true }));
+    r.post('/purchase-orders/:id/reopen', 'purchasing.orders.write', ({ params, user }) => (po.setStatus(Number(params.id), 'open', user.id), { ok: true }));
+    r.post('/purchase-orders/:id/cancel', 'purchasing.orders.write', ({ params, user }) => (po.setStatus(Number(params.id), 'cancelled', user.id), { ok: true }));
+    r.delete('/purchase-orders/:id', 'purchasing.orders.write', ({ params, user }) => {
       const id = Number(params.id);
       if (po.get(id).status !== 'draft') conflict('po.not_draft', 'Only drafts can be deleted');
       db.tx(() => {

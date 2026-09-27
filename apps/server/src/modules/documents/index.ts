@@ -1,17 +1,12 @@
 import { z } from 'zod';
 import type { AppModule } from '../../kernel/modules.js';
-import { forbidden } from '../../kernel/errors.js';
-import { today } from '../../kernel/dates.js';
+import { forbidden, notFound } from '../../kernel/errors.js';
+import { addDays, daysBetween, today } from '../../kernel/dates.js';
 import { paging, parse, zBp, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import type { SessionUser } from '../../kernel/modules.js';
 import { DOC_KINDS, KIND_INFO, migrations, type DocKind } from './schema.js';
+import type { DocSide } from '../../contracts/documents.js';
 import { createDocuments, type DocumentsService } from './service.js';
-
-declare module '../../kernel/services.js' {
-  interface ServiceMap {
-    documents: DocumentsService;
-  }
-}
 
 const zLine = z.object({
   itemId: zOptId.transform((v) => v ?? null),
@@ -24,6 +19,7 @@ const zLine = z.object({
   warehouseId: zOptId.transform((v) => v ?? null),
   unitId: zOptId.transform((v) => v ?? null),
   ext: z.record(z.string(), z.unknown()).nullish().transform((v) => v ?? null),
+  costCenterId: zOptId.transform((v) => v ?? null),
 });
 
 const zDoc = z.object({
@@ -40,21 +36,13 @@ const zDoc = z.object({
   post: z.boolean().default(false),
 });
 
-/** sales.* for sales documents, purchases.* for purchase documents. */
-function need(user: SessionUser, kind: DocKind, action: 'read' | 'write' | 'post') {
-  const perm = `${KIND_INFO[kind].side}.${action}`;
-  if (!user.permissions.has(perm)) forbidden(perm);
-}
-
 export const documentsModule: AppModule = {
   id: 'documents',
   dependsOn: ['ledger', 'parties', 'catalog'],
   migrations,
-  permissions: ['sales.read', 'sales.write', 'sales.post', 'purchases.read', 'purchases.write', 'purchases.post'],
-  apps: [
-    { id: 'sales', order: 10, permissions: ['sales', 'parties', 'catalog'] },
-    { id: 'purchases', order: 20, permissions: ['purchases', 'parties', 'catalog'] },
-  ],
+  // The billing engine sells nothing by itself: AR registers the sales kinds, AP the purchase kinds,
+  // each with its own permissions (ar.invoices.*, ap.bills.*…).
+  permissions: [],
   health({ db }) {
     const over = db.get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE amount_settled < 0 OR amount_settled > total")!.n;
     const drift = db.get<{ n: number }>(
@@ -78,7 +66,15 @@ export const documentsModule: AppModule = {
   },
 
   routes(r, { db, services }) {
-    const docs = services.get('documents');
+    const docs = services.get('documents') as DocumentsService;
+
+    /** Permission for an action on a kind, from the module that registered it (AR / AP). */
+    const need = (user: SessionUser, kind: DocKind, action: 'read' | 'write' | 'post') => {
+      const info = docs.kind(kind);
+      if (!info) notFound('document_kind', kind);
+      const perm = `${info!.perm}.${action}`;
+      if (!user.permissions.has(perm)) forbidden(perm);
+    };
 
     r.get('/documents', 'auth', ({ query, user }) => {
       const kind = parse(z.enum(DOC_KINDS), query.kind);
@@ -193,6 +189,102 @@ export const documentsModule: AppModule = {
       const input = parse(z.object({ date: zDate.nullish() }), body ?? {});
       docs.void(d.id, input, user.id);
       return { ok: true };
+    });
+
+    // ------------------------------------------------------------ ageing & overview
+    /** Reports of a side need the report permission its module registered (ar.reports.read / ap.reports.read). */
+    const needSide = (user: SessionUser, side: DocSide) => {
+      const info = docs.side(side);
+      if (!info) notFound('document_side', side);
+      if (!user.permissions.has(info!.reportPerm)) forbidden(info!.reportPerm);
+    };
+
+    r.get('/reports/aging', 'auth', ({ query, user }) => {
+      const q = parse(z.object({ type: z.enum(['receivable', 'payable']).default('receivable'), asOf: zDate.default(today()) }), query);
+      needSide(user, q.type === 'receivable' ? 'sales' : 'purchases');
+      const kinds = q.type === 'receivable' ? ['sales_invoice', 'sales_credit'] : ['purchase_bill', 'purchase_credit'];
+      // Sign so that a positive number is what the party owes us (receivable) / we owe them (payable).
+      const docs = db.all<{ id: number; kind: string; party_id: number; number: string; date: string; due_date: string; outstanding: number }>(
+        `SELECT d.id, d.kind, d.party_id, d.number, d.date, d.due_date,
+                d.total - COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.document_id = d.id AND s.date <= :asOf), 0)
+                        - (CASE WHEN d.kind IN ('sales_credit', 'purchase_credit')
+                                THEN COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.source_type = 'credit' AND s.source_id = d.id AND s.date <= :asOf), 0)
+                                ELSE 0 END) AS outstanding
+         FROM documents d
+         WHERE d.kind IN (${kinds.map((k) => `'${k}'`).join(',')}) AND d.date <= :asOf
+           AND (d.status = 'posted' OR (d.status = 'void' AND substr(d.voided_at, 1, 10) > :asOf))`,
+        { asOf: q.asOf },
+      );
+      const buckets = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'] as const;
+      type B = (typeof buckets)[number];
+      const bucketOf = (due: string): B => {
+        const late = daysBetween(due, q.asOf);
+        if (late <= 0) return 'current';
+        if (late <= 30) return 'd1_30';
+        if (late <= 60) return 'd31_60';
+        if (late <= 90) return 'd61_90';
+        return 'd90_plus';
+      };
+      const byParty = new Map<number, Record<B | 'documents' | 'unapplied' | 'total', number>>();
+      const blank = () => ({ current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0, documents: 0, unapplied: 0, total: 0 });
+      const details: (typeof docs[number] & { bucket: B; days_overdue: number })[] = [];
+      for (const d of docs) {
+        if (d.outstanding === 0) continue;
+        const sign = d.kind === 'sales_invoice' || d.kind === 'purchase_bill' ? 1 : -1;
+        const amt = d.outstanding * sign;
+        const b = sign === 1 ? bucketOf(d.due_date) : 'current';
+        const row = byParty.get(d.party_id) ?? blank();
+        row[b] += amt;
+        row.documents += amt;
+        byParty.set(d.party_id, row);
+        details.push({ ...d, outstanding: amt, bucket: b, days_overdue: Math.max(0, daysBetween(d.due_date, q.asOf)) });
+      }
+      // Reconcile with the ledger: anything not explained by documents (payments on account, opening balances).
+      const ledgerBal = db.all<{ party_id: number; bal: number }>(
+        `SELECT l.party_id, SUM(${q.type === 'receivable' ? 'l.debit - l.credit' : 'l.credit - l.debit'}) AS bal
+         FROM ledger l JOIN accounts a ON a.id = l.account_id
+         WHERE a.subtype = :sub AND l.party_id IS NOT NULL AND l.date <= :asOf GROUP BY l.party_id`,
+        { sub: q.type, asOf: q.asOf },
+      );
+      for (const lb of ledgerBal) {
+        const row = byParty.get(lb.party_id) ?? blank();
+        row.unapplied = lb.bal - row.documents;
+        byParty.set(lb.party_id, row);
+      }
+      const names = services.get('parties').names([...byParty.keys()]);
+      const rows = [...byParty.entries()]
+        .map(([partyId, v]) => ({ party_id: partyId, party_name: names.get(partyId) ?? '', ...v, total: v.documents + v.unapplied }))
+        .filter((x) => x.total !== 0 || x.documents !== 0)
+        .sort((a, b) => b.total - a.total);
+      const totals = blank();
+      for (const x of rows) for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += x[k];
+      return { ...q, rows, totals, details };
+    });
+
+    /** Home-page figures for a side: overdue / due soon documents and the largest balances. */
+    r.get('/documents/overview', 'auth', ({ query, user }) => {
+      const side = parse(z.enum(['sales', 'purchases']), query.side) as DocSide;
+      needSide(user, side);
+      const t = today();
+      const kind = side === 'sales' ? 'sales_invoice' : 'purchase_bill';
+      const overdue = db.get<{ n: number; amount: number }>(
+        `SELECT COUNT(*) n, COALESCE(SUM(total - amount_settled), 0) amount FROM documents
+         WHERE kind = ? AND status = 'posted' AND amount_settled < total AND due_date < ?`,
+        [kind, t],
+      )!;
+      const dueSoon = db.get<{ n: number; amount: number }>(
+        `SELECT COUNT(*) n, COALESCE(SUM(total - amount_settled), 0) amount FROM documents
+         WHERE kind = ? AND status = 'posted' AND amount_settled < total AND due_date BETWEEN ? AND ?`,
+        [kind, t, addDays(t, 7)],
+      )!;
+      const drafts = db.get<{ n: number }>(`SELECT COUNT(*) n FROM documents WHERE status = 'draft' AND kind LIKE ?`, [side === 'sales' ? 'sales_%' : 'purchase_%'])!.n;
+      const top = db.all(
+        `SELECT l.party_id, p.name, SUM(${side === 'sales' ? 'l.debit - l.credit' : 'l.credit - l.debit'}) AS balance
+         FROM ledger l JOIN accounts a ON a.id = l.account_id JOIN parties p ON p.id = l.party_id
+         WHERE a.subtype = ? GROUP BY l.party_id HAVING balance > 0 ORDER BY balance DESC LIMIT 5`,
+        [side === 'sales' ? 'receivable' : 'payable'],
+      );
+      return { side, overdue, dueSoon, drafts, top };
     });
 
     r.delete('/documents/:id', 'auth', ({ params, user }) => {

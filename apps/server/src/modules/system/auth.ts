@@ -4,16 +4,29 @@ import { AppError, fail } from '../../kernel/errors.js';
 import type { SessionUser } from '../../kernel/modules.js';
 import type { AppRegistry } from '../../kernel/apps.js';
 
-export type Role = 'admin' | 'accountant' | 'viewer';
-export const ROLES: Role[] = ['admin', 'accountant', 'viewer'];
+/** Built-in roles, kept in the roles table with a rule instead of a list. */
+export const BUILTIN_ROLES = ['admin', 'accountant', 'viewer'] as const;
+export type RoleRule = 'all' | 'all_but_admin' | 'read_only';
 
-/** Permissions only administrators get. */
-const ADMIN_ONLY = new Set(['users.manage', 'settings.manage', 'system.backup', 'pricing.override']);
+/** Permissions only administrators get from the built-in rules. */
+export const ADMIN_ONLY = new Set(['admin.users.manage', 'admin.settings.manage', 'admin.backup.manage', 'pricing.override']);
 
-export function permissionsFor(role: string, all: readonly string[]): Set<string> {
-  if (role === 'admin') return new Set(all);
-  if (role === 'accountant') return new Set(all.filter((p) => !ADMIN_ONLY.has(p)));
-  return new Set(all.filter((p) => p.endsWith('.read')));
+export function permissionsForRule(rule: RoleRule, all: readonly string[]): string[] {
+  if (rule === 'all') return [...all];
+  if (rule === 'all_but_admin') return all.filter((p) => !ADMIN_ONLY.has(p));
+  return all.filter((p) => p.endsWith('.read'));
+}
+
+/** Expand "ar.*" / "ar.invoices.*" against the known permissions; unknown keys are dropped. */
+export function expandPermissions(patterns: readonly string[], all: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const p of patterns) {
+    if (p.endsWith('.*')) {
+      const prefix = p.slice(0, -1);
+      for (const k of all) if (k.startsWith(prefix)) out.add(k);
+    } else if (all.includes(p)) out.add(p);
+  }
+  return [...out].sort();
 }
 
 export function hashPassword(password: string): string {
@@ -56,11 +69,36 @@ export interface AccessService {
   /** Permission check by user id (for code that only knows who acted, e.g. event listeners). */
   userCan(userId: number | null, permission: string): boolean;
   allPermissions(): string[];
+  /** A user's effective permissions (roles ∩ apps that are on). */
+  permissionsOf(userId: number): Set<string>;
 }
 
 export function createAccess(db: Database, all: readonly string[], sessionHours: number, apps: AppRegistry): AccessService {
   // Only what the switched-on apps unlock (checked on every request, so toggling an app applies at once).
   const available = () => all.filter((p) => apps.allows(p));
+
+  /** For display: the strongest built-in role the user holds, else "custom". */
+  const primaryRole = (userId: number): string => {
+    const keys = db.all<{ key: string | null }>('SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?', [userId]).map((r) => r.key);
+    return BUILTIN_ROLES.find((k) => keys.includes(k)) ?? (keys.length ? 'custom' : 'none');
+  };
+
+  /** Union of the user's roles, limited to the apps that are on. */
+  const effective = (userId: number): Set<string> => {
+    const avail = available();
+    const out = new Set<string>();
+    for (const r of db.all<{ id: number; rule: RoleRule | null }>(
+      'SELECT r.id, r.rule FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?',
+      [userId],
+    )) {
+      if (r.rule) for (const p of permissionsForRule(r.rule, avail)) out.add(p);
+      else
+        for (const { permission } of db.all<{ permission: string }>('SELECT permission FROM role_permissions WHERE role_id = ?', [r.id])) {
+          if (apps.allows(permission) && all.includes(permission)) out.add(permission);
+        }
+    }
+    return out;
+  };
   // Brute-force protection: 5 failures per username+ip => 60s cool-down.
   const failures = new Map<string, { count: number; until: number }>();
 
@@ -68,9 +106,9 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
     id: u.id,
     username: u.username,
     displayName: u.display_name,
-    role: u.role,
+    role: primaryRole(u.id),
     locale: u.locale,
-    permissions: permissionsFor(u.role, available()),
+    permissions: effective(u.id),
   });
 
   return {
@@ -129,11 +167,12 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
 
     userCan(userId, permission) {
       if (userId == null) return false;
-      const u = db.get<{ role: string; is_active: number }>('SELECT role, is_active FROM users WHERE id = ?', [userId]);
-      return !!u && !!u.is_active && permissionsFor(u.role, available()).has(permission);
+      const u = db.get<{ is_active: number }>('SELECT is_active FROM users WHERE id = ?', [userId]);
+      return !!u && !!u.is_active && effective(userId).has(permission);
     },
 
     allPermissions: () => [...all],
+    permissionsOf: effective,
   };
 }
 

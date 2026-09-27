@@ -1,4 +1,5 @@
 import type { ModuleContext } from '../../kernel/modules.js';
+import type {} from '../../contracts/co.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, addMonths, isValidDate, nowIso, today } from '../../kernel/dates.js';
 import { isMinor, sum } from '../../kernel/money.js';
@@ -37,6 +38,8 @@ export interface JournalLineInput {
   credit: number;
   description?: string | null;
   partyId?: number | null;
+  /** Controlling dimension (CO module); income and expense lines may carry one. */
+  costCenterId?: number | null;
 }
 
 export interface JournalInput {
@@ -117,7 +120,7 @@ const MANUAL_SOURCES = new Set(['manual', 'opening']);
 
 export type LedgerService = ReturnType<typeof createLedger>;
 
-export function createLedger({ db, services, events }: ModuleContext) {
+export function createLedger({ db, services, events, apps }: ModuleContext) {
   const audit = () => services.get('audit');
   const settings = () => services.get('settings');
 
@@ -339,6 +342,11 @@ export function createLedger({ db, services, events }: ModuleContext) {
         fail('journal.party_required', `Line ${i + 1}: ${a.code} needs a customer or supplier`, { line: i + 1, code: a.code });
       }
       if (l.partyId && services.has('parties')) services.get('parties').get(l.partyId);
+      if (l.costCenterId) {
+        // Cost centers belong to the CO module; without it (or switched off) none may be used.
+        if (!services.has('costCenters') || !apps.isEnabled('co')) fail('co.unavailable', `Line ${i + 1}: cost centers are not in use`, { line: i + 1 });
+        services.get('costCenters').assertUsable(l.costCenterId);
+      }
     });
   }
 
@@ -358,6 +366,7 @@ export function createLedger({ db, services, events }: ModuleContext) {
         line_no: i + 1,
         account_id: l.accountId,
         party_id: l.partyId ?? null,
+        cost_center_id: l.costCenterId ?? null,
         description: l.description ?? null,
         debit: l.debit,
         credit: l.credit,

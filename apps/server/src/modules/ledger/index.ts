@@ -6,6 +6,7 @@ import { paging, parse, zDate, zId, zMinor, zOptId, zOptText } from '../../kerne
 import { ACCOUNT_TYPES, DEBIT_NORMAL, SUBTYPES, migrations, type AccountType } from './schema.js';
 import { createLedger, type LedgerService } from './service.js';
 import { DEFAULT_ACCOUNT_KEYS, MINIMAL_CHART, STANDARD_CHART } from './chart-template.js';
+import { mountGlReports } from './reports.js';
 
 declare module '../../kernel/services.js' {
   interface ServiceMap {
@@ -32,6 +33,7 @@ const zLine = z.object({
   credit: zMinor.default(0),
   description: zOptText(500),
   partyId: zOptId.transform((v) => v ?? null),
+  costCenterId: zOptId.transform((v) => v ?? null),
 });
 
 const zEntry = z.object({
@@ -47,8 +49,9 @@ export const ledgerModule: AppModule = {
   id: 'ledger',
   dependsOn: ['system'],
   migrations,
-  permissions: ['accounts.read', 'accounts.write', 'journal.read', 'journal.write', 'journal.post', 'fiscal.manage'],
-  apps: [{ id: 'accounting', core: true, order: 0, permissions: ['accounts', 'journal', 'fiscal'] }],
+  permissions: ['gl.accounts.read', 'gl.accounts.write', 'gl.journal.read', 'gl.journal.write', 'gl.journal.post', 'gl.fiscal.manage', 'gl.reports.read'],
+  apps: [{ id: 'gl', core: true, order: 0, permissions: ['gl', 'admin'] }],
+  roles: [{ id: 'bookkeeper', permissions: ['gl.accounts.read', 'gl.journal.read', 'gl.journal.write', 'gl.reports.read'] }],
   health({ db }) {
     const t = db.get<{ d: number; c: number }>('SELECT COALESCE(SUM(debit), 0) d, COALESCE(SUM(credit), 0) c FROM ledger')!;
     const unbalanced = db.get<{ n: number }>(
@@ -72,11 +75,13 @@ export const ledgerModule: AppModule = {
     });
   },
 
-  routes(r, { db, services }) {
+  routes(r, ctx) {
+    const { db, services } = ctx;
+    mountGlReports(r, ctx);
     const ledger = services.get('ledger');
 
     // ----------------------------------------------------------- accounts
-    r.get('/accounts/meta', 'accounts.read', () => ({
+    r.get('/accounts/meta', 'gl.accounts.read', () => ({
       types: ACCOUNT_TYPES,
       subtypes: SUBTYPES,
       defaultKeys: DEFAULT_ACCOUNT_KEYS,
@@ -84,7 +89,7 @@ export const ledgerModule: AppModule = {
     }));
 
     /** Chart of accounts with balances (net, in the account's normal direction) rolled up the tree. */
-    r.get('/accounts', 'accounts.read', ({ query }) => {
+    r.get('/accounts', 'gl.accounts.read', ({ query }) => {
       const accounts = ledger.accounts();
       const mv = ledger.movements({ to: query.asOf || null });
       const balance = new Map<number, number>();
@@ -112,25 +117,25 @@ export const ledgerModule: AppModule = {
       return withDepth.map(({ a, d }) => ({ ...a, depth: d, balance: balance.get(a.id) ?? 0, has_postings: used.has(a.id) }));
     });
 
-    r.get('/accounts/:id', 'accounts.read', ({ params }) => ledger.account(Number(params.id)));
+    r.get('/accounts/:id', 'gl.accounts.read', ({ params }) => ledger.account(Number(params.id)));
 
-    r.post('/accounts', 'accounts.write', ({ body, user }) => {
+    r.post('/accounts', 'gl.accounts.write', ({ body, user }) => {
       const input = parse(zAccount, body);
       return { id: ledger.createAccount(input, user.id) };
     });
 
-    r.put('/accounts/:id', 'accounts.write', ({ params, body, user }) => {
+    r.put('/accounts/:id', 'gl.accounts.write', ({ params, body, user }) => {
       const input = parse(zAccount, body);
       ledger.updateAccount(Number(params.id), input, user.id);
       return { ok: true };
     });
 
-    r.delete('/accounts/:id', 'accounts.write', ({ params, user }) => {
+    r.delete('/accounts/:id', 'gl.accounts.write', ({ params, user }) => {
       ledger.deleteAccount(Number(params.id), user.id);
       return { ok: true };
     });
 
-    r.put('/accounts-defaults', 'settings.manage', ({ body, user }) => {
+    r.put('/accounts-defaults', 'admin.settings.manage', ({ body, user }) => {
       const shape = Object.fromEntries(DEFAULT_ACCOUNT_KEYS.map((k) => [k, zOptId]));
       const input = parse(z.object(shape).partial(), body) as Record<string, number | null | undefined>;
       const clean = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)) as Record<string, number | null>;
@@ -139,22 +144,22 @@ export const ledgerModule: AppModule = {
     });
 
     // ------------------------------------------------------- fiscal years
-    r.get('/fiscal-years', 'journal.read', () => ledger.fiscalYears());
+    r.get('/fiscal-years', 'gl.journal.read', () => ledger.fiscalYears());
 
-    r.post('/fiscal-years', 'fiscal.manage', ({ body, user }) => {
+    r.post('/fiscal-years', 'gl.fiscal.manage', ({ body, user }) => {
       const input = parse(z.object({ name: z.string().trim().max(50).optional(), startDate: zDate, endDate: zDate }), body);
       return { id: ledger.createFiscalYear(input, user.id) };
     });
 
-    r.post('/fiscal-years/:id/close', 'fiscal.manage', ({ params, user }) => ledger.closeFiscalYear(Number(params.id), user.id));
+    r.post('/fiscal-years/:id/close', 'gl.fiscal.manage', ({ params, user }) => ledger.closeFiscalYear(Number(params.id), user.id));
 
-    r.post('/fiscal-years/:id/reopen', 'fiscal.manage', ({ params, user }) => {
+    r.post('/fiscal-years/:id/reopen', 'gl.fiscal.manage', ({ params, user }) => {
       ledger.reopenFiscalYear(Number(params.id), user.id);
       return { ok: true };
     });
 
     // ------------------------------------------------------------ journal
-    r.get('/journal', 'journal.read', ({ query }) => {
+    r.get('/journal', 'gl.journal.read', ({ query }) => {
       const { limit, offset } = paging(query);
       const where: string[] = [];
       const p: Record<string, string | number> = {};
@@ -182,7 +187,7 @@ export const ledgerModule: AppModule = {
       return { rows, total };
     });
 
-    r.get('/journal/:id', 'journal.read', ({ params }) => {
+    r.get('/journal/:id', 'gl.journal.read', ({ params }) => {
       const e = ledger.entry(Number(params.id));
       // Party names come from the parties module when it is plugged in.
       const ids = e.lines.map((l) => l.party_id).filter((x): x is number => x != null);
@@ -190,9 +195,9 @@ export const ledgerModule: AppModule = {
       return { ...e, lines: e.lines.map((l) => ({ ...l, party_name: l.party_id ? names.get(l.party_id) ?? null : null })) };
     });
 
-    r.post('/journal', 'journal.write', ({ body, user }) => {
+    r.post('/journal', 'gl.journal.write', ({ body, user }) => {
       const input = parse(zEntry, body);
-      if (input.post && !user.permissions.has('journal.post')) forbidden('journal.post');
+      if (input.post && !user.permissions.has('gl.journal.post')) forbidden('gl.journal.post');
       const id = ledger.createEntry(input, {
         sourceType: input.opening ? 'opening' : 'manual',
         post: input.post,
@@ -201,11 +206,11 @@ export const ledgerModule: AppModule = {
       return { id };
     });
 
-    r.put('/journal/:id', 'journal.write', ({ params, body, user }) => {
+    r.put('/journal/:id', 'gl.journal.write', ({ params, body, user }) => {
       const id = Number(params.id);
       if (!ledger.isManual(id)) conflict('journal.not_manual', 'This entry belongs to a document; edit the document instead');
       const input = parse(zEntry, body);
-      if (input.post && !user.permissions.has('journal.post')) forbidden('journal.post');
+      if (input.post && !user.permissions.has('gl.journal.post')) forbidden('gl.journal.post');
       db.tx(() => {
         ledger.updateDraft(id, input, user.id);
         if (input.post) ledger.postEntry(id, user.id);
@@ -213,21 +218,21 @@ export const ledgerModule: AppModule = {
       return { id };
     });
 
-    r.post('/journal/:id/post', 'journal.post', ({ params, user }) => {
+    r.post('/journal/:id/post', 'gl.journal.post', ({ params, user }) => {
       const id = Number(params.id);
       if (!ledger.isManual(id)) conflict('journal.not_manual', 'Post the source document instead');
       ledger.postEntry(id, user.id);
       return { ok: true };
     });
 
-    r.post('/journal/:id/reverse', 'journal.post', ({ params, body, user }) => {
+    r.post('/journal/:id/reverse', 'gl.journal.post', ({ params, body, user }) => {
       const id = Number(params.id);
       if (!ledger.isManual(id)) conflict('journal.not_manual', 'Void the source document instead');
       const input = parse(z.object({ date: zDate.nullish(), memo: zOptText(500) }), body ?? {});
       return { id: ledger.reverseEntry(id, input, user.id) };
     });
 
-    r.delete('/journal/:id', 'journal.write', ({ params, user }) => {
+    r.delete('/journal/:id', 'gl.journal.write', ({ params, user }) => {
       const id = Number(params.id);
       if (!ledger.isManual(id)) conflict('journal.not_manual', 'This entry belongs to a document');
       ledger.deleteDraft(id, user.id);

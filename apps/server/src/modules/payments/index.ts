@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import type { AppModule, ModuleContext } from '../../kernel/modules.js';
+import type { AppModule, ModuleContext, SessionUser } from '../../kernel/modules.js';
 import { conflict, fail, forbidden, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { sum } from '../../kernel/money.js';
 import { paging, parse, zDate, zId, zOptId, zOptText, zPositiveMinor } from '../../kernel/validate.js';
 import type { JournalLineInput } from '../ledger/service.js';
-import type { DocKind } from '../documents/schema.js';
+import type { DocKind } from '../../contracts/documents.js';
 
 export type Direction = 'in' | 'out';
 export type PartyRole = 'customer' | 'supplier';
@@ -255,8 +255,20 @@ const zPayment = z.object({
 export const paymentsModule: AppModule = {
   id: 'payments',
   dependsOn: ['ledger', 'parties', 'documents'],
-  permissions: ['payments.read', 'payments.write', 'payments.post'],
-  apps: [{ id: 'banking', order: 30, permissions: ['payments', 'parties'] }],
+  permissions: [
+    'treasury.receipts.read',
+    'treasury.receipts.write',
+    'treasury.receipts.post',
+    'treasury.payments.read',
+    'treasury.payments.write',
+    'treasury.payments.post',
+  ],
+  apps: [{ id: 'treasury', order: 30, permissions: ['treasury'] }],
+  roles: [{ id: 'cashier', permissions: ['treasury.*', 'ar.customers.read', 'ap.suppliers.read', 'ar.invoices.read', 'ap.bills.read'] }],
+  sod: [
+    ['ap.suppliers.write', 'treasury.payments.post'],
+    ['ar.customers.write', 'treasury.receipts.post'],
+  ],
   health({ db }) {
     const over = db.get<{ n: number }>(
       'SELECT COUNT(*) n FROM payments p WHERE (SELECT COALESCE(SUM(amount), 0) FROM payment_allocations a WHERE a.payment_id = p.id) > p.amount',
@@ -326,18 +338,28 @@ export const paymentsModule: AppModule = {
   routes(r, { db, services }) {
     const payments = services.get('payments');
 
+    /** Receipts (money in) and payments (money out) are separate pages with separate rights. */
+    const permOf = (d: Direction, action: 'read' | 'write' | 'post') => `treasury.${d === 'in' ? 'receipts' : 'payments'}.${action}`;
+    const need = (user: SessionUser, d: Direction, action: 'read' | 'write' | 'post') => {
+      if (!user.permissions.has(permOf(d, action))) forbidden(permOf(d, action));
+    };
+    const needAny = (user: SessionUser) => {
+      if (!user.permissions.has(permOf('in', 'read')) && !user.permissions.has(permOf('out', 'read'))) forbidden(permOf('in', 'read'));
+    };
+
     /** Cash & bank accounts with their current balances. */
-    r.get('/payments/accounts', 'payments.read', () =>
+    r.get('/payments/accounts', 'auth', ({ user }) => (needAny(user),
       db.all(
         `SELECT a.id, a.code, a.name_en, a.name_ar, a.subtype, a.is_active,
                 COALESCE((SELECT SUM(debit - credit) FROM ledger l WHERE l.account_id = a.id), 0) AS balance
          FROM accounts a WHERE a.subtype IN ('cash', 'bank') AND a.is_group = 0 ORDER BY a.code`,
-      ),
+      )),
     );
 
     /** Documents a payment can be allocated to. */
-    r.get('/payments/open-documents', 'payments.read', ({ query }) => {
+    r.get('/payments/open-documents', 'auth', ({ query, user }) => {
       const q = parse(z.object({ partyId: zId, direction: z.enum(['in', 'out']), role: z.enum(['customer', 'supplier']) }), query);
+      need(user, q.direction, 'read');
       return db.all(
         `SELECT id, kind, number, date, due_date, total, amount_settled, total - amount_settled AS outstanding
          FROM documents WHERE party_id = ? AND kind = ? AND status = 'posted' AND amount_settled < total
@@ -346,11 +368,19 @@ export const paymentsModule: AppModule = {
       );
     });
 
-    r.get('/payments', 'payments.read', ({ query }) => {
+    r.get('/payments', 'auth', ({ query, user }) => {
       const { limit, offset } = paging(query);
       const where: string[] = [];
       const p: Record<string, string | number> = {};
-      if (query.direction) (where.push('p.direction = :dir'), (p.dir = query.direction));
+      if (query.direction === 'in' || query.direction === 'out') {
+        need(user, query.direction, 'read');
+        where.push('p.direction = :dir');
+        p.dir = query.direction;
+      } else {
+        needAny(user);
+        const dirs = (['in', 'out'] as const).filter((d) => user.permissions.has(permOf(d, 'read')));
+        if (dirs.length === 1) (where.push('p.direction = :dir'), (p.dir = dirs[0]));
+      }
       if (query.status) (where.push('p.status = :status'), (p.status = query.status));
       if (query.partyId) (where.push('p.party_id = :party'), (p.party = Number(query.partyId)));
       if (query.accountId) (where.push('p.account_id = :acc'), (p.acc = Number(query.accountId)));
@@ -377,8 +407,9 @@ export const paymentsModule: AppModule = {
       return { rows, total: agg.n, sums: { total: agg.total } };
     });
 
-    r.get('/payments/:id', 'payments.read', ({ params }) => {
+    r.get('/payments/:id', 'auth', ({ params, user }) => {
       const p = payments.get(Number(params.id));
+      need(user, p.direction, 'read');
       const allocations = db.all(
         `SELECT x.document_id, x.amount, d.number, d.kind, d.date, d.total, d.amount_settled
          FROM payment_allocations x JOIN documents d ON d.id = x.document_id WHERE x.payment_id = ?`,
@@ -397,9 +428,10 @@ export const paymentsModule: AppModule = {
       };
     });
 
-    r.post('/payments', 'payments.write', ({ body, user }) => {
+    r.post('/payments', 'auth', ({ body, user }) => {
       const input = parse(zPayment, body);
-      if (input.post && !user.permissions.has('payments.post')) forbidden('payments.post');
+      need(user, input.direction, 'write');
+      if (input.post) need(user, input.direction, 'post');
       const id = db.tx(() => {
         const id = payments.create(input, user.id);
         if (input.post) payments.post(id, user.id);
@@ -408,10 +440,12 @@ export const paymentsModule: AppModule = {
       return { id };
     });
 
-    r.put('/payments/:id', 'payments.write', ({ params, body, user }) => {
+    r.put('/payments/:id', 'auth', ({ params, body, user }) => {
       const id = Number(params.id);
       const input = parse(zPayment, body);
-      if (input.post && !user.permissions.has('payments.post')) forbidden('payments.post');
+      need(user, payments.get(id).direction, 'write');
+      need(user, input.direction, 'write');
+      if (input.post) need(user, input.direction, 'post');
       db.tx(() => {
         payments.update(id, input, user.id);
         if (input.post) payments.post(id, user.id);
@@ -419,18 +453,21 @@ export const paymentsModule: AppModule = {
       return { id };
     });
 
-    r.post('/payments/:id/post', 'payments.post', ({ params, user }) => {
+    r.post('/payments/:id/post', 'auth', ({ params, user }) => {
+      need(user, payments.get(Number(params.id)).direction, 'post');
       payments.post(Number(params.id), user.id);
       return { ok: true };
     });
 
-    r.post('/payments/:id/void', 'payments.post', ({ params, body, user }) => {
+    r.post('/payments/:id/void', 'auth', ({ params, body, user }) => {
+      need(user, payments.get(Number(params.id)).direction, 'post');
       const input = parse(z.object({ date: zDate.nullish() }), body ?? {});
       payments.void(Number(params.id), input, user.id);
       return { ok: true };
     });
 
-    r.delete('/payments/:id', 'payments.write', ({ params, user }) => {
+    r.delete('/payments/:id', 'auth', ({ params, user }) => {
+      need(user, payments.get(Number(params.id)).direction, 'write');
       payments.remove(Number(params.id), user.id);
       return { ok: true };
     });

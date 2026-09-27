@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import type { AppModule } from '../../kernel/modules.js';
-import { addDays, addMonths, daysBetween, endOfMonth, startOfMonth, today } from '../../kernel/dates.js';
+import type { ModuleContext, Router } from '../../kernel/modules.js';
+import { addDays, addMonths, endOfMonth, startOfMonth, today } from '../../kernel/dates.js';
 import { parse, zDate, zId } from '../../kernel/validate.js';
-import type { Account, Movement } from '../ledger/service.js';
+import type { Account, Movement } from './service.js';
 
 interface Row {
   id: number;
@@ -16,13 +16,12 @@ interface Row {
 
 const netDebit = (m?: Movement) => (m ? m.debit - m.credit : 0);
 
-export const reportsModule: AppModule = {
-  id: 'reports',
-  dependsOn: ['ledger', 'parties', 'documents', 'payments'],
-  permissions: ['reports.read'],
-  apps: [{ id: 'accounting', core: true, order: 0, permissions: ['reports'] }],
-
-  routes(r, { db, services }) {
+/**
+ * General-ledger reports (trial balance, general ledger, statements, cash
+ * flow) and the ledger figures of the home page. Sub-ledger reports live with
+ * their modules (ageing in the billing engine, VAT in Tax, cost centers in CO).
+ */
+export function mountGlReports(r: Router, { db, services }: ModuleContext) {
     const ledger = services.get('ledger');
 
     /** Current fiscal year (or the calendar year) for defaults. */
@@ -50,7 +49,7 @@ export const reportsModule: AppModule = {
     const total = (rows: Row[], key: 'amount' | 'compare' = 'amount') => rows.reduce((s, x) => s + (x[key] ?? 0), 0);
 
     // --------------------------------------------------------- trial balance
-    r.get('/reports/trial-balance', 'reports.read', ({ query }) => {
+    r.get('/reports/trial-balance', 'gl.reports.read', ({ query }) => {
       const def = currentYear();
       const q = parse(z.object({ from: zDate.default(def.from), to: zDate.default(def.to) }), query);
       const opening = ledger.movements({ to: addDays(q.from, -1) });
@@ -88,7 +87,7 @@ export const reportsModule: AppModule = {
     });
 
     // ---------------------------------------------------------- general ledger
-    r.get('/reports/general-ledger', 'reports.read', ({ query }) => {
+    r.get('/reports/general-ledger', 'gl.reports.read', ({ query }) => {
       const def = currentYear();
       const q = parse(z.object({ accountId: zId, from: zDate.default(def.from), to: zDate.default(def.to) }), query);
       const account = ledger.account(q.accountId);
@@ -171,7 +170,7 @@ export const reportsModule: AppModule = {
       };
     };
 
-    r.get('/reports/income-statement', 'reports.read', ({ query }) => {
+    r.get('/reports/income-statement', 'gl.reports.read', ({ query }) => {
       const def = currentYear();
       const q = parse(
         z.object({ from: zDate.default(def.from), to: zDate.default(def.to), compareFrom: zDate.nullish(), compareTo: zDate.nullish() }),
@@ -229,13 +228,13 @@ export const reportsModule: AppModule = {
       };
     };
 
-    r.get('/reports/balance-sheet', 'reports.read', ({ query }) => {
+    r.get('/reports/balance-sheet', 'gl.reports.read', ({ query }) => {
       const q = parse(z.object({ asOf: zDate.default(today()), compareAsOf: zDate.nullish() }), query);
       return balanceSheet(q.asOf, q.compareAsOf);
     });
 
     // --------------------------------------------------------------- cash flow
-    r.get('/reports/cash-flow', 'reports.read', ({ query }) => {
+    r.get('/reports/cash-flow', 'gl.reports.read', ({ query }) => {
       const def = currentYear();
       const q = parse(z.object({ from: zDate.default(def.from), to: zDate.default(def.to) }), query);
       const mv = ledger.movements({ from: q.from, to: q.to, excludeClosing: true });
@@ -271,88 +270,8 @@ export const reportsModule: AppModule = {
     });
 
     // ------------------------------------------------------------------- aging
-    r.get('/reports/aging', 'reports.read', ({ query }) => {
-      const q = parse(z.object({ type: z.enum(['receivable', 'payable']).default('receivable'), asOf: zDate.default(today()) }), query);
-      const kinds = q.type === 'receivable' ? ['sales_invoice', 'sales_credit'] : ['purchase_bill', 'purchase_credit'];
-      // Sign so that a positive number is what the party owes us (receivable) / we owe them (payable).
-      const docs = db.all<{ id: number; kind: string; party_id: number; number: string; date: string; due_date: string; outstanding: number }>(
-        `SELECT d.id, d.kind, d.party_id, d.number, d.date, d.due_date,
-                d.total - COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.document_id = d.id AND s.date <= :asOf), 0)
-                        - (CASE WHEN d.kind IN ('sales_credit', 'purchase_credit')
-                                THEN COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.source_type = 'credit' AND s.source_id = d.id AND s.date <= :asOf), 0)
-                                ELSE 0 END) AS outstanding
-         FROM documents d
-         WHERE d.kind IN (${kinds.map((k) => `'${k}'`).join(',')}) AND d.date <= :asOf
-           AND (d.status = 'posted' OR (d.status = 'void' AND substr(d.voided_at, 1, 10) > :asOf))`,
-        { asOf: q.asOf },
-      );
-      const buckets = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'] as const;
-      type B = (typeof buckets)[number];
-      const bucketOf = (due: string): B => {
-        const late = daysBetween(due, q.asOf);
-        if (late <= 0) return 'current';
-        if (late <= 30) return 'd1_30';
-        if (late <= 60) return 'd31_60';
-        if (late <= 90) return 'd61_90';
-        return 'd90_plus';
-      };
-      const byParty = new Map<number, Record<B | 'documents' | 'unapplied' | 'total', number>>();
-      const blank = () => ({ current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0, documents: 0, unapplied: 0, total: 0 });
-      const details: (typeof docs[number] & { bucket: B; days_overdue: number })[] = [];
-      for (const d of docs) {
-        if (d.outstanding === 0) continue;
-        const sign = d.kind === 'sales_invoice' || d.kind === 'purchase_bill' ? 1 : -1;
-        const amt = d.outstanding * sign;
-        const b = sign === 1 ? bucketOf(d.due_date) : 'current';
-        const row = byParty.get(d.party_id) ?? blank();
-        row[b] += amt;
-        row.documents += amt;
-        byParty.set(d.party_id, row);
-        details.push({ ...d, outstanding: amt, bucket: b, days_overdue: Math.max(0, daysBetween(d.due_date, q.asOf)) });
-      }
-      // Reconcile with the ledger: anything not explained by documents (payments on account, opening balances).
-      const ledgerBal = db.all<{ party_id: number; bal: number }>(
-        `SELECT l.party_id, SUM(${q.type === 'receivable' ? 'l.debit - l.credit' : 'l.credit - l.debit'}) AS bal
-         FROM ledger l JOIN accounts a ON a.id = l.account_id
-         WHERE a.subtype = :sub AND l.party_id IS NOT NULL AND l.date <= :asOf GROUP BY l.party_id`,
-        { sub: q.type, asOf: q.asOf },
-      );
-      for (const lb of ledgerBal) {
-        const row = byParty.get(lb.party_id) ?? blank();
-        row.unapplied = lb.bal - row.documents;
-        byParty.set(lb.party_id, row);
-      }
-      const names = services.get('parties').names([...byParty.keys()]);
-      const rows = [...byParty.entries()]
-        .map(([partyId, v]) => ({ party_id: partyId, party_name: names.get(partyId) ?? '', ...v, total: v.documents + v.unapplied }))
-        .filter((x) => x.total !== 0 || x.documents !== 0)
-        .sort((a, b) => b.total - a.total);
-      const totals = blank();
-      for (const x of rows) for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += x[k];
-      return { ...q, rows, totals, details };
-    });
-
-    // ------------------------------------------------------------- tax summary
-    r.get('/reports/tax-summary', 'reports.read', ({ query }) => {
-      const def = currentYear();
-      const q = parse(z.object({ from: zDate.default(def.from), to: zDate.default(def.to) }), query);
-      const rows = db.all<{ tax_id: number; code: string; name_en: string; name_ar: string; rate_bp: number; side: string; net: number; tax: number }>(
-        `SELECT t.id AS tax_id, t.code, t.name_en, t.name_ar, l.tax_rate_bp AS rate_bp,
-                CASE WHEN d.kind LIKE 'sales_%' THEN 'sales' ELSE 'purchases' END AS side,
-                SUM(CASE WHEN d.kind IN ('sales_invoice', 'purchase_bill') THEN l.net ELSE -l.net END) AS net,
-                SUM(CASE WHEN d.kind IN ('sales_invoice', 'purchase_bill') THEN l.tax ELSE -l.tax END) AS tax
-         FROM document_lines l JOIN documents d ON d.id = l.document_id JOIN taxes t ON t.id = l.tax_id
-         WHERE d.status = 'posted' AND d.date BETWEEN ? AND ?
-         GROUP BY t.id, l.tax_rate_bp, side ORDER BY t.code, side`,
-        [q.from, q.to],
-      );
-      const output = rows.filter((x) => x.side === 'sales').reduce((s, x) => s + x.tax, 0);
-      const input = rows.filter((x) => x.side === 'purchases').reduce((s, x) => s + x.tax, 0);
-      return { ...q, rows, output, input, net: output - input };
-    });
-
     // --------------------------------------------------------------- dashboard
-    r.get('/reports/dashboard', 'reports.read', () => {
+    r.get('/reports/dashboard', 'gl.reports.read', () => {
       const t = today();
       const accts = postable();
       const all = ledger.movements({ to: t });
@@ -372,16 +291,6 @@ export const reportsModule: AppModule = {
         series.push({ month: from.slice(0, 7), ...pl(from, endOfMonth(from)) });
       }
       const year = currentYear();
-      const overdue = db.get<{ n: number; amount: number }>(
-        `SELECT COUNT(*) n, COALESCE(SUM(total - amount_settled), 0) amount FROM documents
-         WHERE kind = 'sales_invoice' AND status = 'posted' AND amount_settled < total AND due_date < ?`,
-        [t],
-      )!;
-      const billsDue = db.get<{ n: number; amount: number }>(
-        `SELECT COUNT(*) n, COALESCE(SUM(total - amount_settled), 0) amount FROM documents
-         WHERE kind = 'purchase_bill' AND status = 'posted' AND amount_settled < total AND due_date <= ?`,
-        [addDays(t, 7)],
-      )!;
       const cashAccounts = db.all(
         `SELECT a.id, a.code, a.name_en, a.name_ar, COALESCE(SUM(l.debit - l.credit), 0) AS balance
          FROM accounts a LEFT JOIN ledger l ON l.account_id = a.id
@@ -390,11 +299,6 @@ export const reportsModule: AppModule = {
       const recent = db.all(
         `SELECT id, number, date, memo, source_type, total FROM journal_entries WHERE status = 'posted'
          ORDER BY date DESC, id DESC LIMIT 8`,
-      );
-      const topDebtors = db.all(
-        `SELECT l.party_id, p.name, SUM(l.debit - l.credit) AS balance
-         FROM ledger l JOIN accounts a ON a.id = l.account_id JOIN parties p ON p.id = l.party_id
-         WHERE a.subtype = 'receivable' GROUP BY l.party_id HAVING balance > 0 ORDER BY balance DESC LIMIT 5`,
       );
       return {
         today: t,
@@ -405,16 +309,9 @@ export const reportsModule: AppModule = {
         lastMonth: pl(addMonths(monthStart, -1), addDays(monthStart, -1)),
         yearToDate: pl(year.from, t),
         series,
-        overdue,
-        billsDue,
         cashAccounts,
         recent,
-        topDebtors,
-        drafts: db.get<{ n: number }>(
-          `SELECT (SELECT COUNT(*) FROM documents WHERE status = 'draft') + (SELECT COUNT(*) FROM payments WHERE status = 'draft')
-                + (SELECT COUNT(*) FROM journal_entries WHERE status = 'draft') AS n`,
-        )!.n,
+        drafts: db.get<{ n: number }>("SELECT COUNT(*) n FROM journal_entries WHERE status = 'draft'")!.n,
       };
     });
-  },
-};
+}

@@ -1,47 +1,9 @@
 import { z } from 'zod';
-import type { AppModule, ModuleContext } from '../../kernel/modules.js';
-import { conflict, fail, notFound } from '../../kernel/errors.js';
+import type { AppModule, ModuleContext, SessionUser } from '../../kernel/modules.js';
+import { AppError, conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { paging, parse, zDate, zOptId, zOptText } from '../../kernel/validate.js';
-
-export type PartyKind = 'customer' | 'supplier' | 'both';
-
-export interface Party {
-  id: number;
-  kind: PartyKind;
-  code: string;
-  name: string;
-  name_alt: string | null;
-  tax_number: string | null;
-  email: string | null;
-  phone: string | null;
-  address: string | null;
-  city: string | null;
-  country: string | null;
-  receivable_account_id: number | null;
-  payable_account_id: number | null;
-  payment_terms_days: number;
-  credit_limit: number | null;
-  notes: string | null;
-  is_active: number;
-  created_at: string;
-}
-
-export interface PartiesService {
-  get(id: number): Party;
-  names(ids: number[]): Map<number, string>;
-  /** The AR control account for a customer (its own or the default). */
-  receivableAccount(p: Party): number;
-  /** The AP control account for a supplier (its own or the default). */
-  payableAccount(p: Party): number;
-  assertKind(p: Party, kind: 'customer' | 'supplier'): void;
-}
-
-declare module '../../kernel/services.js' {
-  interface ServiceMap {
-    parties: PartiesService;
-  }
-}
+import type { Party, PartiesService, PartyKind, PartyRoleInfo } from '../../contracts/parties.js';
 
 const zParty = z.object({
   kind: z.enum(['customer', 'supplier', 'both']),
@@ -63,7 +25,13 @@ const zParty = z.object({
 });
 
 function createParties({ db, services }: ModuleContext): PartiesService {
+  // Customers and suppliers exist only when AR / AP plug their role in.
+  const roles = new Map<'customer' | 'supplier', PartyRoleInfo>();
   return {
+    registerRole(kind, info) {
+      roles.set(kind, info);
+    },
+    role: (kind) => roles.get(kind) ?? null,
     get(id) {
       return db.get<Party>('SELECT * FROM parties WHERE id = ?', [id]) ?? notFound('party', id);
     },
@@ -90,7 +58,7 @@ function createParties({ db, services }: ModuleContext): PartiesService {
 export const partiesModule: AppModule = {
   id: 'parties',
   dependsOn: ['ledger'],
-  permissions: ['parties.read', 'parties.write'],
+  // No permissions of its own: customers are guarded by AR (ar.customers.*), suppliers by AP (ap.suppliers.*).
   migrations: [
     {
       id: '001_parties',
@@ -134,6 +102,22 @@ export const partiesModule: AppModule = {
     const parties = services.get('parties');
     const audit = services.get('audit');
 
+    /** The partner roles a party plays. */
+    const rolesOf = (kind: PartyKind): ('customer' | 'supplier')[] => (kind === 'both' ? ['customer', 'supplier'] : [kind]);
+    const allowed = (user: SessionUser, role: 'customer' | 'supplier', action: 'read' | 'write') => {
+      const info = parties.role(role);
+      return !!info && user.permissions.has(`${info.perm}.${action}`);
+    };
+    /** Reading needs the right for any role the party plays; changing needs it for all of them. */
+    const need = (user: SessionUser, kind: PartyKind, action: 'read' | 'write') => {
+      const list = rolesOf(kind);
+      const ok = action === 'read' ? list.some((x) => allowed(user, x, action)) : list.every((x) => allowed(user, x, action));
+      if (!ok) {
+        const perm = list.map((x) => `${parties.role(x)?.perm ?? x}.${action}`).join(' / ');
+        throw new AppError('auth.forbidden', 'You do not have permission for this action', 403, { permission: perm });
+      }
+    };
+
     /** Current balances for a set of parties: receivable (they owe us) and payable (we owe them). */
     const balances = (asOf?: string | null) => {
       const rows = db.all<{ party_id: number; receivable: number; payable: number }>(
@@ -148,12 +132,19 @@ export const partiesModule: AppModule = {
       return new Map(rows.map((x) => [x.party_id, x]));
     };
 
-    r.get('/parties', 'parties.read', ({ query }) => {
+    r.get('/parties', 'auth', ({ query, user }) => {
       const { limit, offset } = paging(query, 200);
       const where: string[] = [];
       const p: Record<string, string | number> = {};
-      if (query.kind === 'customer') where.push("kind IN ('customer', 'both')");
-      if (query.kind === 'supplier') where.push("kind IN ('supplier', 'both')");
+      if (query.kind === 'customer' || query.kind === 'supplier') {
+        need(user, query.kind, 'read');
+        where.push(`kind IN ('${query.kind}', 'both')`);
+      } else {
+        // Without a kind: only the roles this user may see.
+        const kinds = (['customer', 'supplier'] as const).filter((k) => allowed(user, k, 'read'));
+        if (!kinds.length) need(user, 'customer', 'read');
+        if (kinds.length === 1) where.push(`kind IN ('${kinds[0]}', 'both')`);
+      }
       if (query.active === '1') where.push('is_active = 1');
       if (query.q) {
         where.push('(name LIKE :q OR code LIKE :q OR name_alt LIKE :q OR phone LIKE :q OR tax_number LIKE :q)');
@@ -169,8 +160,9 @@ export const partiesModule: AppModule = {
       };
     });
 
-    r.get('/parties/:id', 'parties.read', ({ params }) => {
+    r.get('/parties/:id', 'auth', ({ params, user }) => {
       const p = parties.get(Number(params.id));
+      need(user, p.kind, 'read');
       const b = balances().get(p.id);
       return { ...p, receivable: b?.receivable ?? 0, payable: b?.payable ?? 0 };
     });
@@ -203,8 +195,9 @@ export const partiesModule: AppModule = {
       is_active: input.isActive,
     });
 
-    r.post('/parties', 'parties.write', ({ body, user }) => {
+    r.post('/parties', 'auth', ({ body, user }) => {
       const input = parse(zParty, body);
+      need(user, input.kind, 'write');
       checkControlAccounts(input);
       return db.tx(() => {
         const code = input.code || services.get('sequences').next(input.kind === 'supplier' ? 'supplier' : 'customer');
@@ -215,10 +208,12 @@ export const partiesModule: AppModule = {
       });
     });
 
-    r.put('/parties/:id', 'parties.write', ({ params, body, user }) => {
+    r.put('/parties/:id', 'auth', ({ params, body, user }) => {
       const id = Number(params.id);
       const cur = parties.get(id);
       const input = parse(zParty, body);
+      need(user, cur.kind, 'write');
+      need(user, input.kind, 'write');
       checkControlAccounts(input);
       const code = input.code || cur.code;
       const dup = db.get<{ id: number }>('SELECT id FROM parties WHERE code = ?', [code]);
@@ -230,9 +225,10 @@ export const partiesModule: AppModule = {
       return { ok: true };
     });
 
-    r.delete('/parties/:id', 'parties.write', ({ params, user }) => {
+    r.delete('/parties/:id', 'auth', ({ params, user }) => {
       const id = Number(params.id);
       const cur = parties.get(id);
+      need(user, cur.kind, 'write');
       if (db.get('SELECT 1 FROM journal_lines WHERE party_id = ? LIMIT 1', [id])) {
         conflict('party.in_use', 'This party has transactions — deactivate it instead');
       }
@@ -244,8 +240,9 @@ export const partiesModule: AppModule = {
     });
 
     /** Statement of account: every AR/AP movement with a running balance. */
-    r.get('/parties/:id/statement', 'parties.read', ({ params, query }) => {
+    r.get('/parties/:id/statement', 'auth', ({ params, query, user }) => {
       const p = parties.get(Number(params.id));
+      need(user, p.kind, 'read');
       const q = parse(z.object({ from: zDate.nullish(), to: zDate.nullish() }), query);
       // Positive balance = the party owes us (debit balance); negative = we owe them.
       const opening = q.from
