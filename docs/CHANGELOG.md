@@ -6,6 +6,22 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Fixed assets** (new `assets` app, "Fixed assets (AA)" menu): categories from the chart (furniture,
+  vehicles, computers) with their accounts; register with cost, residual value, useful life, straight
+  line or declining balance, assets brought in part-depreciated; optional purchase entry; monthly
+  depreciation in one entry per month (missed months caught up, latest run can be undone); disposal or
+  sale charging depreciation to the month of sale with the gain or loss; movements report (cost and
+  depreciation, opening + additions − disposals = closing) per category.
+- **Payroll** (new `payroll` app, "People & payroll (HR)" menu): employees with hiring/leaving dates and
+  basic salary; pay components — earnings, deductions and employer contributions as fixed amounts or
+  percentages (with a ceiling), income tax on annual brackets with an exemption and pre-tax deductions;
+  monthly runs with days-worked proration, one-off bonuses and deductions, entry preview, posting by cost
+  center, salary payment from a bank or cash account, printable payslips.
+- **Cheques** (new `cheques` app, in Treasury): post-dated cheques received and issued; a cheque settles
+  invoices or bills on receipt and waits in "Cheques receivable / payable" until the bank clears it;
+  deposit, clearing (and undo), bounced / returned / cancelled cheques reopen what they paid; portfolio by
+  due date. The cash forecast now includes open cheques and unpaid payrolls.
+- `ledger.ensureAccount()` creates an account a feature needs under its usual group when the chart lacks it.
 - **Cash forecast** (new `cashflow` app): cash and bank today, then 13 weeks or 12 months of expected
   receipts and payments — open invoices (moved by each customer's real payment delay), bills, open
   purchase orders, planned items (payroll, rent, loans, tax, with repeats) and post-dated entries;
@@ -40,6 +56,7 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Research: `docs/research/FINANCIAL-ANALYSIS.md` (formulas, edge cases, built-in vs add-on decision).
 
 ### Fixed
+- Invoices settled by a cheque link to the cheque (settlement source `cheque`).
 - Journal entries of bank transfers opened a stock operation; goods receipts, landed costs, bank
   statements and production orders now link to their own page.
 - A receipt or payment for a party that is only a customer (or only a supplier) no longer asks which one.

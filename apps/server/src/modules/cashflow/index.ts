@@ -24,7 +24,7 @@ interface Settings {
 }
 
 export const CATEGORIES = ['payroll', 'rent', 'tax', 'loan', 'capex', 'owner', 'utilities', 'other'] as const;
-const SOURCES: FlowSource[] = ['receivables', 'payables', 'orders', 'planned', 'booked'];
+const SOURCES: FlowSource[] = ['receivables', 'payables', 'orders', 'cheques', 'payroll', 'planned', 'booked'];
 
 function createCashflow({ db, installed }: ModuleContext) {
   const has = (module: string) => installed.some((m) => m.id === module);
@@ -101,6 +101,23 @@ function createCashflow({ db, installed }: ModuleContext) {
         if (o.unbilled <= 0) continue;
         const pay = addDays(o.expected_date ?? o.date, o.terms);
         out.push({ date: pay < asOf ? asOf : pay, amount: -Math.round(o.unbilled), source: 'orders', label: `${o.supplier}${o.number ? ' · ' + o.number : ''}`, ref: o.number, dueDate: pay });
+      }
+    }
+    if (has('cheques')) {
+      // Cheques not cleared yet: the money moves on the date written on the cheque.
+      const open = db.all<{ direction: string; cheque_no: string; due_date: string; amount: number; party: string; number: string }>(
+        `SELECT c.direction, c.cheque_no, c.due_date, c.amount, p.name AS party, c.number FROM cheques c JOIN parties p ON p.id = c.party_id
+         WHERE c.status IN ('in_hand', 'deposited', 'issued')`,
+      );
+      for (const c of open) {
+        const date = c.due_date < asOf ? asOf : c.due_date;
+        out.push({ date, amount: c.direction === 'received' ? c.amount : -c.amount, source: 'cheques', label: `${c.party} · ${c.cheque_no}`, ref: c.number, dueDate: c.due_date });
+      }
+    }
+    if (has('payroll')) {
+      // Payrolls prepared or posted but not paid yet.
+      for (const r of db.all<{ month: string; pay_date: string; net: number }>(`SELECT month, pay_date, net FROM payroll_runs WHERE status IN ('draft', 'posted') AND net > 0`)) {
+        out.push({ date: r.pay_date < asOf ? asOf : r.pay_date, amount: -r.net, source: 'payroll', label: `Payroll ${r.month}`, ref: r.month, dueDate: r.pay_date });
       }
     }
     // Planned receipts and payments (payroll, rent, loans, tax…).

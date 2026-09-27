@@ -2021,3 +2021,59 @@
 .cash-table th.selected {
   color: var(--primary);
 }
+
+/* Payslip: printing a payslip dialog prints only the payslip */
+.payslip {
+  display: grid;
+  gap: 8px;
+}
+@media print {
+  body:has(.payslip) #root {
+    display: none;
+  }
+  body:has(.payslip) .overlay {
+    position: static;
+    background: none;
+    padding: 0;
+  }
+  body:has(.payslip) .dialog {
+    box-shadow: none;
+    border: none;
+    max-width: none;
+    width: auto;
+  }
+  body:has(.payslip) .dialog-header,
+  body:has(.payslip) .dialog-footer {
+    display: none;
+  }
+}
+
+/* Cheque progress */
+.cheque-steps {
+  list-style: none;
+  margin: 0;
+  padding: 4px 16px 14px;
+  display: grid;
+  gap: 10px;
+}
+.cheque-steps li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding-inline-start: 18px;
+  position: relative;
+}
+.cheque-steps li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+}
+.cheque-steps li.done::before {
+  background: var(--primary);
+  border-color: var(--primary);
+}

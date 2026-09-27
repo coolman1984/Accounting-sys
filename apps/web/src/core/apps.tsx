@@ -1,4 +1,4 @@
-import { BookOpenCheck, Wallet, Factory, Coins, Gauge, ClipboardList, Landmark, Package, Percent, ShoppingBag, Tags, Target, Truck, type LucideIcon } from 'lucide-react';
+import { BookOpenCheck, Wallet, Factory, Building2, Users, FileCheck2, Coins, Gauge, ClipboardList, Landmark, Package, Percent, ShoppingBag, Tags, Target, Truck, type LucideIcon } from 'lucide-react';
 
 /** How each app looks in the catalogue (names and texts come from the dictionaries: apps.<id>.*). */
 export const APP_META: Record<string, { icon: LucideIcon; color: string }> = {
@@ -13,6 +13,9 @@ export const APP_META: Record<string, { icon: LucideIcon; color: string }> = {
   budget: { icon: ClipboardList, color: '#0369a1' },
   cashflow: { icon: Wallet, color: '#0f766e' },
   mfg: { icon: Factory, color: '#b45309' },
+  assets: { icon: Building2, color: '#4338ca' },
+  payroll: { icon: Users, color: '#be185d' },
+  cheques: { icon: FileCheck2, color: '#15803d' },
   inventory: { icon: Package, color: '#9333ea' },
   purchasing: { icon: ClipboardList, color: '#db2777' },
   pricing: { icon: Tags, color: '#ca8a04' },

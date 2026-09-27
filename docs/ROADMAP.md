@@ -75,9 +75,9 @@ away.
 
 ## Phase 3 — Business modules
 
-- [ ] **Fixed assets**: register, depreciation schedules, automatic postings
-- [ ] **Payroll** (basic): employees, salary components, monthly posting
-- [ ] **Cheques** (post-dated cheques receivable / payable — common in the region)
+- [x] **Fixed assets**: register, depreciation schedules, automatic postings
+- [x] **Payroll** (basic): employees, salary components, monthly posting
+- [x] **Cheques** (post-dated cheques receivable / payable — common in the region)
 - [ ] E-invoicing adapters (e.g. Egyptian ETA / Saudi ZATCA) as separate modules
 
 ## Phase 4 — Platform

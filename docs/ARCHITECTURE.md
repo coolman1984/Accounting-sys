@@ -92,6 +92,9 @@ Modules are how the code is built; **apps** are what a company switches on
 | Financial analysis | analysis | ratios, notes, break-even, trend (read-only) | — |
 | Cash forecast | cashflow | 13-week / 12-month forecast, planned items, minimum-cash alert (read-only on the books) | — |
 | Manufacturing | manufacturing | recipes, production orders, standard cost variances | Inventory |
+| Fixed assets | assets | register, monthly depreciation, disposals, movements report | — |
+| Payroll | payroll | employees, pay components, monthly runs, payslips, salary payment | — |
+| Cheques | cheques | post-dated cheques received / issued, clearing, bounces, portfolio | — |
 | Budgets | budget | monthly budgets, approval, budget vs actual, sales variances (read-only on the books) | — |
 
 ### Editions — deliver only what was bought

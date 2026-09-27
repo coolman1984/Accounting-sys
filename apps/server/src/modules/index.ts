@@ -15,6 +15,9 @@ import { analysisModule } from './analysis/index.js';
 import { budgetModule } from './budget/index.js';
 import { cashflowModule } from './cashflow/index.js';
 import { manufacturingModule } from './manufacturing/index.js';
+import { assetsModule } from './assets/index.js';
+import { payrollModule } from './payroll/index.js';
+import { chequesModule } from './cheques/index.js';
 import { inventoryModule } from './inventory/index.js';
 import { purchasingModule } from './purchasing/index.js';
 import { pricingModule } from './pricing/index.js';
@@ -44,4 +47,7 @@ export const modules: AppModule[] = [
   budgetModule,
   cashflowModule,
   manufacturingModule,
+  assetsModule,
+  payrollModule,
+  chequesModule,
 ];

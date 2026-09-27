@@ -23,5 +23,9 @@ export function sourceLink(sourceType: string, sourceId: number | null): string 
   if (sourceType === 'production') return `/mfg/orders/${sourceId}`;
   if (sourceType === 'bank') return `/bank/statements/${sourceId}`;
   if (sourceType === 'transfer') return '/bank/transfers';
+  if (sourceType === 'asset_acquisition' || sourceType === 'asset_disposal') return `/fixed-assets/${sourceId}`;
+  if (sourceType === 'depreciation') return '/fixed-assets/depreciation';
+  if (sourceType === 'payroll' || sourceType === 'payroll_payment') return `/payroll/runs/${sourceId}`;
+  if (sourceType.startsWith('cheque_')) return `/cheques/${sourceId}`;
   return null;
 }

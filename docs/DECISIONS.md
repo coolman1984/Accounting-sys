@@ -149,3 +149,37 @@ actual overhead accounts chosen in settings (spending / efficiency / volume, und
 Reversal goes through `inventory.reverseProduction()`.
 **Consequences:** No WIP account or multi-step routing yet; a back-dated purchase that re-costs a
 component after production adjusts cost of goods sold, not the finished product.
+
+## ADR-016 · Fixed assets: schedules computed, depreciation lines stored per month
+**Status:** Accepted · 2026-09-27
+**Decision:** A `assets` module/app. The schedule of an asset is a pure function of its cost, residual
+value, life, method and opening depreciation (`engine.ts`); only what was booked is stored — one
+`depreciation_lines` row per asset and month (by a monthly run, or at disposal). A run books every
+pending month up to the chosen one in one entry (expense by cost center, accumulated depreciation by
+category); only the latest run can be undone, and not across a later disposal. Depreciation is charged
+for whole months, from the month of use through the month of disposal. Web pages live at
+`/fixed-assets` because `/assets` is where the built bundles are served.
+**Consequences:** No revaluation or impairment yet; changing an asset after depreciation is limited to
+descriptive fields (dispose and re-register to correct).
+
+## ADR-017 · Payroll: country-neutral components, one entry per month
+**Status:** Accepted · 2026-09-27
+**Decision:** A `payroll` module/app. Nothing about a country's law is built in: the company defines
+components (earning / deduction / employer; fixed, % of basic, % of gross, or income tax on annual
+brackets with an exemption and pre-tax deductions; optional ceiling on the base). A monthly run
+computes each payslip (proration by calendar days, one-off bonus and deduction) and stores it as JSON
+lines; posting books one entry at month end (expenses by account and cost center, net pay to
+"Salaries payable", deductions and employer contributions to their liability accounts); paying books
+the bank side. Draft → posted → paid, each step reversible in order. Payroll rights are separate
+(`payroll.*`) with SoD between editing employees and posting runs.
+**Consequences:** No leave/attendance module; statutory reports are exports of the run.
+
+## ADR-018 · Cheques settle documents; the holding account carries them until clearing
+**Status:** Accepted · 2026-09-27
+**Decision:** A `cheques` module/app. A received cheque debits "Cheques receivable" and credits the
+customer, settling invoices at once (settlement source `cheque` — documents migration 006 widens the
+source types); clearing moves it to the bank; a bounce (or return / cancellation of an issued cheque)
+reverses the party side and unsettles the documents. Issued cheques mirror this through "Cheques
+payable". Cheques are in the company currency only and are never deleted (status history). The cash
+forecast reads open cheques at their due date.
+**Consequences:** Endorsing a customer's cheque to a supplier and foreign-currency cheques are left for later.
