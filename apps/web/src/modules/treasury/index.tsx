@@ -49,7 +49,24 @@ function PaymentList({ direction }: { direction: Direction }) {
       { id: 'method', header: t('payments.method'), type: 'enum', hidden: true, value: (r) => r.method, format: (v) => (v ? t('payments.methods.' + v) : '') },
       { id: 'memo', header: t('common.memo'), hidden: true, value: (r) => r.memo },
       { id: 'status', header: t('common.status'), type: 'enum', value: (r) => r.status, format: (v) => t('status.' + v), render: (r) => <SimpleStatus status={r.status} /> },
-      { id: 'amount', header: t('common.amount'), type: 'money', total: true, value: (r) => (r.status === 'void' ? 0 : r.amount), render: (r) => <Money v={r.amount} /> },
+      {
+        id: 'amount',
+        header: t('common.amount'),
+        type: 'money',
+        total: true,
+        // Base currency, so totals of mixed currencies add up.
+        value: (r) => (r.status === 'void' ? 0 : r.base_amount),
+        render: (r) => (
+          <span>
+            <Money v={r.base_amount} />
+            {r.currency && (
+              <div className="faint" style={{ fontSize: 11.5 }}>
+                {r.currency} <Money v={r.amount} />
+              </div>
+            )}
+          </span>
+        ),
+      },
     ],
     [t, pick, direction],
   );

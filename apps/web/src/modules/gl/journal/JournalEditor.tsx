@@ -21,12 +21,14 @@ interface Line {
   description: string;
   partyId: number | null;
   costCenterId: number | null;
+  /** Amount in the account's own currency (foreign-currency cash/bank accounts), always positive here. */
+  amountFx: number | null;
   debit: number | null;
   credit: number | null;
 }
 
 let k = 0;
-const blank = (): Line => ({ key: ++k, accountId: null, description: '', partyId: null, costCenterId: null, debit: null, credit: null });
+const blank = (): Line => ({ key: ++k, accountId: null, description: '', partyId: null, costCenterId: null, amountFx: null, debit: null, credit: null });
 
 export function JournalEditor() {
   const { id } = useParams();
@@ -59,6 +61,7 @@ export function JournalEditor() {
         description: l.description ?? '',
         partyId: l.party_id,
         costCenterId: l.cost_center_id ?? null,
+        amountFx: l.amount_fx == null ? null : Math.abs(l.amount_fx),
         debit: l.debit || null,
         credit: l.credit || null,
       })),
@@ -70,6 +73,14 @@ export function JournalEditor() {
   // Cost centers (CO app) apply to income and expense lines.
   const cc = useCostCenters();
   const takesCostCenter = (a?: Account) => a?.type === 'income' || a?.type === 'expense';
+  // Lines on a foreign-currency account also carry the foreign amount, signed like the line.
+  const fxOf = (l: Line) => {
+    const cur = byId.get(l.accountId ?? 0)?.currency;
+    if (!cur) return {};
+    const amt = l.amountFx ?? 0;
+    return { currency: cur, amountFx: (l.credit ?? 0) > 0 ? -amt : amt };
+  };
+  const anyFx = lines.some((l) => byId.get(l.accountId ?? 0)?.currency);
 
   const totals = useMemo(() => {
     const d = lines.reduce((s, l) => s + (l.debit ?? 0), 0);
@@ -93,6 +104,7 @@ export function JournalEditor() {
           description: l.description || null,
           partyId: needsParty(byId.get(l.accountId ?? 0)) ? l.partyId : null,
           costCenterId: cc.on && takesCostCenter(byId.get(l.accountId ?? 0)) ? l.costCenterId : null,
+          ...fxOf(l),
           debit: l.debit ?? 0,
           credit: l.credit ?? 0,
         })),
@@ -177,6 +189,7 @@ export function JournalEditor() {
                   <th>{t('common.description')}</th>
                   <th style={{ width: cc.on ? '16%' : '18%' }}>{t('journal.partyNeeded')}</th>
                   {cc.on && <th style={{ width: 160 }}>{t('co.costCenter')}</th>}
+                  {anyFx && <th className="end" style={{ width: 150 }}>{t('fx.foreignAmount')}</th>}
                   <th className="end" style={{ width: 140 }}>
                     {t('common.debit')}
                   </th>
@@ -216,6 +229,20 @@ export function JournalEditor() {
                         <td>
                           {takesCostCenter(acc) ? (
                             <CostCenterSelect value={l.costCenterId} onChange={(v) => update(l.key, { costCenterId: v })} list={cc.list} />
+                          ) : (
+                            <span className="faint" style={{ display: 'block', paddingTop: 8, paddingInlineStart: 12 }}>
+                              —
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {anyFx && (
+                        <td>
+                          {acc?.currency ? (
+                            <div className="row" style={{ gap: 4 }}>
+                              <span className="faint num" style={{ fontSize: 12 }}>{acc.currency}</span>
+                              <DecimalInput scale={scale} value={l.amountFx} onChange={(v) => update(l.key, { amountFx: v })} aria-label={t('fx.foreignAmount')} />
+                            </div>
                           ) : (
                             <span className="faint" style={{ display: 'block', paddingTop: 8, paddingInlineStart: 12 }}>
                               —

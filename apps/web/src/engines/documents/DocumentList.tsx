@@ -12,11 +12,14 @@ import { Money } from '../../ui/Money';
 import { DataGrid, type Column, type Preset } from '../../ui/DataGrid';
 import { KIND_UI } from './kinds';
 
-const outstanding = (r: DocumentRow) => (r.status === 'posted' ? r.total - r.amount_settled : 0);
+// Base currency, so totals of mixed currencies add up.
+  const outstanding = (r: DocumentRow) => (r.status === 'posted' ? r.base_outstanding : 0);
 
 export function DocumentList({ kind }: { kind: DocKind }) {
   const { t } = useI18n();
-  const { can } = useSession();
+  const { can, company, hasApp } = useSession();
+  const base = company?.baseCurrency ?? '';
+  const fxOn = hasApp('fx');
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const ui = KIND_UI[kind];
@@ -53,7 +56,24 @@ export function DocumentList({ kind }: { kind: DocKind }) {
       },
       { id: 'subtotal', header: t('common.subtotal'), type: 'money', hidden: true, total: true, value: (r) => r.subtotal },
       { id: 'tax', header: t('docs.tax'), type: 'money', hidden: true, total: true, value: (r) => r.tax_total },
-      { id: 'total', header: t('common.total'), type: 'money', total: true, value: (r) => r.total, render: (r) => <Money v={r.total} /> },
+      {
+        id: 'total',
+        header: t('common.total'),
+        type: 'money',
+        total: true,
+        value: (r) => r.base_total,
+        render: (r) => (
+          <span>
+            <Money v={r.base_total} />
+            {r.currency !== base && (
+              <div className="faint" style={{ fontSize: 11.5 }}>
+                {r.currency} <Money v={r.total} />
+              </div>
+            )}
+          </span>
+        ),
+      },
+      { id: 'currency', header: t('fx.currency'), type: 'enum', hidden: !fxOn, value: (r) => r.currency },
       {
         id: 'outstanding',
         header: t('docs.outstanding'),
@@ -63,7 +83,7 @@ export function DocumentList({ kind }: { kind: DocKind }) {
         render: (r) => (r.status === 'posted' ? <Money v={outstanding(r)} dashZero /> : <span className="faint">—</span>),
       },
     ],
-    [t, ui.partyKind],
+    [t, ui.partyKind, base, fxOn],
   );
 
   const presets = useMemo<Preset<DocumentRow>[]>(

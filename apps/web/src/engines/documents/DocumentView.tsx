@@ -269,6 +269,14 @@ export function DocumentView({ kind }: { kind: DocKind }) {
                   </span>
                 </>
               )}
+              {d.currency !== company?.baseCurrency && (
+                <>
+                  <span className="t-label faint">{t('fx.rate')}</span>
+                  <span className="t-value faint">{(d.exchange_rate / 1_000_000).toLocaleString('en', { maximumFractionDigits: 6 })}</span>
+                  <span className="t-label faint">{t('fx.inBase', { base: company?.baseCurrency ?? '' })}</span>
+                  <span className="t-value faint">{fmt(d.base_total)}</span>
+                </>
+              )}
             </div>
           </div>
         </Card>

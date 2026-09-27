@@ -124,8 +124,8 @@ export const taxModule: AppModule = {
       const rows = db.all<{ tax_id: number; code: string; name_en: string; name_ar: string; rate_bp: number; side: string; net: number; tax: number }>(
         `SELECT t.id AS tax_id, t.code, t.name_en, t.name_ar, l.tax_rate_bp AS rate_bp,
                 CASE WHEN d.kind LIKE 'sales_%' THEN 'sales' ELSE 'purchases' END AS side,
-                SUM(CASE WHEN d.kind IN ('sales_invoice', 'purchase_bill') THEN l.net ELSE -l.net END) AS net,
-                SUM(CASE WHEN d.kind IN ('sales_invoice', 'purchase_bill') THEN l.tax ELSE -l.tax END) AS tax
+                SUM(CASE WHEN d.kind IN ('sales_invoice', 'purchase_bill') THEN l.base_net ELSE -l.base_net END) AS net,
+                SUM(CASE WHEN d.kind IN ('sales_invoice', 'purchase_bill') THEN l.base_tax ELSE -l.base_tax END) AS tax
          FROM document_lines l JOIN documents d ON d.id = l.document_id JOIN taxes t ON t.id = l.tax_id
          WHERE d.status = 'posted' AND d.date BETWEEN ? AND ?
          GROUP BY t.id, l.tax_rate_bp, side ORDER BY t.code, side`,

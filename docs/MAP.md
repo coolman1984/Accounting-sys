@@ -19,6 +19,7 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **ar** | `ar` | — | `ar`, `catalog` |
 | **ap** | `ap` | — | `ap`, `catalog` |
 | **co** | `co` | — | `co` |
+| **fx** | `fx` | — | `fx` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -27,11 +28,11 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | Folder | Files | What lives there |
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
-| `apps/server/src/contracts/` | 6 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 29 | one folder per module (below) |
-| `apps/server/src/test/` | 11 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
+| `apps/server/src/modules/` | 31 | one folder per module (below) |
+| `apps/server/src/test/` | 12 | end-to-end tests, boundary and edition tests |
 
-Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
+Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
 ## Server modules (in load order)
 
@@ -84,9 +85,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (146), `index.ts` (245), `reports.ts` (318), `schema.ts` (156), `service.ts` (643)
+- **Files:** `chart-template.ts` (181), `index.ts` (252), `reports.ts` (208), `schema.ts` (180), `service.ts` (729), `statements.ts` (268)
 
-<details><summary>24 routes</summary>
+<details><summary>25 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -113,6 +114,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 | GET | `/api/reports/income-statement` | `gl.reports.read` |
 | GET | `/api/reports/balance-sheet` | `gl.reports.read` |
 | GET | `/api/reports/cash-flow` | `gl.reports.read` |
+| GET | `/api/reports/equity-changes` | `gl.reports.read` |
 | GET | `/api/reports/dashboard` | `gl.reports.read` |
 
 </details>
@@ -170,7 +172,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 - **Tables / views:** `document_lines`, `documents`, `settlements`
 - **Provides services:** `documents`
 - **Events:** emits `document.posted`, `document.voided` · listens `system.setup`
-- **Files:** `index.ts` (298), `schema.ts` (138), `service.ts` (413)
+- **Files:** `index.ts` (306), `schema.ts` (170), `service.ts` (482)
 
 <details><summary>9 routes</summary>
 
@@ -197,7 +199,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 - **Tables / views:** `payment_allocations`, `payments`
 - **Provides services:** `payments`
 - **Events:** emits `payment.posted`, `payment.voided` · listens `system.setup`
-- **Files:** `index.ts` (476)
+- **Files:** `index.ts` (544)
 
 <details><summary>9 routes</summary>
 
@@ -387,7 +389,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 - **Tables / views:** `bank_statement_lines`, `bank_statements`, `bank_transfers`
 - **Provides services:** —
 - **Events:** emits — · listens `journal.reversed`
-- **Files:** `index.ts` (224), `schema.ts` (68), `service.ts` (453)
+- **Files:** `index.ts` (226), `schema.ts` (73), `service.ts` (482)
 
 <details><summary>22 routes</summary>
 
@@ -418,12 +420,39 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 
 </details>
 
+### `fx` — apps/server/src/modules/fx/
+
+- **Apps:** `fx` · **Depends on:** `ledger` · **Health checks:** yes
+- **Permissions:** `fx.rates.write`, `fx.revaluations.read`, `fx.revaluations.post`
+- **Role templates:** `treasurer`
+- **Tables / views:** `currencies`, `exchange_rates`, `fx_revaluations`
+- **Provides services:** `fx`
+- **Events:** emits — · listens `system.setup`
+- **Files:** `index.ts` (298)
+
+<details><summary>10 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/currencies` | `auth` |
+| POST | `/api/currencies` | `fx.rates.write` |
+| PUT | `/api/currencies/:code` | `fx.rates.write` |
+| GET | `/api/fx/rates` | `auth` |
+| GET | `/api/fx/rate` | `auth` |
+| POST | `/api/fx/rates` | `fx.rates.write` |
+| DELETE | `/api/fx/rates/:id` | `fx.rates.write` |
+| GET | `/api/fx/revaluations` | `fx.revaluations.read` |
+| GET | `/api/fx/revaluations/preview` | `fx.revaluations.read` |
+| POST | `/api/fx/revaluations` | `fx.revaluations.post` |
+
+</details>
+
 ## Web layout
 
 | Folder | Files | What lives there |
 |---|---|---|
 | `apps/web/src/core/` | 15 | session, API client, i18n (en/ar dictionaries), formatting, module registry |
-| `apps/web/src/ui/` | 20 | design-system widgets shared by every module (DataGrid, pickers, dialogs, stock, cost centers) |
+| `apps/web/src/ui/` | 21 | design-system widgets shared by every module (DataGrid, pickers, dialogs, stock, cost centers) |
 | `apps/web/src/engines/` | 9 | shared screens used by several apps (documents, parties) |
 | `apps/web/src/shell/` | 4 | sidebar / top bar, command palette, layout |
 
@@ -432,12 +461,13 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 | Module | Apps | Pages | Files |
 |---|---|---|---|
 | `dashboard` | — | `/` | 1 (268 lines) |
-| `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1671 lines) |
+| `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1734 lines) |
 | `tax` | `tax` | `/reports/tax`, `/taxes` | 1 (267 lines) |
 | `ar` | `ar` | `/customers`, `/customers/:id`, `/documents/:id`, `/reports/aging/receivable` | 1 (41 lines) |
 | `ap` | `ap` | `/documents/:id`, `/reports/aging/payable`, `/suppliers`, `/suppliers/:id` | 1 (37 lines) |
-| `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1675 lines) |
+| `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1738 lines) |
 | `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (235 lines) |
+| `fx` | `fx` | `/currencies`, `/fx/revaluation` | 1 (305 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

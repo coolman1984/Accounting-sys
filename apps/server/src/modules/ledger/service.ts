@@ -1,5 +1,6 @@
 import type { ModuleContext } from '../../kernel/modules.js';
 import type {} from '../../contracts/co.js';
+import type {} from '../../contracts/fx.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, addMonths, isValidDate, nowIso, today } from '../../kernel/dates.js';
 import { isMinor, sum } from '../../kernel/money.js';
@@ -17,6 +18,11 @@ export interface Account {
   is_group: number;
   is_active: number;
   description: string | null;
+  /** Foreign currency the account is kept in (cash/bank only); null = base currency. */
+  currency: string | null;
+  /** Cost behaviour for break-even analysis: share of this expense that moves with sales (bp); null = default by subtype. */
+  variable_bp: number | null;
+  analysis_tag: 'lease' | null;
   created_at: string;
 }
 
@@ -30,6 +36,9 @@ export interface AccountInput {
   isGroup: boolean;
   isActive: boolean;
   description: string | null;
+  currency?: string | null;
+  variableBp?: number | null;
+  analysisTag?: 'lease' | null;
 }
 
 export interface JournalLineInput {
@@ -40,6 +49,9 @@ export interface JournalLineInput {
   partyId?: number | null;
   /** Controlling dimension (CO module); income and expense lines may carry one. */
   costCenterId?: number | null;
+  /** Foreign currency of the line and its signed amount in that currency (+ debit, − credit). */
+  currency?: string | null;
+  amountFx?: number | null;
 }
 
 export interface JournalInput {
@@ -85,6 +97,8 @@ export interface JournalLine {
   account_name_ar: string;
   party_id: number | null;
   cost_center_id: number | null;
+  currency: string | null;
+  amount_fx: number | null;
   description: string | null;
   debit: number;
   credit: number;
@@ -156,7 +170,28 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         }
       }
     }
+    const cur = input.currency ?? null;
+    if (cur) {
+      if (input.subtype !== 'cash' && input.subtype !== 'bank') fail('account.currency_cash_only', 'Only cash and bank accounts can be kept in a foreign currency');
+      if (!services.has('fx')) fail('fx.unavailable', 'Multi-currency is not installed');
+      if (!services.get('fx').isForeign(cur)) fail('account.currency_base', 'Leave the currency empty for the base currency');
+      services.get('fx').assertCurrency(cur);
+      if (selfId != null) {
+        const before = account(selfId);
+        if (before.currency !== cur && hasPostings(selfId)) fail('account.currency_locked', 'The currency cannot change once the account has transactions');
+      }
+    } else if (selfId != null) {
+      const before = account(selfId);
+      if (before.currency && hasPostings(selfId)) fail('account.currency_locked', 'The currency cannot change once the account has transactions');
+    }
+    if (input.variableBp != null && input.type !== 'expense') fail('account.variable_expense_only', 'Cost behaviour applies to expense accounts');
   }
+
+  const extraCols = (input: AccountInput) => ({
+    currency: input.currency ?? null,
+    variable_bp: input.type === 'expense' ? input.variableBp ?? null : null,
+    analysis_tag: input.analysisTag ?? null,
+  });
 
   function createAccount(input: AccountInput, userId: number | null): number {
     validateAccount(input, null);
@@ -171,6 +206,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         is_group: input.isGroup,
         is_active: input.isActive,
         description: input.description,
+        ...extraCols(input),
         created_at: nowIso(),
       });
       audit().log({ userId, action: 'create', entity: 'account', entityId: id, summary: `${input.code} ${input.nameEn}` });
@@ -199,6 +235,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         is_group: input.isGroup,
         is_active: input.isActive,
         description: input.description,
+        ...extraCols(input),
       });
       audit().log({ userId, action: 'update', entity: 'account', entityId: id, data: { before: cur, after: input } });
     });
@@ -268,6 +305,40 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     };
     walk(template, null);
     settings().set('defaultAccounts', { ...defaultAccounts(), ...defaults });
+  }
+
+  /**
+   * The account a default key points to; when the chart has none, create it (under its usual
+   * parent group when that exists) and remember it as the default. Used by features that need
+   * an account the company may not have yet (exchange differences, revaluation).
+   */
+  function ensureDefaultAccount(key: DefaultAccountKey, t: TemplateAccount & { parentCode: string }): number {
+    const cur = defaultAccounts()[key];
+    if (cur) return cur;
+    return db.tx(() => {
+      const existing = db.get<{ id: number; subtype: string; is_group: number }>('SELECT id, subtype, is_group FROM accounts WHERE code = ?', [t.code]);
+      let id: number;
+      if (existing && !existing.is_group && existing.subtype === t.subtype) id = existing.id;
+      else {
+        // Free code: the template's, or the next one after it.
+        let code = t.code;
+        for (let n = Number(t.code) + 1; db.get('SELECT 1 FROM accounts WHERE code = ?', [code]); n++) code = String(n);
+        const parent = db.get<{ id: number }>('SELECT id FROM accounts WHERE code = ? AND is_group = 1 AND type = ?', [t.parentCode, t.type]);
+        id = db.insert('accounts', { code, name_en: t.en, name_ar: t.ar, type: t.type, subtype: t.subtype, parent_id: parent?.id ?? null, is_group: 0, is_active: 1, created_at: nowIso() });
+      }
+      settings().set('defaultAccounts', { ...defaultAccounts(), [key]: id });
+      return id;
+    });
+  }
+
+  /** Charts made before interest, tax, borrowings and dividends had their own subtypes get those accounts (standard chart only). */
+  function upgradeChart(list: (TemplateAccount & { parentCode: string })[]): void {
+    for (const t of list) {
+      if (db.get('SELECT 1 FROM accounts WHERE subtype = ? LIMIT 1', [t.subtype])) continue;
+      const parent = db.get<{ id: number }>('SELECT id FROM accounts WHERE code = ? AND is_group = 1 AND type = ?', [t.parentCode, t.type]);
+      if (!parent || db.get('SELECT 1 FROM accounts WHERE code = ?', [t.code])) continue;
+      db.insert('accounts', { code: t.code, name_en: t.en, name_ar: t.ar, type: t.type, subtype: t.subtype, parent_id: parent.id, is_group: 0, is_active: 1, created_at: nowIso() });
+    }
   }
 
   // ------------------------------------------------------------ fiscal years
@@ -349,6 +420,15 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         if (!services.has('costCenters') || !apps.isEnabled('co')) fail('co.unavailable', `Line ${i + 1}: cost centers are not in use`, { line: i + 1 });
         services.get('costCenters').assertUsable(l.costCenterId);
       }
+      // A foreign-currency account must know how much foreign money moved, or its balance in that currency is lost.
+      if (a.currency && l.amountFx == null && !mirror) {
+        fail('fx.amount_required', `Line ${i + 1}: ${a.code} is kept in ${a.currency} — enter the ${a.currency} amount`, { line: i + 1, code: a.code, currency: a.currency });
+      }
+      if (l.amountFx != null && !l.currency) fail('fx.currency_required', `Line ${i + 1}: foreign amount without a currency`, { line: i + 1 });
+      if (l.amountFx && (l.debit > 0) !== (l.amountFx > 0)) fail('fx.sign', `Line ${i + 1}: the foreign amount must be on the same side as the line`, { line: i + 1 });
+      if (a.currency && l.currency && l.currency !== a.currency) {
+        fail('fx.account_currency', `Line ${i + 1}: ${a.code} is kept in ${a.currency}`, { line: i + 1, code: a.code, currency: a.currency });
+      }
     });
   }
 
@@ -369,6 +449,8 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         account_id: l.accountId,
         party_id: l.partyId ?? null,
         cost_center_id: l.costCenterId ?? null,
+        currency: l.currency ?? null,
+        amount_fx: l.amountFx ?? null,
         description: l.description ?? null,
         debit: l.debit,
         credit: l.credit,
@@ -439,10 +521,10 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
   function postEntry(id: number, userId: number | null, o: { silentAudit?: boolean } = {}): void {
     const cur = header(id);
     if (cur.status !== 'draft') conflict('journal.not_draft', 'Entry is already posted');
-    const lines = db.all<JournalLineInput & { account_id: number; party_id: number | null }>(
-      'SELECT account_id, party_id, debit, credit FROM journal_lines WHERE entry_id = ? ORDER BY line_no',
+    const lines = db.all<{ account_id: number; party_id: number | null; debit: number; credit: number; currency: string | null; amount_fx: number | null }>(
+      'SELECT account_id, party_id, debit, credit, currency, amount_fx FROM journal_lines WHERE entry_id = ? ORDER BY line_no',
       [id],
-    ).map((l) => ({ accountId: l.account_id, partyId: l.party_id, debit: l.debit, credit: l.credit }));
+    ).map((l) => ({ accountId: l.account_id, partyId: l.party_id, debit: l.debit, credit: l.credit, currency: l.currency, amountFx: l.amount_fx }));
     validateLines(lines);
     const total = assertBalanced(lines);
     assertPostingDate(cur.date);
@@ -474,6 +556,8 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
             accountId: l.account_id,
             partyId: l.party_id,
             costCenterId: l.cost_center_id,
+            currency: l.currency,
+            amountFx: l.amount_fx == null ? null : -l.amount_fx,
             description: l.description,
             debit: l.credit,
             credit: l.debit,
@@ -504,7 +588,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     const h = header(id);
     const lines = db.all<JournalLine>(
       `SELECT l.id, l.line_no, l.account_id, a.code AS account_code, a.name_en AS account_name_en, a.name_ar AS account_name_ar,
-              l.party_id, l.cost_center_id, l.description, l.debit, l.credit
+              l.party_id, l.cost_center_id, l.currency, l.amount_fx, l.description, l.debit, l.credit
        FROM journal_lines l JOIN accounts a ON a.id = l.account_id
        WHERE l.entry_id = ? ORDER BY l.line_no`,
       [id],
@@ -623,6 +707,8 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     defaultAccount,
     setDefaultAccounts,
     seedChart,
+    ensureDefaultAccount,
+    upgradeChart,
     fiscalYears,
     fiscalYear,
     createFiscalYear,

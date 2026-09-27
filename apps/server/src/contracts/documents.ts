@@ -20,6 +20,8 @@ export interface Document {
   reference: string | null;
   notes: string | null;
   currency: string;
+  /** Base units per one document-currency unit × 1,000,000 (1,000,000 in the base currency). */
+  exchange_rate: number;
   tax_inclusive: number;
   status: 'draft' | 'posted' | 'void';
   subtotal: number;
@@ -27,6 +29,11 @@ export interface Document {
   tax_total: number;
   total: number;
   amount_settled: number;
+  /** The same figures in the base currency — what the books, stock and reports use. */
+  base_subtotal: number;
+  base_tax_total: number;
+  base_total: number;
+  base_settled: number;
   against_document_id: number | null;
   journal_entry_id: number | null;
   void_entry_id: number | null;
@@ -57,6 +64,8 @@ export interface DocumentLine {
   net: number;
   tax: number;
   total: number;
+  base_net: number;
+  base_tax: number;
 }
 
 /** How a document kind is exposed: AR registers the sales kinds, AP the purchase kinds. */
@@ -73,7 +82,13 @@ export interface DocSideInfo {
 export interface DocumentsService {
   get(id: number): Document;
   lines(id: number): DocumentLine[];
-  settle(documentId: number, s: { sourceType: 'payment' | 'credit'; sourceId: number; sourceNumber: string | null; amount: number; date: string }): void;
+  /** `baseAmount` defaults to {@link baseFor}; `sourceBaseAmount` is the settling side's base value (credit notes). */
+  settle(
+    documentId: number,
+    s: { sourceType: 'payment' | 'credit'; sourceId: number; sourceNumber: string | null; amount: number; date: string; baseAmount?: number; sourceBaseAmount?: number },
+  ): void;
+  /** Base value of settling `amount` of a document: its rate, or exactly what is left when it clears the document. */
+  baseFor(doc: Document, amount: number): number;
   unsettleSource(sourceType: 'payment' | 'credit', sourceId: number): void;
   registerKind(kind: DocKind, info: DocKindInfo): void;
   registerSide(side: DocSide, info: DocSideInfo): void;

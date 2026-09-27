@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CurrencyRateFields, RATE_ONE, toBase, useCurrencies } from '../../ui/Currency';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { AlertTriangle, Wand2 } from 'lucide-react';
 import { useApi, useApiMutation, useDate, useErrorText, useMoney } from '../../core/hooks';
@@ -22,6 +23,7 @@ interface OpenDoc {
   total: number;
   amount_settled: number;
   outstanding: number;
+  currency: string;
 }
 
 interface PaymentFull {
@@ -33,6 +35,8 @@ interface PaymentFull {
   account_id: number;
   counter_account_id: number | null;
   amount: number;
+  currency: string | null;
+  exchange_rate: number;
   method: string | null;
   reference: string | null;
   memo: string | null;
@@ -68,6 +72,10 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
   const [memo, setMemo] = useState('');
   const [alloc, setAlloc] = useState<Record<number, number | null>>({});
   const [err, setErr] = useState('');
+  const { base: baseCur } = useCurrencies();
+  const [fx, setFx] = useState<{ currency: string; rate: number }>({ currency: '', rate: RATE_ONE });
+  const currency = fx.currency || baseCur;
+  const foreign = !!currency && currency !== baseCur;
   const preDoc = params.get('doc') ? Number(params.get('doc')) : null;
 
   useEffect(() => {
@@ -83,9 +91,16 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
     setReference(existing.reference ?? '');
     setMemo(existing.memo ?? '');
     setAlloc(Object.fromEntries(existing.allocations.map((a) => [a.document_id, a.amount])));
+    setFx({ currency: existing.currency ?? '', rate: existing.exchange_rate });
   }, [existing]);
 
-  const { data: cashAccounts } = useApi<{ id: number; subtype: string }[]>('/payments/accounts');
+  const { data: cashAccounts } = useApi<{ id: number; subtype: string; currency: string | null }[]>('/payments/accounts');
+  // A foreign-currency account decides the currency.
+  const accountCurrency = cashAccounts?.find((a) => a.id === accountId)?.currency ?? null;
+  useEffect(() => {
+    if (accountCurrency && accountCurrency !== currency) setFx({ currency: accountCurrency, rate: fx.rate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountCurrency]);
   useEffect(() => {
     if (!editing && accountId == null && cashAccounts?.length) {
       const pref = cashAccounts.find((a) => a.subtype === (method === 'cash' ? 'cash' : 'bank')) ?? cashAccounts[0];
@@ -100,13 +115,16 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
   });
 
   // Documents this (draft) payment already holds allocations for stay visible when editing.
-  const docs = openDocs ?? [];
+  // Only documents in the payment's currency can be settled by it.
+  const docs = (openDocs ?? []).filter((d) => d.currency === currency);
+  const otherCurrencies = [...new Set((openDocs ?? []).filter((d) => d.currency !== currency).map((d) => d.currency))];
 
   // Arriving from a document's "Record payment": apply its full outstanding amount.
   useEffect(() => {
     if (!preDoc || editing || !openDocs) return;
     const d = openDocs.find((x) => x.id === preDoc);
     if (d && alloc[d.id] === undefined) {
+      if (d.currency !== currency) setFx({ currency: d.currency, rate: fx.rate });
       setAlloc({ [d.id]: d.outstanding });
       setAmount((a) => a ?? d.outstanding);
     }
@@ -140,6 +158,8 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
       method,
       reference: reference || null,
       memo: memo || null,
+      currency,
+      exchangeRate: foreign ? fx.rate : null,
       allocations:
         mode === 'party'
           ? Object.entries(alloc)
@@ -245,9 +265,10 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
               <Field label={t('payments.cashAccount')}>
                 <AccountPicker value={accountId} onChange={setAccountId} filter={(a) => a.subtype === 'cash' || a.subtype === 'bank'} />
               </Field>
-              <Field label={t('common.amount')}>
+              <Field label={foreign ? `${t('common.amount')} (${currency})` : t('common.amount')} hint={foreign && amount ? `${t('fx.inBase', { base: baseCur })}: ${fmt(toBase(amount, fx.rate))}` : undefined}>
                 <DecimalInput scale={scale} value={amount} onChange={setAmount} />
               </Field>
+              <CurrencyRateFields currency={currency} rate={fx.rate} date={payDate} onChange={setFx} locked={!!accountCurrency} />
               <Field label={t('common.date')}>
                 <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
               </Field>
@@ -283,6 +304,11 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
                 )
               }
             />
+            {otherCurrencies.length > 0 && (
+              <div className="card-body faint" style={{ fontSize: 12.5, paddingBottom: 0 }}>
+                {t('fx.otherCurrencies', { list: otherCurrencies.join(', ') })}
+              </div>
+            )}
             {docs.length === 0 ? (
               <div className="card-body muted">{t('payments.noOpen')}</div>
             ) : (

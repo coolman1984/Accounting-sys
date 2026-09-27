@@ -9,11 +9,14 @@ export type AccountType = (typeof ACCOUNT_TYPES)[number];
  * lines need a party, payments go through cash/bank accounts).
  */
 export const SUBTYPES: Record<AccountType, readonly string[]> = {
-  asset: ['cash', 'bank', 'receivable', 'inventory', 'current_asset', 'fixed_asset', 'accumulated_depreciation', 'non_current_asset'],
-  liability: ['payable', 'current_liability', 'non_current_liability'],
-  equity: ['equity', 'retained_earnings'],
+  asset: ['cash', 'bank', 'marketable_securities', 'receivable', 'inventory', 'current_asset', 'fixed_asset', 'accumulated_depreciation', 'non_current_asset'],
+  // short_term_debt: interest-bearing borrowings due within a year (analysis needs them apart from trade payables).
+  liability: ['payable', 'short_term_debt', 'current_liability', 'non_current_liability'],
+  // dividends: dividends declared / owner's drawings — reduce equity, never an expense.
+  equity: ['equity', 'retained_earnings', 'dividends'],
   income: ['operating_income', 'other_income'],
-  expense: ['cogs', 'operating_expense', 'depreciation', 'other_expense'],
+  // interest_expense and income_tax are kept apart so statements show EBIT, profit before tax and tax.
+  expense: ['cogs', 'operating_expense', 'depreciation', 'other_expense', 'interest_expense', 'income_tax'],
 };
 
 /** Debit-normal types; the others are credit-normal. */
@@ -150,6 +153,27 @@ export const migrations: Migration[] = [
         FROM journal_lines l
         JOIN journal_entries e ON e.id = l.entry_id
         WHERE e.status = 'posted';
+    `,
+  },
+  {
+    // Multi-currency: an account may be kept in a foreign currency (cash/bank); every line may carry its
+    // foreign amount. Analysis: an expense account's variable share (cost behaviour) and a tag (lease).
+    id: '003_currency_and_analysis',
+    up: `
+      ALTER TABLE accounts ADD COLUMN currency TEXT;
+      ALTER TABLE accounts ADD COLUMN variable_bp INTEGER CHECK (variable_bp IS NULL OR variable_bp BETWEEN 0 AND 10000);
+      ALTER TABLE accounts ADD COLUMN analysis_tag TEXT CHECK (analysis_tag IS NULL OR analysis_tag IN ('lease'));
+      ALTER TABLE journal_lines ADD COLUMN currency TEXT;
+      ALTER TABLE journal_lines ADD COLUMN amount_fx INTEGER;
+      DROP VIEW ledger;
+      CREATE VIEW ledger AS
+        SELECT l.id, l.entry_id, e.number, e.date, e.reference, e.memo, e.source_type, e.source_id,
+               l.line_no, l.account_id, l.party_id, l.cost_center_id, l.description, l.debit, l.credit,
+               l.currency, l.amount_fx
+        FROM journal_lines l
+        JOIN journal_entries e ON e.id = l.entry_id
+        WHERE e.status = 'posted';
+      UPDATE accounts SET analysis_tag = 'lease' WHERE code = '5220' AND subtype = 'operating_expense';
     `,
   },
 ];

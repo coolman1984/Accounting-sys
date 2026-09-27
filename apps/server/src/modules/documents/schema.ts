@@ -134,4 +134,36 @@ export const migrations: Migration[] = [
     id: '004_cost_center',
     up: `ALTER TABLE document_lines ADD COLUMN cost_center_id INTEGER;`,
   },
+  {
+    // Multi-currency: amounts stay in the document currency (what is printed); the base-currency
+    // figures are computed once from the rate and are what the books, stock and reports use.
+    id: '005_currency',
+    up: `
+      ALTER TABLE documents ADD COLUMN exchange_rate INTEGER NOT NULL DEFAULT 1000000 CHECK (exchange_rate > 0);
+      ALTER TABLE documents ADD COLUMN base_subtotal INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE documents ADD COLUMN base_tax_total INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE documents ADD COLUMN base_total INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE documents ADD COLUMN base_settled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE document_lines ADD COLUMN base_net INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE document_lines ADD COLUMN base_tax INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE settlements ADD COLUMN base_amount INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE settlements ADD COLUMN source_base_amount INTEGER NOT NULL DEFAULT 0;
+
+      DROP TRIGGER documents_posted_frozen;
+      DROP TRIGGER document_lines_frozen_upd;
+      UPDATE documents SET base_subtotal = subtotal, base_tax_total = tax_total, base_total = total, base_settled = amount_settled;
+      UPDATE document_lines SET base_net = net, base_tax = tax;
+      UPDATE settlements SET base_amount = amount, source_base_amount = amount;
+      CREATE TRIGGER documents_posted_frozen BEFORE UPDATE ON documents
+      WHEN OLD.status <> 'draft' AND (
+           NEW.party_id IS NOT OLD.party_id OR NEW.date IS NOT OLD.date OR NEW.total IS NOT OLD.total
+        OR NEW.number IS NOT OLD.number OR NEW.kind IS NOT OLD.kind OR NEW.journal_entry_id IS NOT OLD.journal_entry_id
+        OR NEW.currency IS NOT OLD.currency OR NEW.exchange_rate IS NOT OLD.exchange_rate OR NEW.base_total IS NOT OLD.base_total
+        OR (OLD.status = 'void'))
+      BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
+      CREATE TRIGGER document_lines_frozen_upd BEFORE UPDATE ON document_lines
+      WHEN (SELECT status FROM documents WHERE id = OLD.document_id) <> 'draft'
+      BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
+    `,
+  },
 ];

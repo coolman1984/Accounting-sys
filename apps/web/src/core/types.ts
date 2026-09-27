@@ -34,6 +34,9 @@ export interface Account {
   is_group: number;
   is_active: number;
   description: string | null;
+  currency: string | null;
+  variable_bp: number | null;
+  analysis_tag: 'lease' | null;
   depth: number;
   balance: number;
   has_postings: boolean;
@@ -160,6 +163,8 @@ export interface JournalLine {
   party_id: number | null;
   party_name: string | null;
   cost_center_id?: number | null;
+  currency?: string | null;
+  amount_fx?: number | null;
   description: string | null;
   debit: number;
   credit: number;
@@ -194,6 +199,10 @@ export interface DocumentRow {
   tax_total: number;
   total: number;
   amount_settled: number;
+  currency: string;
+  exchange_rate: number;
+  base_total: number;
+  base_outstanding: number;
   party_id: number;
   party_name: string;
 }
@@ -267,6 +276,8 @@ export interface PaymentRow {
   counter_name_en: string | null;
   counter_name_ar: string | null;
   amount: number;
+  currency: string | null;
+  base_amount: number;
   allocated: number;
   method: string | null;
   reference: string | null;

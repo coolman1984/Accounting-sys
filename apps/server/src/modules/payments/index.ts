@@ -2,7 +2,9 @@ import { z } from 'zod';
 import type { AppModule, ModuleContext, SessionUser } from '../../kernel/modules.js';
 import { conflict, fail, forbidden, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
-import { sum } from '../../kernel/money.js';
+import { fxToBase, sum } from '../../kernel/money.js';
+import { ON_DEMAND } from '../ledger/chart-template.js';
+import type {} from '../../contracts/fx.js';
 import { paging, parse, zDate, zId, zOptId, zOptText, zPositiveMinor } from '../../kernel/validate.js';
 import type { JournalLineInput } from '../ledger/service.js';
 import type { DocKind } from '../../contracts/documents.js';
@@ -20,6 +22,10 @@ export interface Payment {
   account_id: number;
   counter_account_id: number | null;
   amount: number;
+  /** Payment currency (null = the company's) and base units per one unit × 1,000,000. */
+  currency: string | null;
+  exchange_rate: number;
+  base_amount: number;
   method: string | null;
   reference: string | null;
   memo: string | null;
@@ -40,6 +46,8 @@ export interface PaymentInput {
   method: string | null;
   reference: string | null;
   memo: string | null;
+  currency?: string | null;
+  exchangeRate?: number | null;
   allocations: { documentId: number; amount: number }[];
 }
 
@@ -59,16 +67,32 @@ declare module '../../kernel/services.js' {
   }
 }
 
-function createPayments({ db, services, events }: ModuleContext) {
+function createPayments({ db, services, events, apps }: ModuleContext) {
   const ledger = () => services.get('ledger');
   const docs = () => services.get('documents');
   const parties = () => services.get('parties');
   const audit = () => services.get('audit');
 
   const get = (id: number): Payment => db.get<Payment>('SELECT * FROM payments WHERE id = ?', [id]) ?? notFound('payment', id);
+  const baseCurrency = () => services.get('settings').company().baseCurrency;
+
+  /** Currency (null = base) and rate of a payment. */
+  function currencyOf(input: PaymentInput): { currency: string | null; rate: number } {
+    const code = input.currency && input.currency !== baseCurrency() ? input.currency : null;
+    if (!code) return { currency: null, rate: 1_000_000 };
+    if (!services.has('fx') || !apps.isEnabled('fx')) fail('fx.unavailable', 'Multi-currency is switched off');
+    const fx = services.get('fx');
+    fx.assertCurrency(code);
+    const rate = input.exchangeRate ?? fx.rate(code, input.date);
+    if (!Number.isSafeInteger(rate) || rate <= 0) fail('fx.invalid_rate', 'Invalid exchange rate');
+    return { currency: code, rate };
+  }
 
   function validate(input: PaymentInput, selfId: number | null): void {
     const acc = ledger().account(input.accountId);
+    const { currency } = currencyOf(input);
+    // A foreign-currency bank account only moves its own currency.
+    if (acc.currency && acc.currency !== currency) fail('fx.account_currency', `${acc.code} is kept in ${acc.currency}`, { code: acc.code, currency: acc.currency });
     if (acc.subtype !== 'cash' && acc.subtype !== 'bank') fail('payment.account_not_cash', 'Choose a cash or bank account');
     if (!acc.is_active) fail('payment.account_inactive', `${acc.code} is inactive`);
     if (input.partyId) {
@@ -97,6 +121,9 @@ function createPayments({ db, services, events }: ModuleContext) {
       if (d.kind !== kind || d.party_id !== input.partyId || d.status !== 'posted') {
         fail('payment.bad_allocation', `${d.number ?? 'Document'} cannot be settled by this payment`);
       }
+      if ((d.currency === baseCurrency() ? null : d.currency) !== currency) {
+        fail('fx.currency_mismatch', `${d.number} is in ${d.currency} — the payment must be too`, { number: d.number, currency: d.currency });
+      }
       if (a.amount > d.total - d.amount_settled) {
         fail('settlement.exceeds', `Amount exceeds what is outstanding on ${d.number}`, {
           number: d.number,
@@ -109,6 +136,7 @@ function createPayments({ db, services, events }: ModuleContext) {
 
   function write(id: number | null, input: PaymentInput, userId: number | null): number {
     validate(input, id);
+    const { currency, rate } = currencyOf(input);
     const row = {
       direction: input.direction,
       date: input.date,
@@ -117,6 +145,9 @@ function createPayments({ db, services, events }: ModuleContext) {
       account_id: input.accountId,
       counter_account_id: input.partyId ? null : input.counterAccountId,
       amount: input.amount,
+      currency,
+      exchange_rate: rate,
+      base_amount: fxToBase(input.amount, rate),
       method: input.method,
       reference: input.reference,
       memo: input.memo,
@@ -156,6 +187,8 @@ function createPayments({ db, services, events }: ModuleContext) {
         method: p.method,
         reference: p.reference,
         memo: p.memo,
+        currency: p.currency,
+        exchangeRate: p.exchange_rate,
         allocations: allocs.map((a) => ({ documentId: a.document_id, amount: a.amount })),
       },
       id,
@@ -166,14 +199,28 @@ function createPayments({ db, services, events }: ModuleContext) {
         ? parties().receivableAccount(party)
         : parties().payableAccount(party)
       : p.counter_account_id!;
-    const cashLine: JournalLineInput = { accountId: p.account_id, debit: p.direction === 'in' ? p.amount : 0, credit: p.direction === 'out' ? p.amount : 0 };
+    const dirIn = p.direction === 'in';
+    const fxInfo = (amt: number) => (p.currency ? { currency: p.currency, amountFx: amt } : {});
+    // Cash moves at today's rate.
+    const cashBase = p.base_amount;
+    const cashLine: JournalLineInput = { accountId: p.account_id, debit: dirIn ? cashBase : 0, credit: dirIn ? 0 : cashBase, ...fxInfo(dirIn ? p.amount : -p.amount) };
+    // The party side leaves at the value each invoice was booked at; what is not applied stays on account at today's rate.
+    const allocated = sum(allocs.map((a) => a.amount));
+    const partyBase =
+      allocs.reduce((s, a) => s + docs().baseFor(docs().get(a.document_id), a.amount), 0) + fxToBase(p.amount - allocated, p.exchange_rate);
     const otherLine: JournalLineInput = {
       accountId: other,
       partyId: party?.id ?? null,
-      debit: p.direction === 'out' ? p.amount : 0,
-      credit: p.direction === 'in' ? p.amount : 0,
+      debit: dirIn ? 0 : party ? partyBase : cashBase,
+      credit: dirIn ? (party ? partyBase : cashBase) : 0,
       description: party?.name ?? p.memo,
+      ...(party ? fxInfo(dirIn ? -p.amount : p.amount) : {}),
     };
+    // Realised exchange difference (IAS 21 §28): cash received above the booked value is a gain.
+    const lines: JournalLineInput[] = dirIn ? [cashLine, otherLine] : [otherLine, cashLine];
+    const diff = party ? (dirIn ? cashBase - partyBase : partyBase - cashBase) : 0;
+    if (diff > 0) lines.push({ accountId: ledger().ensureDefaultAccount('fxGain', ON_DEMAND.fxGain), debit: 0, credit: diff, description: 'Exchange gain' });
+    if (diff < 0) lines.push({ accountId: ledger().ensureDefaultAccount('fxLoss', ON_DEMAND.fxLoss), debit: -diff, credit: 0, description: 'Exchange loss' });
     db.tx(() => {
       const number = services.get('sequences').next(SEQ[p.direction][0]);
       const entryId = ledger().createEntry(
@@ -181,7 +228,7 @@ function createPayments({ db, services, events }: ModuleContext) {
           date: p.date,
           reference: p.reference ? `${number} / ${p.reference}` : number,
           memo: p.memo ?? (party ? `${number} — ${party.name}` : number),
-          lines: p.direction === 'in' ? [cashLine, otherLine] : [otherLine, cashLine],
+          lines,
         },
         { sourceType: p.direction === 'in' ? 'receipt' : 'payment', sourceId: p.id, userId },
       );
@@ -248,6 +295,8 @@ const zPayment = z.object({
   method: z.enum(['cash', 'bank_transfer', 'cheque', 'card', 'other']).nullish().transform((v) => v ?? null),
   reference: zOptText(100),
   memo: zOptText(1000),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullish().transform((v) => v ?? null),
+  exchangeRate: z.number().int().positive().nullish().transform((v) => v ?? null),
   allocations: z.array(z.object({ documentId: zId, amount: zPositiveMinor })).max(500).default([]),
   post: z.boolean().default(false),
 });
@@ -324,6 +373,24 @@ export const paymentsModule: AppModule = {
         BEGIN SELECT RAISE(ABORT, 'payments: posted payments cannot be deleted'); END;
       `,
     },
+    {
+      // Multi-currency: the amount is in the payment currency (null = base); base_amount is what the cash moved in base.
+      id: '002_currency',
+      up: `
+        ALTER TABLE payments ADD COLUMN currency TEXT;
+        ALTER TABLE payments ADD COLUMN exchange_rate INTEGER NOT NULL DEFAULT 1000000 CHECK (exchange_rate > 0);
+        ALTER TABLE payments ADD COLUMN base_amount INTEGER NOT NULL DEFAULT 0;
+        DROP TRIGGER payments_posted_frozen;
+        UPDATE payments SET base_amount = amount;
+        CREATE TRIGGER payments_posted_frozen BEFORE UPDATE ON payments
+        WHEN OLD.status <> 'draft' AND (
+             NEW.amount IS NOT OLD.amount OR NEW.date IS NOT OLD.date OR NEW.party_id IS NOT OLD.party_id
+          OR NEW.account_id IS NOT OLD.account_id OR NEW.number IS NOT OLD.number
+          OR NEW.currency IS NOT OLD.currency OR NEW.exchange_rate IS NOT OLD.exchange_rate OR NEW.base_amount IS NOT OLD.base_amount
+          OR OLD.status = 'void')
+        BEGIN SELECT RAISE(ABORT, 'payments: posted payments are frozen'); END;
+      `,
+    },
   ],
 
   setup(ctx) {
@@ -350,8 +417,9 @@ export const paymentsModule: AppModule = {
     /** Cash & bank accounts with their current balances. */
     r.get('/payments/accounts', 'auth', ({ user }) => (needAny(user),
       db.all(
-        `SELECT a.id, a.code, a.name_en, a.name_ar, a.subtype, a.is_active,
-                COALESCE((SELECT SUM(debit - credit) FROM ledger l WHERE l.account_id = a.id), 0) AS balance
+        `SELECT a.id, a.code, a.name_en, a.name_ar, a.subtype, a.is_active, a.currency,
+                COALESCE((SELECT SUM(debit - credit) FROM ledger l WHERE l.account_id = a.id), 0) AS balance,
+                COALESCE((SELECT SUM(amount_fx) FROM ledger l WHERE l.account_id = a.id), 0) AS balance_fx
          FROM accounts a WHERE a.subtype IN ('cash', 'bank') AND a.is_group = 0 ORDER BY a.code`,
       )),
     );
@@ -361,7 +429,7 @@ export const paymentsModule: AppModule = {
       const q = parse(z.object({ partyId: zId, direction: z.enum(['in', 'out']), role: z.enum(['customer', 'supplier']) }), query);
       need(user, q.direction, 'read');
       return db.all(
-        `SELECT id, kind, number, date, due_date, total, amount_settled, total - amount_settled AS outstanding
+        `SELECT id, kind, number, date, due_date, total, amount_settled, total - amount_settled AS outstanding, currency
          FROM documents WHERE party_id = ? AND kind = ? AND status = 'posted' AND amount_settled < total
          ORDER BY due_date, id`,
         [q.partyId, settlesKind(q.direction, q.role)],
@@ -401,7 +469,7 @@ export const paymentsModule: AppModule = {
         { ...p, limit, offset },
       );
       const agg = db.get<{ n: number; total: number }>(
-        `SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN p.status = 'posted' THEN p.amount END), 0) total ${from} ${w}`,
+        `SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN p.status = 'posted' THEN p.base_amount END), 0) total ${from} ${w}`,
         p,
       )!;
       return { rows, total: agg.n, sums: { total: agg.total } };

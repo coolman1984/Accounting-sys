@@ -24,6 +24,8 @@ export interface CashAccount {
   subtype: 'cash' | 'bank';
   is_active: number;
   balance: number;
+  currency: string | null;
+  balance_fx: number;
 }
 
 interface TransferRow {
@@ -39,6 +41,7 @@ interface TransferRow {
   to_name_en: string;
   to_name_ar: string;
   amount: number;
+  to_amount: number | null;
   fee: number;
   fee_account_id: number | null;
   reference: string | null;
@@ -57,7 +60,7 @@ export function CashAccountSelect({ value, onChange, list, exclude }: { value: n
         .filter((a) => (a.is_active || a.id === value) && a.id !== exclude)
         .map((a) => (
           <option key={a.id} value={a.id}>
-            {a.code} · {pick(a.name_en, a.name_ar)} ({fmt(a.balance)})
+            {a.code} · {pick(a.name_en, a.name_ar)} ({a.currency ? `${a.currency} ${fmt(a.balance_fx)}` : fmt(a.balance)})
           </option>
         ))}
     </Select>
@@ -66,31 +69,35 @@ export function CashAccountSelect({ value, onChange, list, exclude }: { value: n
 
 function TransferDialog({ open, row, onClose }: { open: boolean; row: TransferRow | null; onClose(): void }) {
   const { t } = useI18n();
-  const { can } = useSession();
+  const { can, company } = useSession();
   const { scale } = useMoney();
   const toast = useToast();
   const errText = useErrorText();
   const { data: accounts } = useApi<CashAccount[]>('/bank/accounts');
-  const empty = { date: todayIso(), fromAccountId: null as number | null, toAccountId: null as number | null, amount: null as number | null, fee: null as number | null, feeAccountId: null as number | null, reference: '', memo: '' };
+  const empty = { date: todayIso(), fromAccountId: null as number | null, toAccountId: null as number | null, amount: null as number | null, toAmount: null as number | null, fee: null as number | null, feeAccountId: null as number | null, reference: '', memo: '' };
   const [f, setF] = useState(empty);
   const [err, setErr] = useState('');
+  const base = company?.baseCurrency ?? '';
+  const fromCur = accounts?.find((a) => a.id === f.fromAccountId)?.currency ?? null;
+  const toCur = accounts?.find((a) => a.id === f.toAccountId)?.currency ?? null;
+  const crossCurrency = !!f.fromAccountId && !!f.toAccountId && fromCur !== toCur;
   useEffect(() => {
     if (!open) return;
     setErr('');
     setF(
       row
-        ? { date: row.date, fromAccountId: row.from_account_id, toAccountId: row.to_account_id, amount: row.amount, fee: row.fee || null, feeAccountId: row.fee_account_id, reference: row.reference ?? '', memo: row.memo ?? '' }
+        ? { date: row.date, fromAccountId: row.from_account_id, toAccountId: row.to_account_id, amount: row.amount, toAmount: row.to_amount, fee: row.fee || null, feeAccountId: row.fee_account_id, reference: row.reference ?? '', memo: row.memo ?? '' }
         : empty,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, row]);
   const save = useApiMutation((post: boolean) => {
-    const body = { ...f, fee: f.fee ?? 0, reference: f.reference || null, memo: f.memo || null, post };
+    const body = { ...f, toAmount: crossCurrency ? f.toAmount : null, fee: f.fee ?? 0, reference: f.reference || null, memo: f.memo || null, post };
     return row ? api.put(`/bank/transfers/${row.id}`, body) : api.post('/bank/transfers', body);
   });
   const submit = (post: boolean) =>
     save.mutate(post, { onSuccess: () => (toast.success(post ? t('common.posted') : t('common.saved')), onClose()), onError: (e) => setErr(errText(e)) });
-  const ready = f.fromAccountId && f.toAccountId && f.amount && (!f.fee || f.feeAccountId);
+  const ready = f.fromAccountId && f.toAccountId && f.amount && (!f.fee || f.feeAccountId) && (!crossCurrency || f.toAmount);
   return (
     <Dialog
       open={open}
@@ -118,9 +125,14 @@ function TransferDialog({ open, row, onClose }: { open: boolean; row: TransferRo
           <Field label={t('bank.to')}>
             <CashAccountSelect value={f.toAccountId} onChange={(v) => setF({ ...f, toAccountId: v })} list={accounts ?? []} exclude={f.fromAccountId} />
           </Field>
-          <Field label={t('common.amount')}>
+          <Field label={fromCur ? `${t('common.amount')} (${fromCur})` : t('common.amount')}>
             <DecimalInput scale={scale} value={f.amount} onChange={(v) => setF({ ...f, amount: v })} />
           </Field>
+          {crossCurrency && (
+            <Field label={`${t('bank.received')} (${toCur || base})`} hint={f.amount && f.toAmount ? t('bank.impliedRate', { rate: (f.toAmount / f.amount).toLocaleString('en', { maximumFractionDigits: 6 }) }) : undefined}>
+              <DecimalInput scale={scale} value={f.toAmount} onChange={(v) => setF({ ...f, toAmount: v })} />
+            </Field>
+          )}
           <Field label={t('common.date')}>
             <Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
           </Field>

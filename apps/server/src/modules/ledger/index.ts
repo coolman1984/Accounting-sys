@@ -5,7 +5,7 @@ import { addDays, addMonths } from '../../kernel/dates.js';
 import { paging, parse, zDate, zId, zMinor, zOptId, zOptText } from '../../kernel/validate.js';
 import { ACCOUNT_TYPES, DEBIT_NORMAL, SUBTYPES, migrations, type AccountType } from './schema.js';
 import { createLedger, type LedgerService } from './service.js';
-import { DEFAULT_ACCOUNT_KEYS, MINIMAL_CHART, STANDARD_CHART } from './chart-template.js';
+import { ANALYSIS_ACCOUNTS, DEFAULT_ACCOUNT_KEYS, MINIMAL_CHART, STANDARD_CHART } from './chart-template.js';
 import { mountGlReports } from './reports.js';
 
 declare module '../../kernel/services.js' {
@@ -25,6 +25,9 @@ const zAccount = z
     isGroup: z.boolean().default(false),
     isActive: z.boolean().default(true),
     description: zOptText(1000),
+    currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullish().transform((v) => v || null),
+    variableBp: z.number().int().min(0).max(10000).nullish().transform((v) => v ?? null),
+    analysisTag: z.enum(['lease']).nullish().transform((v) => v ?? null),
   });
 
 const zLine = z.object({
@@ -34,6 +37,8 @@ const zLine = z.object({
   description: zOptText(500),
   partyId: zOptId.transform((v) => v ?? null),
   costCenterId: zOptId.transform((v) => v ?? null),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullish().transform((v) => v || null),
+  amountFx: zMinor.nullish().transform((v) => v ?? null),
 });
 
 const zEntry = z.object({
@@ -73,6 +78,8 @@ export const ledgerModule: AppModule = {
       const end = addDays(addMonths(s.fiscalYearStart, 12), -1);
       ledger.createFiscalYear({ startDate: s.fiscalYearStart, endDate: end }, null);
     });
+    // Existing books gain the analysis accounts (interest, tax, loans, dividends) once, if they use the standard chart.
+    if (ctx.db.get("SELECT 1 FROM accounts WHERE code = '5' AND is_group = 1")) ctx.db.tx(() => ledger.upgradeChart(ANALYSIS_ACCOUNTS));
   },
 
   routes(r, ctx) {

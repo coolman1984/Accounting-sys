@@ -31,13 +31,14 @@ export const APPS = {
   treasury: { server: ['payments', 'bank'], web: ['treasury'], requires: [] },
   tax: { server: ['tax'], web: ['tax'], requires: [] },
   co: { server: ['co'], web: ['co'], requires: [] },
+  fx: { server: ['fx'], web: ['fx'], requires: [] },
   inventory: { server: ['inventory'], web: ['inventory', 'catalog'], requires: [] },
   purchasing: { server: ['purchasing'], web: ['purchasing'], requires: ['ap'] },
   pricing: { server: ['pricing'], web: ['pricing'], requires: ['ar'] },
 };
 export const PRESETS = {
   ledger: ['gl'],
-  finance: ['gl', 'ar', 'ap', 'treasury', 'tax'],
+  finance: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx'],
   trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'inventory', 'purchasing', 'pricing'],
   full: Object.keys(APPS),
 };

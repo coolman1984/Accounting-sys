@@ -64,4 +64,9 @@ export const bankMigrations: Migration[] = [
       BEGIN SELECT RAISE(ABORT, 'bank: statement is reconciled'); END;
     `,
   },
+  {
+    // Transfers between accounts in different currencies: what arrived, in the receiving account's currency.
+    id: '002_fx',
+    up: `ALTER TABLE bank_transfers ADD COLUMN to_amount INTEGER CHECK (to_amount IS NULL OR to_amount > 0);`,
+  },
 ];
