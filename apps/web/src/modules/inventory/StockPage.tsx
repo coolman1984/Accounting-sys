@@ -1,15 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { AlertTriangle, ArrowLeftRight, ClipboardCheck, Download, PackageCheck, PackageX, Plus, Search, SlidersHorizontal, Warehouse as WarehouseIcon, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, ClipboardCheck, PackageCheck, PackageX, Plus, SlidersHorizontal, Warehouse as WarehouseIcon, Wallet } from 'lucide-react';
 import { useApi, useDate, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
 import { useSession } from '../../core/session';
-import type { ItemCategory } from '../../core/types';
-import { downloadCsv, csvMoney } from '../../lib/csv';
-import { PageHeader, Loading, EmptyState } from '../../ui/Page';
-import { Card } from '../../ui/Card';
-import { Button } from '../../ui/Button';
-import { Select } from '../../ui/Field';
+import { PageHeader, EmptyState } from '../../ui/Page';
+import { DataGrid, type Column } from '../../ui/DataGrid';
 import { Money } from '../../ui/Money';
 import { Qty, StockStatus, WarehouseSelect } from './common';
 
@@ -83,37 +79,34 @@ export function NewOperationButtons() {
 export function StockPage() {
   const { t, pick } = useI18n();
   const date = useDate();
-  const { fmt, scale } = useMoney();
+  const { fmt } = useMoney();
   const navigate = useNavigate();
-  const [q, setQ] = useState('');
   const [wh, setWh] = useState<number | null>(null);
-  const [cat, setCat] = useState('');
   const [status, setStatus] = useState('');
   const { data: summary } = useApi<Summary>('/inventory/summary');
-  const { data: categories } = useApi<ItemCategory[]>('/item-categories');
+  // The warehouse and the stock status cards decide what is loaded; the grid filters the rest.
   const { data, isLoading } = useApi<{ rows: StockRow[]; totals: { qty: number; value: number } }>('/inventory/stock', {
-    q,
     warehouseId: wh ?? undefined,
-    categoryId: cat,
     status,
   });
 
-  const exportCsv = () =>
-    data &&
-    downloadCsv(
-      'stock-on-hand',
-      [t('items.sku'), t('common.name'), t('items.category'), t('inventory.onHand'), t('items.unit'), t('inventory.avgCost'), t('inventory.value'), t('inventory.status')],
-      data.rows.map((r) => [
-        r.sku,
-        pick(r.name_en, r.name_ar),
-        pick(r.category_name_en, r.category_name_ar),
-        r.qty / 1000,
-        r.unit ?? '',
-        csvMoney(r.avg_cost, scale),
-        csvMoney(r.value, scale),
-        t('inventory.' + r.status),
-      ]),
-    );
+  const columns = useMemo<Column<StockRow>[]>(
+    () => [
+      { id: 'sku', header: t('items.sku'), pinned: true, width: 110, value: (r) => r.sku, render: (r) => <span className="num faint">{r.sku}</span> },
+      { id: 'name', header: t('common.name'), value: (r) => pick(r.name_en, r.name_ar), render: (r) => <span style={{ fontWeight: 550 }}>{pick(r.name_en, r.name_ar)}</span> },
+      { id: 'category', header: t('items.category'), type: 'enum', value: (r) => (r.category_name_en ? pick(r.category_name_en, r.category_name_ar ?? '') : null) },
+      { id: 'barcode', header: t('adv.unitBarcode'), hidden: true, value: (r) => r.barcode },
+      { id: 'unit', header: t('adv.baseUnit'), type: 'enum', hidden: true, value: (r) => r.unit },
+      { id: 'qty', header: t('inventory.onHand'), type: 'qty', value: (r) => r.qty, render: (r) => <strong><Qty v={r.qty} unit={r.unit} /></strong> },
+      { id: 'reorder', header: t('inventory.reorderLevel'), type: 'qty', value: (r) => r.reorder_level || null },
+      { id: 'avg', header: t('inventory.avgCost'), type: 'money', value: (r) => r.avg_cost, render: (r) => <Money v={r.avg_cost} dashZero /> },
+      { id: 'value', header: t('inventory.value'), type: 'money', total: true, value: (r) => r.value, render: (r) => <Money v={r.value} dashZero /> },
+      { id: 'status', header: t('inventory.status'), type: 'enum', value: (r) => r.status, format: (v) => t('inventory.' + v), render: (r) => <StockStatus status={r.status} /> },
+      { id: 'lastSale', header: t('inventory.lastSale'), type: 'date', nowrap: true, value: (r) => r.last_sale, render: (r) => <span className="muted">{r.last_sale ? date(r.last_sale) : '—'}</span> },
+      { id: 'lastMove', header: t('inventory.lastMove'), type: 'date', hidden: true, value: (r) => r.last_move },
+    ],
+    [t, pick, date],
+  );
 
   return (
     <div className="page">
@@ -127,88 +120,24 @@ export function StockPage() {
             <Kpi icon={<PackageX />} tone="var(--danger)" label={t('inventory.out')} value={summary.out} onClick={() => setStatus(status === 'out' ? '' : 'out')} active={status === 'out'} />
           </div>
         )}
-
-        <div className="toolbar" style={{ marginBottom: 0 }}>
-          <div className="input-group">
-            <Search />
-            <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <WarehouseSelect all value={wh} onChange={setWh} />
-          <Select value={cat} onChange={(e) => setCat(e.target.value)} style={{ width: 'auto' }}>
-            <option value="">{t('inventory.allCategories')}</option>
-            {(categories ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {pick(c.name_en, c.name_ar)}
-              </option>
-            ))}
-          </Select>
-          <div className="spacer" />
-          <Link to="/inventory/warehouses" className="btn btn-sm btn-ghost">
-            <WarehouseIcon /> {t('inventory.warehouses')}
-          </Link>
-          <Button size="sm" variant="ghost" icon={<Download />} onClick={exportCsv}>
-            CSV
-          </Button>
-        </div>
-
-        <Card className="table-card">
-          {isLoading || !data ? (
-            <Loading />
-          ) : !data.rows.length ? (
-            <EmptyState title={t('common.noResults')} action={<Link to="/items" className="btn btn-primary"><Plus /> {t('items.new')}</Link>} />
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t('items.sku')}</th>
-                    <th>{t('common.name')}</th>
-                    <th className="end">{t('inventory.onHand')}</th>
-                    <th className="end">{t('inventory.reorderLevel')}</th>
-                    <th className="end">{t('inventory.avgCost')}</th>
-                    <th className="end">{t('inventory.value')}</th>
-                    <th>{t('inventory.status')}</th>
-                    <th>{t('inventory.lastSale')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((r) => (
-                    <tr key={r.id} className="clickable" onClick={() => navigate(`/inventory/items/${r.id}`)}>
-                      <td className="num faint">{r.sku}</td>
-                      <td>
-                        <span style={{ fontWeight: 550 }}>{pick(r.name_en, r.name_ar)}</span>
-                        {r.category_name_en && <div className="faint" style={{ fontSize: 12 }}>{pick(r.category_name_en, r.category_name_ar)}</div>}
-                      </td>
-                      <td className="end" style={{ fontWeight: 600 }}>
-                        <Qty v={r.qty} unit={r.unit} />
-                      </td>
-                      <td className="end muted">{r.reorder_level ? <Qty v={r.reorder_level} /> : '—'}</td>
-                      <td className="end">
-                        <Money v={r.avg_cost} dashZero />
-                      </td>
-                      <td className="end">
-                        <Money v={r.value} dashZero />
-                      </td>
-                      <td>
-                        <StockStatus status={r.status} />
-                      </td>
-                      <td className="muted nowrap">{r.last_sale ? date(r.last_sale) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={5}>{t('common.total')}</td>
-                    <td className="end">
-                      <Money v={data.totals.value} />
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </Card>
+        <DataGrid
+          id="stock"
+          rows={data?.rows}
+          loading={isLoading}
+          columns={columns}
+          rowKey={(r) => r.id}
+          onRowClick={(r) => navigate(`/inventory/items/${r.id}`)}
+          exportName="stock-on-hand"
+          toolbar={
+            <>
+              <WarehouseSelect all value={wh} onChange={setWh} />
+              <Link to="/inventory/warehouses" className="btn btn-sm btn-ghost">
+                <WarehouseIcon /> {t('inventory.warehouses')}
+              </Link>
+            </>
+          }
+          empty={<EmptyState title={t('common.noResults')} action={<Link to="/items" className="btn btn-primary"><Plus /> {t('items.new')}</Link>} />}
+        />
       </div>
     </div>
   );

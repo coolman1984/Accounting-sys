@@ -16,6 +16,7 @@ import { Qty, useWarehouses, WarehouseSelect } from './common';
 import { LotChip, LotsDialog } from '../../ui/LotsDialog';
 import { Select } from '../../ui/Field';
 import type { LotEntry } from '../../core/types';
+import { unitLabel } from '../../core/units';
 
 export type OpKind = 'adjustment' | 'opening' | 'count' | 'transfer';
 const KINDS: OpKind[] = ['adjustment', 'transfer', 'count', 'opening'];
@@ -222,7 +223,7 @@ export function OperationEditor() {
                   <th className="end" style={{ width: 130 }}>
                     {kind === 'count' ? t('inventory.counted') : kind === 'adjustment' ? t('inventory.qtyChange') : t('docs.qty')}
                   </th>
-                  {hasUnits && <th style={{ width: 110 }}>{t('adv.unit')}</th>}
+                  {hasUnits && <th style={{ width: 150 }}>{t('adv.unit')}</th>}
                   {kind === 'count' && <th className="end">{t('inventory.difference')}</th>}
                   {showCost && (
                     <th className="end" style={{ width: 140 }}>
@@ -275,7 +276,7 @@ export function OperationEditor() {
                                 .filter((u) => u.is_active || u.id === l.unitId)
                                 .map((u) => (
                                   <option key={u.id} value={u.id}>
-                                    {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+                                    {unitLabel(u, pick)}
                                   </option>
                                 ))}
                             </Select>

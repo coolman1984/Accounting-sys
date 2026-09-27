@@ -2,6 +2,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import type { Database } from '../../kernel/db.js';
 import { AppError, fail } from '../../kernel/errors.js';
 import type { SessionUser } from '../../kernel/modules.js';
+import type { AppRegistry } from '../../kernel/apps.js';
 
 export type Role = 'admin' | 'accountant' | 'viewer';
 export const ROLES: Role[] = ['admin', 'accountant', 'viewer'];
@@ -57,7 +58,9 @@ export interface AccessService {
   allPermissions(): string[];
 }
 
-export function createAccess(db: Database, all: readonly string[], sessionHours: number): AccessService {
+export function createAccess(db: Database, all: readonly string[], sessionHours: number, apps: AppRegistry): AccessService {
+  // Only what the switched-on apps unlock (checked on every request, so toggling an app applies at once).
+  const available = () => all.filter((p) => apps.allows(p));
   // Brute-force protection: 5 failures per username+ip => 60s cool-down.
   const failures = new Map<string, { count: number; until: number }>();
 
@@ -67,7 +70,7 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
     displayName: u.display_name,
     role: u.role,
     locale: u.locale,
-    permissions: permissionsFor(u.role, all),
+    permissions: permissionsFor(u.role, available()),
   });
 
   return {
@@ -127,7 +130,7 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
     userCan(userId, permission) {
       if (userId == null) return false;
       const u = db.get<{ role: string; is_active: number }>('SELECT role, is_active FROM users WHERE id = ?', [userId]);
-      return !!u && !!u.is_active && permissionsFor(u.role, all).has(permission);
+      return !!u && !!u.is_active && permissionsFor(u.role, available()).has(permission);
     },
 
     allPermissions: () => [...all],

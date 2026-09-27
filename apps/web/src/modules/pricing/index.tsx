@@ -229,7 +229,7 @@ function PriceListEditor() {
             actions={
               <div className="row" style={{ gap: 8 }}>
                 <span className="muted" style={{ fontSize: 13 }}>
-                  {t('docs.discount')} %
+                  {t('docs.discount')}
                 </span>
                 <div style={{ width: 80 }}>
                   <DecimalInput trim scale={2} value={pct} onChange={(v) => setPct(v == null ? null : Math.min(v, 10000))} />
@@ -263,7 +263,7 @@ function PriceListEditor() {
                   const item = r.itemId ? itemById.get(r.itemId) : undefined;
                   const std = standard(item, r.unitId);
                   const diff = std && r.price != null ? ((r.price - std) / std) * 100 : null;
-                  const belowMin = item && item.min_sale_price && r.price != null && r.price * 1000 < item.min_sale_price * (r.unitId ? item.units.find((u) => u.id === r.unitId)?.factor ?? 1000 : 1000);
+                  const belowMin = !!item && item.min_sale_price > 0 && r.price != null && r.price * 1000 < item.min_sale_price * (r.unitId ? item.units.find((u) => u.id === r.unitId)?.factor ?? 1000 : 1000);
                   return (
                     <tr key={r.key}>
                       <td>
@@ -295,7 +295,7 @@ function PriceListEditor() {
                         {belowMin && <div className="danger-text" style={{ fontSize: 11, marginTop: 2 }}>{t('adv.belowMin', { min: fmt(item!.min_sale_price) })}</div>}
                       </td>
                       <td className={`end num ${diff != null && diff < 0 ? 'success-text' : ''}`} style={{ fontSize: 12 }}>
-                        {diff == null || Math.abs(diff) < 0.05 ? '' : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`}
+                        <span dir="ltr">{diff == null || Math.abs(diff) < 0.05 ? '' : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`}</span>
                       </td>
                       <td>
                         <Button variant="ghost" size="sm" iconOnly icon={<Trash2 />} onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} />
@@ -327,11 +327,11 @@ function PriceListEditor() {
 
 export const pricingModule: WebModule = {
   id: 'pricing',
-  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.read' }],
+  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.read', app: 'pricing' }],
   routes: [
     { path: '/sales/price-lists', element: <PriceListsPage /> },
     { path: '/sales/price-lists/new', element: <PriceListEditor key="new" /> },
     { path: '/sales/price-lists/:id', element: <PriceListEditor key="edit" /> },
   ],
-  commands: [{ id: 'go-price-lists', label: 'nav.priceLists', icon: Tags, group: 'navigate', to: '/sales/price-lists', perm: 'pricing.read', keywords: 'price list قائمة أسعار' }],
+  commands: [{ id: 'go-price-lists', label: 'nav.priceLists', icon: Tags, group: 'navigate', to: '/sales/price-lists', perm: 'pricing.read', app: 'pricing', keywords: 'price list قائمة أسعار' }],
 };

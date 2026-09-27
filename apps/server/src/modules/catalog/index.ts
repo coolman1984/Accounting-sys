@@ -328,7 +328,7 @@ export const catalogModule: AppModule = {
       const rows = db.all<Item>(
         `SELECT i.*, c.name_en AS category_name_en, c.name_ar AS category_name_ar
          FROM items i LEFT JOIN item_categories c ON c.id = i.category_id
-         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY i.sku LIMIT 5000`,
+         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY i.sku LIMIT 20000`,
         p,
       );
       const units = new Map<number, ItemUnit[]>();

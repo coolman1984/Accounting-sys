@@ -256,6 +256,13 @@ export const paymentsModule: AppModule = {
   id: 'payments',
   dependsOn: ['ledger', 'parties', 'documents'],
   permissions: ['payments.read', 'payments.write', 'payments.post'],
+  apps: [{ id: 'banking', order: 30, permissions: ['payments', 'parties'] }],
+  health({ db }) {
+    const over = db.get<{ n: number }>(
+      'SELECT COUNT(*) n FROM payments p WHERE (SELECT COALESCE(SUM(amount), 0) FROM payment_allocations a WHERE a.payment_id = p.id) > p.amount',
+    )!.n;
+    return [{ id: 'allocated', ok: over === 0, details: { count: over } }];
+  },
   migrations: [
     {
       id: '001_payments',

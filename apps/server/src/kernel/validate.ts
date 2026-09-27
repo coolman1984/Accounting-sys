@@ -25,9 +25,12 @@ export const zBp = z.number().int().min(0).max(10000);
 export const zText = (max = 500) => z.string().trim().max(max);
 export const zOptText = (max = 500) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
 
+/** Upper bound for one page. Lists are small enough (local SMB data) to filter in the browser. */
+export const MAX_ROWS = 20000;
+
 /** Pagination from query string. */
 export function paging(q: Record<string, string | undefined>, defLimit = 50) {
-  const limit = Math.min(Math.max(Number(q.limit ?? defLimit) || defLimit, 1), 500);
+  const limit = Math.min(Math.max(Number(q.limit ?? defLimit) || defLimit, 1), MAX_ROWS);
   const offset = Math.max(Number(q.offset ?? 0) || 0, 0);
   return { limit, offset };
 }

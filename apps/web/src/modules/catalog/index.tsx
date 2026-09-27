@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
 import { Package, Pencil, Percent, Plus, Search, Tags, Trash2 } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks';
@@ -18,6 +18,7 @@ import { Checkbox, DecimalInput, Field, Input, Select, Textarea } from '../../ui
 import { AccountPicker, TaxSelect, useTaxes } from '../../ui/Pickers';
 import { useToast } from '../../ui/Toast';
 import { useConfirm } from '../../ui/Dialog';
+import { DataGrid, type Column, type Preset } from '../../ui/DataGrid';
 
 // ------------------------------------------------------------------ items
 
@@ -33,6 +34,7 @@ interface UnitRow {
 
 function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; item: Item | null }) {
   const { t, pick } = useI18n();
+  const { hasApp } = useSession();
   const toast = useToast();
   const errText = useErrorText();
   const { scale } = useMoney();
@@ -197,7 +199,7 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             </Field>
           )}
         </div>
-        {f.kind === 'product' && (
+        {f.kind === 'product' && hasApp('inventory') && (
           <div className="card" style={{ padding: 16, background: 'var(--bg-subtle)' }}>
             <div className="row" style={{ marginBottom: stock ? 14 : 0 }}>
               <Checkbox label={t('items.trackStock')} checked={f.trackStock} onChange={(v) => set('trackStock', v)} />
@@ -304,16 +306,65 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
 }
 
 function ItemsPage() {
-  const { t, pick, locale } = useI18n();
+  const { t, pick } = useI18n();
   const { can } = useSession();
-  const [q, setQ] = useState('');
-  const [cat, setCat] = useState('');
+  const navigate = useNavigate();
   const [dialog, setDialog] = useState<{ item: Item | null } | null>(null);
   const [cats, setCats] = useState(false);
-  const { data, isLoading } = useApi<Item[]>('/items', { q, categoryId: cat });
-  const { data: categories } = useApi<ItemCategory[]>('/item-categories');
+  const { data, isLoading } = useApi<Item[]>('/items');
   const { data: taxes } = useTaxes();
-  const taxName = (id: number | null) => (id ? taxes?.find((x) => x.id === id)?.code ?? '' : '—');
+  const taxName = (id: number | null) => (id ? taxes?.find((x) => x.id === id)?.code ?? '' : '');
+
+  const columns = useMemo<Column<Item>[]>(
+    () => [
+      { id: 'sku', header: t('items.sku'), pinned: true, width: 110, value: (i) => i.sku, render: (i) => <span className="num faint">{i.sku}</span> },
+      {
+        id: 'name',
+        header: t('common.name'),
+        value: (i) => pick(i.name_en, i.name_ar),
+        render: (i) => (
+          <span style={{ fontWeight: 550 }}>
+            {pick(i.name_en, i.name_ar)}
+            {i.barcode && <div className="faint mono" style={{ fontSize: 11.5, fontWeight: 400 }}>{i.barcode}</div>}
+          </span>
+        ),
+      },
+      {
+        id: 'kind',
+        header: t('items.kind'),
+        type: 'enum',
+        value: (i) => i.kind,
+        format: (v) => t('items.kinds.' + v),
+        render: (i) => (
+          <Badge tone={i.kind === 'product' ? 'cyan' : 'blue'} plain>
+            {t('items.kinds.' + i.kind)}
+          </Badge>
+        ),
+      },
+      { id: 'category', header: t('items.category'), type: 'enum', value: (i) => pick(i.category_name_en ?? '', i.category_name_ar ?? '') || null },
+      { id: 'unit', header: t('adv.baseUnit'), type: 'enum', hidden: true, value: (i) => i.unit },
+      { id: 'units', header: t('adv.units'), type: 'number', hidden: true, value: (i) => i.units.filter((u) => u.is_active).length },
+      { id: 'tracking', header: t('adv.tracking'), type: 'enum', hidden: true, value: (i) => i.tracking, format: (v) => t('adv.trackings.' + v) },
+      { id: 'barcode', header: t('adv.unitBarcode'), hidden: true, value: (i) => i.barcode },
+      { id: 'sale', header: t('items.salePrice'), type: 'money', value: (i) => i.sale_price },
+      { id: 'purchase', header: t('items.purchasePrice'), type: 'money', value: (i) => i.purchase_price },
+      { id: 'min', header: t('adv.minSalePrice'), type: 'money', hidden: true, value: (i) => i.min_sale_price || null },
+      { id: 'reorder', header: t('inventory.reorderLevel'), type: 'qty', hidden: true, value: (i) => (isStockItem(i) ? i.reorder_level : null) },
+      { id: 'tax', header: t('docs.tax'), type: 'enum', value: (i) => taxName(i.sales_tax_id) || null },
+      { id: 'active', header: t('common.status'), type: 'enum', hidden: true, value: (i) => (i.is_active ? 'active' : 'inactive'), format: (v) => t('common.' + v) },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, pick, taxes],
+  );
+  const presets = useMemo<Preset<Item>[]>(
+    () => [
+      { id: 'stock', label: t('items.kinds.product'), test: (i) => isStockItem(i) },
+      { id: 'service', label: t('items.kinds.service'), test: (i) => i.kind === 'service' },
+      { id: 'inactive', label: t('common.inactive'), test: (i) => !i.is_active },
+    ],
+    [t],
+  );
+
   return (
     <div className="page">
       <PageHeader
@@ -321,86 +372,28 @@ function ItemsPage() {
         subtitle={t('items.subtitle')}
         actions={
           can('catalog.write') && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setDialog({ item: null })}>
-              {t('items.new')}
-            </Button>
+            <>
+              <Button icon={<Tags />} onClick={() => setCats(true)}>
+                {t('inventory.manageCategories')}
+              </Button>
+              <Button variant="primary" icon={<Plus />} onClick={() => setDialog({ item: null })}>
+                {t('items.new')}
+              </Button>
+            </>
           )
         }
       />
-      <div className="toolbar">
-        <div className="input-group">
-          <Search />
-          <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <Select value={cat} onChange={(e) => setCat(e.target.value)} style={{ width: 'auto' }}>
-          <option value="">{t('inventory.allCategories')}</option>
-          {(categories ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {pick(c.name_en, c.name_ar)} ({c.items})
-            </option>
-          ))}
-        </Select>
-        {can('catalog.write') && (
-          <Button size="sm" variant="ghost" icon={<Tags />} onClick={() => setCats(true)}>
-            {t('inventory.manageCategories')}
-          </Button>
-        )}
-      </div>
-      <Card className="table-card">
-        {isLoading ? (
-          <Loading />
-        ) : !data?.length ? (
-          <EmptyState icon={<Package size={22} />} title={t('common.noResults')} />
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t('items.sku')}</th>
-                  <th>{t('common.name')}</th>
-                  <th>{t('items.kind')}</th>
-                  <th>{t('items.category')}</th>
-                  <th className="end">{t('items.salePrice')}</th>
-                  <th className="end">{t('items.purchasePrice')}</th>
-                  <th>{t('docs.tax')}</th>
-                  <th className="shrink" />
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((i) => (
-                  <tr key={i.id} style={{ opacity: i.is_active ? 1 : 0.55 }}>
-                    <td className="num faint">{i.sku}</td>
-                    <td style={{ fontWeight: 550 }}>
-                      {isStockItem(i) ? <Link to={`/inventory/items/${i.id}`}>{pick(i.name_en, i.name_ar)}</Link> : pick(i.name_en, i.name_ar)}
-                      {i.barcode && <div className="faint mono" style={{ fontSize: 11.5, fontWeight: 400 }}>{i.barcode}</div>}
-                    </td>
-                    <td>
-                      <Badge tone={i.kind === 'product' ? 'cyan' : 'blue'} plain>
-                        {t('items.kinds.' + i.kind)}
-                      </Badge>
-                      {isStockItem(i) && (
-                        <span className="faint" style={{ fontSize: 12, marginInlineStart: 6 }}>
-                          · {t('items.stockSettings')}
-                          {i.reorder_level > 0 && ` ≥ ${formatQty(i.reorder_level, locale)}`}
-                        </span>
-                      )}
-                    </td>
-                    <td className="muted">{pick(i.category_name_en, i.category_name_ar) || '—'}</td>
-                    <td className="end">
-                      <Money v={i.sale_price} />
-                    </td>
-                    <td className="end">
-                      <Money v={i.purchase_price} />
-                    </td>
-                    <td className="muted">{taxName(i.sales_tax_id)}</td>
-                    <td>{can('catalog.write') && <Button size="sm" variant="ghost" iconOnly icon={<Pencil />} onClick={() => setDialog({ item: i })} />}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      <DataGrid
+        id="items"
+        rows={data}
+        loading={isLoading}
+        columns={columns}
+        presets={presets}
+        rowKey={(i) => i.id}
+        onRowClick={(i) => (can('catalog.write') ? setDialog({ item: i }) : isStockItem(i) && navigate(`/inventory/items/${i.id}`))}
+        exportName={t('items.title')}
+        empty={<EmptyState icon={<Package size={22} />} title={t('common.noResults')} />}
+      />
       <ItemDialog open={!!dialog} onClose={() => setDialog(null)} item={dialog?.item ?? null} />
       <CategoriesDialog open={cats} onClose={() => setCats(false)} />
     </div>
@@ -639,7 +632,15 @@ function TaxesPage() {
 export const catalogModule: WebModule = {
   id: 'catalog',
   nav: [
-    { to: '/items', label: 'nav.items', icon: Package, section: 'inventory', order: 10, perm: 'catalog.read' },
+    {
+      to: '/items',
+      label: 'nav.items',
+      icon: Package,
+      // Products sit with stock when Inventory is on, otherwise with what the company does.
+      section: (has) => (has('inventory') ? 'inventory' : has('sales') ? 'sales' : 'purchases'),
+      order: 10,
+      perm: 'catalog.read',
+    },
     { to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'accounting', order: 40, perm: 'catalog.read' },
   ],
   routes: [

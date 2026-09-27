@@ -27,7 +27,7 @@ const GROUPS = [
   {
     id: 'parties',
     items: [
-      { to: '/reports/aging?type=receivable', title: 'reports.aging', desc: 'reports.agingDesc', icon: Clock, color: 'var(--line-pink)' },
+      { to: '/reports/aging?type=receivable', title: 'reports.aging', desc: 'reports.agingDesc', icon: Clock, color: 'var(--line-pink)', app: ['sales', 'purchases'] },
     ],
   },
   {
@@ -38,15 +38,15 @@ const GROUPS = [
 
 function ReportsHub() {
   const { t } = useI18n();
-  const { can } = useSession();
+  const { allowed } = useSession();
   // Other modules (e.g. inventory) contribute their own report tiles.
-  const extra = useContributedReports().filter((r) => !r.perm || can(r.perm));
+  const extra = useContributedReports().filter(allowed);
   const extraGroups = [...new Set(extra.map((r) => r.group))].map((g) => ({
     id: g,
     title: g,
     items: extra.filter((r) => r.group === g),
   }));
-  const groups = [...GROUPS.map((g) => ({ ...g, title: 'reports.groups.' + g.id })), ...extraGroups];
+  const groups = [...GROUPS.map((g) => ({ ...g, title: 'reports.groups.' + g.id, items: g.items.filter((r) => allowed(r as { app?: string[] })) })), ...extraGroups].filter((g) => g.items.length);
   return (
     <div className="page">
       <PageHeader title={t('reports.title')} subtitle={t('reports.subtitle')} />
@@ -95,7 +95,7 @@ export const reportsModule: WebModule = {
     { id: 'go-tb', label: 'reports.trialBalance', icon: Scale, group: 'navigate', to: '/reports/trial-balance', perm: 'reports.read', keywords: 'ميزان مراجعة' },
     { id: 'go-gl', label: 'reports.generalLedger', icon: BookText, group: 'navigate', to: '/reports/general-ledger', perm: 'reports.read', keywords: 'ledger أستاذ' },
     { id: 'go-cf', label: 'reports.cashFlow', icon: Droplets, group: 'navigate', to: '/reports/cash-flow', perm: 'reports.read', keywords: 'تدفقات نقدية' },
-    { id: 'go-aging', label: 'reports.aging', icon: Clock, group: 'navigate', to: '/reports/aging', perm: 'reports.read', keywords: 'أعمار ديون' },
+    { id: 'go-aging', label: 'reports.aging', icon: Clock, group: 'navigate', to: '/reports/aging', perm: 'reports.read', app: ['sales', 'purchases'], keywords: 'أعمار ديون' },
     { id: 'go-tax', label: 'reports.taxSummary', icon: FileSpreadsheet, group: 'navigate', to: '/reports/tax', perm: 'reports.read', keywords: 'vat ضريبة' },
   ],
 };

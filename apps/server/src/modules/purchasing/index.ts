@@ -183,10 +183,12 @@ function createPurchasing({ db, services }: ModuleContext) {
   }
 
   /** Received / invoiced progress. `field` is received_base or billed_base; delta in base units. */
-  function track(poLineId: number, field: 'received_base' | 'billed_base', delta: number, ctx: { supplierId: number; label: string }) {
+  function track(poLineId: number, field: 'received_base' | 'billed_base', delta: number, ctx: { supplierId: number; itemId: number | null; label: string }) {
     const l = line(poLineId);
     const po = get(l.po_id);
     if (po.supplier_id !== ctx.supplierId) fail('po.other_supplier', `${ctx.label}: that order belongs to another supplier`);
+    // A line can only count against the order line for the same item.
+    if ((l.item_id ?? null) !== (ctx.itemId ?? null)) fail('po.other_item', `${ctx.label}: the item differs from order ${po.number}`, { number: po.number });
     if (delta > 0 && po.status !== 'open') fail('po.not_open', `${ctx.label}: order ${po.number} is not open`, { number: po.number });
     const next = l[field] + delta;
     if (next > l.base_quantity) {
@@ -210,6 +212,13 @@ export const purchasingModule: AppModule = {
   id: 'purchasing',
   dependsOn: ['documents', 'inventory', 'parties', 'catalog'],
   permissions: ['purchasing.read', 'purchasing.write', 'purchasing.approve'],
+  apps: [{ id: 'purchasing', order: 50, requires: ['purchases'], permissions: ['purchasing'] }],
+  health({ db }) {
+    const over = db.get<{ n: number }>(
+      'SELECT COUNT(*) n FROM purchase_order_lines WHERE received_base > base_quantity OR billed_base > base_quantity OR received_base < 0 OR billed_base < 0',
+    )!.n;
+    return [{ id: 'progress', ok: over === 0, details: { count: over } }];
+  },
   migrations: [
     {
       id: '001_purchase_orders',
@@ -274,11 +283,11 @@ export const purchasingModule: AppModule = {
     // Goods receipts that reference order lines move the "received" counter.
     const onReceipt = (receiptId: number, sign: 1 | -1) => {
       const r = db.get<{ supplier_id: number; number: string }>('SELECT supplier_id, number FROM goods_receipts WHERE id = ?', [receiptId])!;
-      for (const l of db.all<{ po_line_id: number; base_quantity: number; line_no: number }>(
-        'SELECT po_line_id, base_quantity, line_no FROM goods_receipt_lines WHERE receipt_id = ? AND po_line_id IS NOT NULL',
+      for (const l of db.all<{ po_line_id: number; item_id: number; base_quantity: number; line_no: number }>(
+        'SELECT po_line_id, item_id, base_quantity, line_no FROM goods_receipt_lines WHERE receipt_id = ? AND po_line_id IS NOT NULL',
         [receiptId],
       )) {
-        svc.track(l.po_line_id, 'received_base', sign * l.base_quantity, { supplierId: r.supplier_id, label: `Line ${l.line_no}` });
+        svc.track(l.po_line_id, 'received_base', sign * l.base_quantity, { supplierId: r.supplier_id, itemId: l.item_id, label: `Line ${l.line_no}` });
       }
     };
     events.on('stock.receipt.posted', (e) => onReceipt(e.receiptId, 1));
@@ -288,10 +297,13 @@ export const purchasingModule: AppModule = {
     const onBill = (documentId: number, kind: string, sign: 1 | -1) => {
       if (kind !== 'purchase_bill') return;
       const doc = services().get('documents').get(documentId);
-      for (const l of db.all<{ ext: string | null; base_quantity: number; line_no: number }>('SELECT ext, base_quantity, line_no FROM document_lines WHERE document_id = ?', [documentId])) {
+      for (const l of db.all<{ ext: string | null; item_id: number | null; base_quantity: number; line_no: number }>(
+        'SELECT ext, item_id, base_quantity, line_no FROM document_lines WHERE document_id = ?',
+        [documentId],
+      )) {
         const ext = l.ext ? JSON.parse(l.ext) : null;
         if (!ext?.poLineId) continue;
-        const c = { supplierId: doc.party_id, label: `Line ${l.line_no}` };
+        const c = { supplierId: doc.party_id, itemId: l.item_id, label: `Line ${l.line_no}` };
         svc.track(Number(ext.poLineId), 'billed_base', sign * l.base_quantity, c);
         if (!ext.receiptLineId) svc.track(Number(ext.poLineId), 'received_base', sign * l.base_quantity, c);
       }

@@ -51,6 +51,23 @@ export const documentsModule: AppModule = {
   dependsOn: ['ledger', 'parties', 'catalog'],
   migrations,
   permissions: ['sales.read', 'sales.write', 'sales.post', 'purchases.read', 'purchases.write', 'purchases.post'],
+  apps: [
+    { id: 'sales', order: 10, permissions: ['sales', 'parties', 'catalog'] },
+    { id: 'purchases', order: 20, permissions: ['purchases', 'parties', 'catalog'] },
+  ],
+  health({ db }) {
+    const over = db.get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE amount_settled < 0 OR amount_settled > total")!.n;
+    const drift = db.get<{ n: number }>(
+      `SELECT COUNT(*) n FROM documents d
+       WHERE d.amount_settled <> (SELECT COALESCE(SUM(amount), 0) FROM settlements s WHERE s.document_id = d.id)`,
+    )!.n;
+    const unposted = db.get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE status = 'posted' AND journal_entry_id IS NULL")!.n;
+    return [
+      { id: 'settled', ok: over === 0, details: { count: over } },
+      { id: 'settlements', ok: drift === 0, details: { count: drift } },
+      { id: 'journal', ok: unposted === 0, details: { count: unposted } },
+    ];
+  },
 
   setup(ctx) {
     ctx.services.provide('documents', createDocuments(ctx));

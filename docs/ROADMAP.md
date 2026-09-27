@@ -42,6 +42,14 @@ away.
 - [x] Price lists per customer group; minimum selling price guard
 - [x] Purchase orders from the reorder report; goods received notes
 
+## ✅ Phase 2c — Modular product & power lists
+
+- [x] Apps: switch Sales, Purchases, Cash & bank, Inventory, Purchase orders, Price lists on or off per company
+- [x] Setup wizard asks what the company needs; menus follow the apps
+- [x] Per-module health checks with a System health page
+- [x] Excel-like data grid on every list: per-column filters, grouping with subtotals, saved views
+- [x] Menus across the top as an alternative to the sidebar
+
 ## Phase 2 — Operations
 
 - [ ] **Banking**: bank transfers between accounts, bank reconciliation,

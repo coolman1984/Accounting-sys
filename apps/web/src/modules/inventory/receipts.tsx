@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { AlertTriangle, Ban, BookOpen, FilePlus, PackageCheck, Pencil, Plus, Printer, Search, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, BookOpen, FilePlus, PackageCheck, Pencil, Plus, Printer, Send, Trash2 } from 'lucide-react';
 import { useApi, useApiMutation, useDate, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
 import { useSession } from '../../core/session';
 import { api } from '../../core/api';
 import { QTY_SCALE, todayIso } from '../../core/format';
 import { isStockItem, type Item, type LotEntry, type Paged } from '../../core/types';
-import { PageHeader, Loading, EmptyState, ErrorBlock, Pager } from '../../ui/Page';
+import { PageHeader, Loading, EmptyState, ErrorBlock } from '../../ui/Page';
+import { DataGrid, type Column, type Preset } from '../../ui/DataGrid';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { SimpleStatus } from '../../ui/Badge';
@@ -17,7 +18,8 @@ import { ItemPicker, PartyPicker, useItems } from '../../ui/Pickers';
 import { LotChip, LotsDialog } from '../../ui/LotsDialog';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
-import { Qty, WarehouseSelect } from './common';
+import { Qty, WarehouseSelect, useWarehouses } from './common';
+import { unitLabel } from '../../core/units';
 
 interface Line {
   key: number;
@@ -60,6 +62,13 @@ export function ReceiptEditor() {
   const [lines, setLines] = useState<Line[]>([blank()]);
   const [lotsFor, setLotsFor] = useState<number | null>(null);
   const [err, setErr] = useState('');
+  const { data: warehouses } = useWarehouses();
+  // New receipts go to the default warehouse unless the order names one.
+  useEffect(() => {
+    if (editing || wh != null || !warehouses || (poParam && !po)) return;
+    const w = warehouses.find((x) => x.is_default && x.is_active) ?? warehouses.find((x) => x.is_active);
+    if (w) setWh(w.id);
+  }, [warehouses, po]);
 
   useEffect(() => {
     if (!existing) return;
@@ -178,7 +187,7 @@ export function ReceiptEditor() {
                   <th className="end" style={{ width: 110 }}>
                     {t('docs.qty')}
                   </th>
-                  <th style={{ width: 130 }}>{t('adv.unit')}</th>
+                  <th style={{ width: 150 }}>{t('adv.unit')}</th>
                   <th className="end" style={{ width: 140 }}>
                     {t('adv.unitCost')}
                   </th>
@@ -216,7 +225,7 @@ export function ReceiptEditor() {
                             <option value="">{item?.unit || t('adv.baseUnit')}</option>
                             {units.map((u) => (
                               <option key={u.id} value={u.id}>
-                                {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+                                {unitLabel(u, pick)}
                               </option>
                             ))}
                           </Select>
@@ -260,7 +269,7 @@ export function ReceiptEditor() {
             direction="in"
             warehouseId={wh}
             factor={factorOf(lotsItem, lotsLine.unitId)}
-            qty={Math.round(((lotsLine.quantity ?? 0) * factorOf(lotsItem, lotsLine.unitId)) / 1000)}
+            qty={lotsLine.quantity ?? 0}
             value={lotsLine.lots}
             onChange={(lots) => update(lotsLine.key, { lots })}
           />
@@ -278,14 +287,37 @@ export function ReceiptEditor() {
 
 export function ReceiptsList() {
   const { t } = useI18n();
-  const date = useDate();
   const { can } = useSession();
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
-  const [unbilled, setUnbilled] = useState(false);
-  const [q, setQ] = useState('');
-  const [offset, setOffset] = useState(0);
-  const { data, isLoading } = useApi<Paged<any>>('/inventory/receipts', { status, q, unbilled: unbilled ? '1' : '', limit: 50, offset });
+  const { data, isLoading } = useApi<Paged<any>>('/inventory/receipts', { limit: 20000 });
+  const columns = useMemo<Column<any>[]>(
+    () => [
+      { id: 'number', header: t('common.number'), pinned: true, nowrap: true, value: (r) => r.number, render: (r) => <span style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</span> },
+      { id: 'supplier', header: t('docs.supplier'), type: 'enum', value: (r) => r.supplier_name },
+      { id: 'date', header: t('common.date'), type: 'date', nowrap: true, value: (r) => r.date },
+      { id: 'warehouse', header: t('inventory.warehouse'), type: 'enum', value: (r) => r.warehouse_code },
+      { id: 'reference', header: t('adv.deliveryNote'), value: (r) => r.reference },
+      { id: 'value', header: t('inventory.value'), type: 'money', total: true, value: (r) => (r.status === 'void' ? 0 : r.value), render: (r) => <Money v={r.value} /> },
+      {
+        id: 'unbilled',
+        header: t('adv.unbilled'),
+        type: 'money',
+        total: true,
+        value: (r) => (r.status === 'posted' ? r.unbilled_value : 0),
+        render: (r) => (r.status === 'posted' && r.unbilled_value ? <Money v={r.unbilled_value} /> : <span className="faint">—</span>),
+      },
+      { id: 'status', header: t('common.status'), type: 'enum', value: (r) => r.status, format: (v) => t('status.' + v), render: (r) => <SimpleStatus status={r.status} /> },
+    ],
+    [t],
+  );
+  const presets = useMemo<Preset<any>[]>(
+    () => [
+      { id: 'draft', label: t('status.draft'), test: (r) => r.status === 'draft' },
+      { id: 'unbilled', label: t('adv.unbilledOnly'), test: (r) => r.status === 'posted' && r.unbilled_value > 0 },
+      { id: 'void', label: t('status.void'), test: (r) => r.status === 'void' },
+    ],
+    [t],
+  );
   return (
     <div className="page">
       <PageHeader
@@ -299,67 +331,17 @@ export function ReceiptsList() {
           )
         }
       />
-      <div className="toolbar">
-        <div className="input-group">
-          <Search />
-          <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => (setQ(e.target.value), setOffset(0))} />
-        </div>
-        <div className="segmented">
-          {['', 'draft', 'posted', 'void'].map((s) => (
-            <button key={s} aria-pressed={status === s && !unbilled} onClick={() => (setStatus(s), setUnbilled(false), setOffset(0))}>
-              {s ? t('status.' + s) : t('common.all')}
-            </button>
-          ))}
-          <button aria-pressed={unbilled} onClick={() => (setUnbilled(true), setStatus(''), setOffset(0))}>
-            {t('adv.unbilledOnly')}
-          </button>
-        </div>
-      </div>
-      <Card className="table-card">
-        {isLoading ? (
-          <Loading />
-        ) : !data?.rows.length ? (
-          <EmptyState icon={<PackageCheck size={22} />} title={t('common.noResults')} />
-        ) : (
-          <>
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t('common.number')}</th>
-                    <th>{t('docs.supplier')}</th>
-                    <th>{t('common.date')}</th>
-                    <th>{t('inventory.warehouse')}</th>
-                    <th>{t('common.reference')}</th>
-                    <th className="end">{t('inventory.value')}</th>
-                    <th className="end">{t('adv.unbilled')}</th>
-                    <th>{t('common.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((r) => (
-                    <tr key={r.id} className="clickable" onClick={() => navigate(`/inventory/receipts/${r.id}`)}>
-                      <td style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</td>
-                      <td>{r.supplier_name}</td>
-                      <td className="nowrap">{date(r.date)}</td>
-                      <td className="muted">{r.warehouse_code}</td>
-                      <td className="muted">{r.reference ?? ''}</td>
-                      <td className="end">
-                        <Money v={r.value} />
-                      </td>
-                      <td className="end">{r.status === 'posted' && r.unbilled_value ? <Money v={r.unbilled_value} /> : <span className="faint">—</span>}</td>
-                      <td>
-                        <SimpleStatus status={r.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pager total={data.total} limit={50} offset={offset} onChange={setOffset} />
-          </>
-        )}
-      </Card>
+      <DataGrid
+        id="goods-receipts"
+        rows={data?.rows}
+        loading={isLoading}
+        columns={columns}
+        presets={presets}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => navigate(`/inventory/receipts/${r.id}`)}
+        exportName={t('adv.receipts')}
+        empty={<EmptyState icon={<PackageCheck size={22} />} title={t('common.noResults')} text={t('adv.receiptsSubtitle')} />}
+      />
     </div>
   );
 }

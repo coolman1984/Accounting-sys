@@ -30,21 +30,21 @@ function DocumentRedirect() {
 export const documentsModule: WebModule = {
   id: 'documents',
   nav: [
-    { to: '/sales/invoices', label: 'nav.invoices', icon: FileText, section: 'sales', order: 10, perm: 'sales.read' },
-    { to: '/sales/credit-notes', label: 'nav.creditNotes', icon: FileMinus, section: 'sales', order: 20, perm: 'sales.read' },
-    { to: '/purchases/bills', label: 'nav.bills', icon: ReceiptText, section: 'purchases', order: 10, perm: 'purchases.read' },
-    { to: '/purchases/debit-notes', label: 'nav.debitNotes', icon: FilePlus, section: 'purchases', order: 20, perm: 'purchases.read' },
+    { to: '/sales/invoices', label: 'nav.invoices', icon: FileText, section: 'sales', order: 10, perm: 'sales.read', app: 'sales' },
+    { to: '/sales/credit-notes', label: 'nav.creditNotes', icon: FileMinus, section: 'sales', order: 20, perm: 'sales.read', app: 'sales' },
+    { to: '/purchases/bills', label: 'nav.bills', icon: ReceiptText, section: 'purchases', order: 10, perm: 'purchases.read', app: 'purchases' },
+    { to: '/purchases/debit-notes', label: 'nav.debitNotes', icon: FilePlus, section: 'purchases', order: 20, perm: 'purchases.read', app: 'purchases' },
   ],
   routes: [
     ...(['sales_invoice', 'sales_credit', 'purchase_bill', 'purchase_credit'] as DocKind[]).flatMap(routesFor),
     { path: '/documents/:id', element: <DocumentRedirect /> },
   ],
   commands: [
-    { id: 'new-invoice', label: 'docs.sales_invoice.new', icon: FileText, group: 'create', to: '/sales/invoices/new', perm: 'sales.write', keywords: 'invoice فاتورة بيع' },
-    { id: 'new-credit', label: 'docs.sales_credit.new', icon: FileMinus, group: 'create', to: '/sales/credit-notes/new', perm: 'sales.write', keywords: 'return credit مرتجع' },
-    { id: 'new-bill', label: 'docs.purchase_bill.new', icon: ReceiptText, group: 'create', to: '/purchases/bills/new', perm: 'purchases.write', keywords: 'bill purchase شراء' },
-    { id: 'new-debit', label: 'docs.purchase_credit.new', icon: FilePlus, group: 'create', to: '/purchases/debit-notes/new', perm: 'purchases.write', keywords: 'debit return مرتجع' },
-    { id: 'go-invoices', label: 'nav.invoices', icon: FileText, group: 'navigate', to: '/sales/invoices', perm: 'sales.read', keywords: 'sales مبيعات' },
-    { id: 'go-bills', label: 'nav.bills', icon: ReceiptText, group: 'navigate', to: '/purchases/bills', perm: 'purchases.read', keywords: 'purchases مشتريات' },
+    { id: 'new-invoice', label: 'docs.sales_invoice.new', icon: FileText, group: 'create', to: '/sales/invoices/new', perm: 'sales.write', app: 'sales', keywords: 'invoice فاتورة بيع' },
+    { id: 'new-credit', label: 'docs.sales_credit.new', icon: FileMinus, group: 'create', to: '/sales/credit-notes/new', perm: 'sales.write', app: 'sales', keywords: 'return credit مرتجع' },
+    { id: 'new-bill', label: 'docs.purchase_bill.new', icon: ReceiptText, group: 'create', to: '/purchases/bills/new', perm: 'purchases.write', app: 'purchases', keywords: 'bill purchase شراء' },
+    { id: 'new-debit', label: 'docs.purchase_credit.new', icon: FilePlus, group: 'create', to: '/purchases/debit-notes/new', perm: 'purchases.write', app: 'purchases', keywords: 'debit return مرتجع' },
+    { id: 'go-invoices', label: 'nav.invoices', icon: FileText, group: 'navigate', to: '/sales/invoices', perm: 'sales.read', app: 'sales', keywords: 'sales مبيعات' },
+    { id: 'go-bills', label: 'nav.bills', icon: ReceiptText, group: 'navigate', to: '/purchases/bills', perm: 'purchases.read', app: 'purchases', keywords: 'purchases مشتريات' },
   ],
 };

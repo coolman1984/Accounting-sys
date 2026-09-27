@@ -5,6 +5,9 @@ import { existsSync } from 'node:fs';
 import type { AppConfig } from './config.js';
 import { createKernel, type Kernel } from './kernel/kernel.js';
 import { AppError } from './kernel/errors.js';
+import { AppsError } from './kernel/apps.js';
+import { z } from 'zod';
+import { parse } from './kernel/validate.js';
 import type { AppModule, Handler, RequestCtx, Router, SessionUser } from './kernel/modules.js';
 import { SESSION_COOKIE } from './modules/system/index.js';
 import { modules as defaultModules } from './modules/index.js';
@@ -26,6 +29,9 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
   const settings = kernel.services.get('settings');
 
   http.setErrorHandler((err: unknown, req, reply) => {
+    if (err instanceof AppsError) {
+      return reply.status(422).send({ error: { code: err.code, message: err.message, details: err.details } });
+    }
     if (err instanceof AppError) {
       return reply.status(err.status).send({ error: { code: err.code, message: err.message, details: err.details ?? null } });
     }
@@ -75,18 +81,56 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
   const router: Router = { get: mount('GET'), post: mount('POST'), put: mount('PUT'), delete: mount('DELETE') };
   for (const m of kernel.modules) m.routes?.(router, kernel);
 
+  // ---- Apps: which features this installation uses (switchable, like Odoo apps).
+  router.get('/system/apps', 'auth', () => kernel.apps.list());
+  router.put('/system/apps', 'settings.manage', ({ body, user }) => {
+    const input = parse(z.object({ enabled: z.array(z.string()).max(50) }), body);
+    const before = kernel.apps.list().filter((a) => a.enabled).map((a) => a.id);
+    kernel.apps.setEnabled(input.enabled);
+    const after = kernel.apps.list().filter((a) => a.enabled).map((a) => a.id);
+    kernel.services.get('audit').log({ userId: user.id, action: 'update', entity: 'apps', summary: `${before.join(', ')} → ${after.join(', ')}` });
+    return kernel.apps.list();
+  });
+
+  // ---- Health: every module checks its own data, separately, so a fault names its module.
+  router.get('/system/health', 'settings.read', () =>
+    kernel.modules
+      .filter((m) => m.health)
+      .map((m) => {
+        const started = performance.now();
+        try {
+          return { module: m.id, checks: m.health!(kernel), ms: Math.round(performance.now() - started) };
+        } catch (e) {
+          // One broken check never hides the others.
+          return { module: m.id, checks: [], error: (e as Error).message, ms: Math.round(performance.now() - started) };
+        }
+      }),
+  );
+
   http.get('/api/health', async () => ({ ok: true }));
   http.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith('/api/')) {
       return reply.status(404).send({ error: { code: 'not_found', message: 'Unknown endpoint', details: null } });
     }
-    // Single-page app: unknown paths render index.html.
-    if (config.webDir && existsSync(config.webDir)) return reply.sendFile('index.html');
+    // A missing asset is a 404 — never the HTML shell, which browsers reject as a script.
+    if (/^\/assets\//.test(req.url)) return reply.status(404).send('Not found');
+    // Single-page app: unknown paths render index.html (never cached, so updates show at once).
+    if (config.webDir && existsSync(config.webDir)) return reply.header('Cache-Control', 'no-cache').sendFile('index.html');
     return reply.status(404).send('Web app not built. Run "npm run build" or use "npm run dev".');
   });
 
   if (config.webDir && existsSync(config.webDir)) {
-    await http.register(fastifyStatic, { root: config.webDir, wildcard: false, index: ['index.html'], maxAge: '1h' });
+    // wildcard: files are looked up per request, so a rebuilt web app is served without a restart.
+    await http.register(fastifyStatic, {
+      root: config.webDir,
+      wildcard: true,
+      index: ['index.html'],
+      cacheControl: false,
+      setHeaders: (res, path) => {
+        // Hashed bundles never change; the HTML shell must always be revalidated.
+        res.header('Cache-Control', /[\\/]assets[\\/]/.test(path) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
   }
 
   http.addHook('onClose', async () => kernel.close());

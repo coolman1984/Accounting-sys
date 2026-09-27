@@ -7,7 +7,8 @@ import { useSession } from '../../core/session';
 import { api } from '../../core/api';
 import { todayIso } from '../../core/format';
 import type { Paged } from '../../core/types';
-import { PageHeader, Loading, EmptyState, ErrorBlock, Pager } from '../../ui/Page';
+import { PageHeader, Loading, EmptyState, ErrorBlock } from '../../ui/Page';
+import { DataGrid, type Column } from '../../ui/DataGrid';
 import { Button } from '../../ui/Button';
 import { Card, CardHeader } from '../../ui/Card';
 import { Badge, SimpleStatus } from '../../ui/Badge';
@@ -223,11 +224,22 @@ export function LandedEditor() {
 
 export function LandedList() {
   const { t, pick } = useI18n();
-  const date = useDate();
   const { can } = useSession();
   const navigate = useNavigate();
-  const [offset, setOffset] = useState(0);
-  const { data, isLoading } = useApi<Paged<any>>('/inventory/landed-costs', { limit: 50, offset });
+  const { data, isLoading } = useApi<Paged<any>>('/inventory/landed-costs', { limit: 20000 });
+  const columns = useMemo<Column<any>[]>(
+    () => [
+      { id: 'number', header: t('common.number'), pinned: true, nowrap: true, value: (r) => r.number, render: (r) => <span style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</span> },
+      { id: 'date', header: t('common.date'), type: 'date', nowrap: true, value: (r) => r.date },
+      { id: 'memo', header: t('common.memo'), value: (r) => r.memo ?? r.reference },
+      { id: 'counter', header: t('adv.counterAccount'), type: 'enum', value: (r) => `${r.counter_code} · ${pick(r.counter_name_en, r.counter_name_ar)}` },
+      { id: 'method', header: t('adv.method'), type: 'enum', value: (r) => r.method, format: (v) => t('adv.methods.' + v) },
+      { id: 'targets', header: t('adv.purchases'), type: 'number', value: (r) => r.targets },
+      { id: 'amount', header: t('common.amount'), type: 'money', total: true, value: (r) => (r.status === 'void' ? 0 : r.amount), render: (r) => <Money v={r.amount} /> },
+      { id: 'status', header: t('common.status'), type: 'enum', value: (r) => r.status, format: (v) => t('status.' + v), render: (r) => <SimpleStatus status={r.status} /> },
+    ],
+    [t, pick],
+  );
   return (
     <div className="page">
       <PageHeader
@@ -241,53 +253,16 @@ export function LandedList() {
           )
         }
       />
-      <Card className="table-card">
-        {isLoading ? (
-          <Loading />
-        ) : !data?.rows.length ? (
-          <EmptyState icon={<Ship size={22} />} title={t('common.noResults')} text={t('adv.landedSubtitle')} />
-        ) : (
-          <>
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t('common.number')}</th>
-                    <th>{t('common.date')}</th>
-                    <th>{t('common.memo')}</th>
-                    <th>{t('adv.counterAccount')}</th>
-                    <th>{t('adv.method')}</th>
-                    <th className="end">{t('adv.purchases')}</th>
-                    <th className="end">{t('common.amount')}</th>
-                    <th>{t('common.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((r) => (
-                    <tr key={r.id} className="clickable" onClick={() => navigate(`/inventory/landed-costs/${r.id}`)}>
-                      <td style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</td>
-                      <td className="nowrap">{date(r.date)}</td>
-                      <td className="muted">{r.memo ?? r.reference ?? ''}</td>
-                      <td className="muted">
-                        {r.counter_code} · {pick(r.counter_name_en, r.counter_name_ar)}
-                      </td>
-                      <td>{t('adv.methods.' + r.method)}</td>
-                      <td className="end num">{r.targets}</td>
-                      <td className="end">
-                        <Money v={r.amount} />
-                      </td>
-                      <td>
-                        <SimpleStatus status={r.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pager total={data.total} limit={50} offset={offset} onChange={setOffset} />
-          </>
-        )}
-      </Card>
+      <DataGrid
+        id="landed-costs"
+        rows={data?.rows}
+        loading={isLoading}
+        columns={columns}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => navigate(`/inventory/landed-costs/${r.id}`)}
+        exportName={t('adv.landedCosts')}
+        empty={<EmptyState icon={<Ship size={22} />} title={t('common.noResults')} text={t('adv.landedSubtitle')} />}
+      />
     </div>
   );
 }

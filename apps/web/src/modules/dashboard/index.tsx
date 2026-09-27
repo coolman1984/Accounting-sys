@@ -11,6 +11,7 @@ import {
   ReceiptText,
   TrendingUp,
   Wallet,
+  ClipboardList,
 } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useDate, useMoney } from '../../core/hooks';
@@ -58,7 +59,7 @@ function Kpi({ icon, label, value, foot, tone }: { icon: React.ReactNode; label:
 
 function DashboardPage() {
   const { t, locale, pick } = useI18n();
-  const { user, company, can } = useSession();
+  const { user, company, can, hasApp } = useSession();
   const { fmt } = useMoney();
   const date = useDate();
   const { data, isLoading } = useApi<Dashboard>('/reports/dashboard');
@@ -68,6 +69,7 @@ function DashboardPage() {
     { to: '/sales/invoices/new', label: t('docs.sales_invoice.new'), icon: FilePlus, perm: 'sales.write' },
     { to: '/receipts/new', label: t('payments.in.new'), icon: ArrowDownLeft, perm: 'payments.write' },
     { to: '/purchases/bills/new', label: t('docs.purchase_bill.new'), icon: ReceiptText, perm: 'purchases.write' },
+    { to: '/purchasing/orders/new', label: t('adv.newPo'), icon: ClipboardList, perm: 'purchasing.write' },
     { to: '/payments/new', label: t('payments.out.new'), icon: ArrowUpRight, perm: 'payments.write' },
     { to: '/journal/new', label: t('journal.new'), icon: BookOpen, perm: 'journal.write' },
   ].filter((q) => can(q.perm));
@@ -87,20 +89,24 @@ function DashboardPage() {
         <div className="stack" style={{ '--gap': '20px' } as React.CSSProperties}>
           <div className="grid-4">
             <Kpi icon={<Wallet />} label={t('dashboard.cash')} value={fmt(data.cash)} foot={company?.baseCurrency} />
-            <Kpi
-              icon={<ArrowDownLeft />}
-              tone="var(--success)"
-              label={t('dashboard.receivables')}
-              value={fmt(data.receivables)}
-              foot={data.overdue.n > 0 ? <span className="danger-text">{t('dashboard.overdueCount', { n: data.overdue.n })}</span> : t('dashboard.allGood')}
-            />
-            <Kpi
-              icon={<ArrowUpRight />}
-              tone="var(--line-pink)"
-              label={t('dashboard.payables')}
-              value={fmt(data.payables)}
-              foot={data.billsDue.n > 0 ? `${t('dashboard.billsDue')}: ${fmt(data.billsDue.amount)}` : t('dashboard.allGood')}
-            />
+            {hasApp('sales') && (
+              <Kpi
+                icon={<ArrowDownLeft />}
+                tone="var(--success)"
+                label={t('dashboard.receivables')}
+                value={fmt(data.receivables)}
+                foot={data.overdue.n > 0 ? <span className="danger-text">{t('dashboard.overdueCount', { n: data.overdue.n })}</span> : t('dashboard.allGood')}
+              />
+            )}
+            {hasApp('purchases') && (
+              <Kpi
+                icon={<ArrowUpRight />}
+                tone="var(--line-pink)"
+                label={t('dashboard.payables')}
+                value={fmt(data.payables)}
+                foot={data.billsDue.n > 0 ? `${t('dashboard.billsDue')}: ${fmt(data.billsDue.amount)}` : t('dashboard.allGood')}
+              />
+            )}
             <Kpi
               icon={<TrendingUp />}
               tone="var(--line-amber)"
@@ -195,45 +201,47 @@ function DashboardPage() {
               </div>
             </Card>
 
-            <Card>
-              <CardHeader
-                title={t('dashboard.overdueInvoices')}
-                icon={<AlertTriangle size={18} className={data.overdue.n ? 'danger-text' : 'muted'} />}
-                actions={
-                  <Link to="/sales/invoices?overdue=1" className="btn btn-sm btn-ghost">
-                    {t('common.viewAll')}
-                  </Link>
-                }
-              />
-              <div className="card-body">
-                {data.overdue.n === 0 ? (
-                  <p className="muted">{t('dashboard.allGood')} ✓</p>
-                ) : (
-                  <>
-                    <div className="kpi-value num danger-text" style={{ fontSize: 24, fontWeight: 680 }}>
-                      {fmt(data.overdue.amount)}
-                    </div>
-                    <p className="muted" style={{ marginTop: 4 }}>
-                      {t('dashboard.overdueCount', { n: data.overdue.n })}
-                    </p>
-                  </>
-                )}
-                {data.topDebtors.length > 0 && (
-                  <>
-                    <div className="label" style={{ margin: '18px 0 8px' }}>
-                      {t('dashboard.topDebtors')}
-                    </div>
-                    {data.topDebtors.map((d) => (
-                      <Link key={d.party_id} to={`/customers/${d.party_id}`} className="row" style={{ padding: '5px 0', fontSize: 13.5 }}>
-                        <span>{d.name}</span>
-                        <span className="spacer" />
-                        <Money v={d.balance} />
-                      </Link>
-                    ))}
-                  </>
-                )}
-              </div>
-            </Card>
+            {hasApp('sales') && (
+              <Card>
+                <CardHeader
+                  title={t('dashboard.overdueInvoices')}
+                  icon={<AlertTriangle size={18} className={data.overdue.n ? 'danger-text' : 'muted'} />}
+                  actions={
+                    <Link to="/sales/invoices?overdue=1" className="btn btn-sm btn-ghost">
+                      {t('common.viewAll')}
+                    </Link>
+                  }
+                />
+                <div className="card-body">
+                  {data.overdue.n === 0 ? (
+                    <p className="muted">{t('dashboard.allGood')} ✓</p>
+                  ) : (
+                    <>
+                      <div className="kpi-value num danger-text" style={{ fontSize: 24, fontWeight: 680 }}>
+                        {fmt(data.overdue.amount)}
+                      </div>
+                      <p className="muted" style={{ marginTop: 4 }}>
+                        {t('dashboard.overdueCount', { n: data.overdue.n })}
+                      </p>
+                    </>
+                  )}
+                  {data.topDebtors.length > 0 && (
+                    <>
+                      <div className="label" style={{ margin: '18px 0 8px' }}>
+                        {t('dashboard.topDebtors')}
+                      </div>
+                      {data.topDebtors.map((d) => (
+                        <Link key={d.party_id} to={`/customers/${d.party_id}`} className="row" style={{ padding: '5px 0', fontSize: 13.5 }}>
+                          <span>{d.name}</span>
+                          <span className="spacer" />
+                          <Money v={d.balance} />
+                        </Link>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </Card>
+            )}
 
             <Card>
               <CardHeader

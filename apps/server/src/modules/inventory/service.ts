@@ -305,9 +305,20 @@ export function createInventory(ctx: ModuleContext) {
     };
   }
 
+  /** Freight / customs booked on a purchase must be voided before the purchase itself. */
+  function assertNoLandedCosts(sourceType: 'goods_receipt' | 'purchase_bill', sourceId: number) {
+    const lc = db.get<{ number: string }>(
+      `SELECT lc.number FROM landed_cost_targets t JOIN landed_costs lc ON lc.id = t.landed_cost_id
+       WHERE t.source_type = ? AND t.source_id = ? AND lc.status = 'posted' LIMIT 1`,
+      [sourceType, sourceId],
+    );
+    if (lc) conflict('landed.has_costs', `Landed cost ${lc.number} is booked on this purchase — void it first`, { number: lc.number });
+  }
+
   function onDocumentVoided(documentId: number, date: string, userId: number | null): void {
     const docs = services.get('documents');
     const doc = docs.get(documentId);
+    if (doc.kind === 'purchase_bill') assertNoLandedCosts('purchase_bill', doc.id);
     const moves = db.all<StockMove>('SELECT * FROM stock_moves WHERE source_type = ? AND source_id = ? AND is_reversal = 0 ORDER BY id DESC', [doc.kind, doc.id]);
     const lineIds = docs.lines(doc.id).map((l) => l.id);
     const matches = lineIds.length
@@ -653,6 +664,7 @@ export function createInventory(ctx: ModuleContext) {
     const r = receipt(id);
     if (r.status !== 'posted') conflict('stock.not_posted', 'Only posted receipts can be voided');
     if (receiptLines(id).some((l) => l.billed_base > 0)) conflict('grn.billed', 'This receipt is already invoiced — void the supplier invoice first');
+    assertNoLandedCosts('goods_receipt', id);
     const date = opts.date ?? r.date;
     ledger().assertPostingDate(date);
     const grni = engine.grniAccount();

@@ -10,6 +10,15 @@ export interface SystemInfo {
   setupComplete: boolean;
   companyName: string | null;
   lanUrls: string[];
+  apps: AppInfo[];
+}
+
+export interface AppInfo {
+  id: string;
+  core: boolean;
+  requires: string[];
+  enabled: boolean;
+  order: number;
 }
 
 interface SessionValue {
@@ -18,7 +27,12 @@ interface SessionValue {
   user: Me | null;
   company: Company | null;
   lockDate: string | null;
+  /** Apps switched on for this company (Sales, Inventory…). */
+  apps: string[];
+  hasApp(id: string): boolean;
   can(perm: string): boolean;
+  /** Permission and app gate together — what menus, commands and tiles use. */
+  allowed(x: { perm?: string; app?: string | string[] }): boolean;
   refresh(): Promise<void>;
   login(username: string, password: string): Promise<void>;
   logout(): Promise<void>;
@@ -33,6 +47,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [lockDate, setLockDate] = useState<string | null>(null);
+  const [apps, setApps] = useState<string[]>([]);
   const [status, setStatus] = useState<SessionValue['status']>('loading');
 
   const refresh = useCallback(async () => {
@@ -43,8 +58,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const me = await api.get<{ user: Me; company: Company; lockDate: string | null }>('/auth/me');
+      const me = await api.get<{ user: Me; company: Company; lockDate: string | null; apps: string[] }>('/auth/me');
       setUser(me.user);
+      setApps(me.apps ?? []);
       setCompany(me.company);
       setLockDate(me.lockDate);
       setStatus('ready');
@@ -75,7 +91,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user,
       company,
       lockDate,
+      apps,
+      hasApp: (id) => apps.includes(id),
       can: (perm) => !!user?.permissions.includes(perm),
+      allowed: (x) =>
+        (!x.perm || !!user?.permissions.includes(x.perm)) &&
+        (!x.app || (Array.isArray(x.app) ? x.app : [x.app]).some((a) => apps.includes(a))),
       refresh,
       async login(username, password) {
         const r = await api.post<{ user: Me }>('/auth/login', { username, password });
@@ -89,7 +110,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStatus('anonymous');
       },
     }),
-    [status, info, user, company, lockDate, refresh, qc, setLocale],
+    [status, info, user, company, lockDate, apps, refresh, qc, setLocale],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
