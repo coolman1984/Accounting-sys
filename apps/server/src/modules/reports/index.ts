@@ -20,6 +20,7 @@ export const reportsModule: AppModule = {
   id: 'reports',
   dependsOn: ['ledger', 'parties', 'documents', 'payments'],
   permissions: ['reports.read'],
+  apps: [{ id: 'accounting', core: true, order: 0, permissions: ['reports'] }],
 
   routes(r, { db, services }) {
     const ledger = services.get('ledger');

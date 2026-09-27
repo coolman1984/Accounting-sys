@@ -97,12 +97,45 @@ export const inventoryModule: AppModule = {
   dependsOn: ['ledger', 'catalog', 'documents'],
   migrations,
   permissions: ['inventory.read', 'inventory.write', 'inventory.post'],
+  apps: [{ id: 'inventory', order: 40, permissions: ['inventory', 'catalog', 'parties'] }],
+  health({ db, services }) {
+    const stock = db.get<{ v: number }>('SELECT COALESCE(SUM(value), 0) v FROM stock_values')!.v;
+    const gl = db.get<{ b: number }>(
+      `SELECT COALESCE(SUM(l.debit - l.credit), 0) b FROM ledger l JOIN accounts a ON a.id = l.account_id WHERE a.subtype = 'inventory'`,
+    )!.b;
+    const levels = db.get<{ n: number }>(
+      `SELECT COUNT(*) n FROM stock_values v
+       WHERE v.qty <> (SELECT COALESCE(SUM(qty), 0) FROM stock_levels l WHERE l.item_id = v.item_id)
+          OR v.value <> (SELECT COALESCE(SUM(value), 0) FROM stock_moves m WHERE m.item_id = v.item_id)`,
+    )!.n;
+    const lots = db.get<{ n: number }>(
+      `SELECT COUNT(*) n FROM stock_levels l JOIN items i ON i.id = l.item_id
+       WHERE i.tracking <> 'none' AND l.qty <> (SELECT COALESCE(SUM(ll.qty), 0) FROM lot_levels ll JOIN stock_lots s ON s.id = ll.lot_id
+                                                WHERE s.item_id = l.item_id AND ll.warehouse_id = l.warehouse_id)`,
+    )!.n;
+    const grniId = services.get('ledger').defaultAccounts().grni;
+    const grniOpen = db.get<{ v: number }>(
+      `SELECT COALESCE(SUM(l.value - l.billed_value), 0) v FROM goods_receipt_lines l JOIN goods_receipts r ON r.id = l.receipt_id
+       WHERE r.status = 'posted'`,
+    )!.v;
+    const grniGl = grniId ? db.get<{ b: number }>('SELECT COALESCE(SUM(credit - debit), 0) b FROM ledger WHERE account_id = ?', [grniId])!.b : 0;
+    const negative = db.get<{ n: number }>('SELECT COUNT(*) n FROM stock_levels WHERE qty < 0')!.n;
+    return [
+      { id: 'valuation', ok: stock === gl, details: { stock, ledger: gl, difference: gl - stock } },
+      { id: 'levels', ok: levels === 0, details: { count: levels } },
+      { id: 'lots', ok: lots === 0, details: { count: lots } },
+      { id: 'grni', ok: grniOpen === grniGl, details: { open: grniOpen, ledger: grniGl, difference: grniGl - grniOpen } },
+      { id: 'negative', ok: negative === 0, details: { count: negative } },
+    ];
+  },
 
   setup(ctx) {
     const inv = createInventory(ctx);
     ctx.services.provide('inventory', inv);
     // Stock follows sales & purchase documents automatically, inside their transaction.
-    ctx.events.on('document.posted', (e) => inv.onDocumentPosted(e.documentId, e.userId));
+    // With the Inventory app off, new documents no longer move stock. Voids always run:
+    // they only undo moves that exist, so stock stays right whatever was switched since.
+    ctx.events.on('document.posted', (e) => ctx.apps.isEnabled('inventory') && inv.onDocumentPosted(e.documentId, e.userId));
     ctx.events.on('document.voided', (e) => inv.onDocumentVoided(e.documentId, e.date, e.userId));
     // Idempotent: also covers companies created before this module existed.
     for (const [key, prefix] of [...Object.values(STOCK_SEQ), ['goods_receipt', 'GRN-'], ['landed_cost', 'LC-']]) {

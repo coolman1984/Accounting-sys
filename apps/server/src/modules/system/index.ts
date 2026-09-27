@@ -59,6 +59,8 @@ const zSetup = z.object({
   locale: z.enum(['en', 'ar']).default('en'),
   seedChartOfAccounts: z.boolean().default(true),
   vatRateBp: z.number().int().min(0).max(10000).nullable().default(1400),
+  /** Optional apps to switch on (omitted = all). */
+  apps: z.array(z.string()).max(50).optional(),
 });
 
 export function lanUrls(port: number): string[] {
@@ -75,12 +77,22 @@ export const systemModule: AppModule = {
   id: 'system',
   migrations,
   permissions: ['settings.read', 'settings.manage', 'users.manage', 'audit.read', 'system.backup'],
+  apps: [{ id: 'accounting', core: true, order: 0, permissions: ['settings', 'users', 'audit', 'system'] }],
+  health({ db, services }) {
+    const quick = db.get<{ quick_check: string }>('PRAGMA quick_check')?.quick_check;
+    const last = services.get('backup').list()[0];
+    const ageDays = last ? Math.floor((Date.now() - Date.parse(last.createdAt)) / 86_400_000) : null;
+    return [
+      { id: 'database', ok: quick === 'ok', details: { result: quick ?? '?' } },
+      { id: 'backup', ok: ageDays != null && ageDays <= 2, severity: 'warning', details: { days: ageDays ?? -1 } },
+    ];
+  },
 
-  setup({ db, services, config, permissions }) {
+  setup({ db, services, config, permissions, apps }) {
     services.provide('settings', createSettings(db));
     services.provide('sequences', createSequences(db));
     services.provide('audit', createAudit(db));
-    services.provide('access', createAccess(db, permissions, config.sessionHours));
+    services.provide('access', createAccess(db, permissions, config.sessionHours, apps));
 
     const backupName = /^mizan-[\w.-]+\.db$/;
     services.provide('backup', {
@@ -114,7 +126,7 @@ export const systemModule: AppModule = {
     });
   },
 
-  routes(r, { db, services, events, config }) {
+  routes(r, { db, services, events, config, apps }) {
     const settings = services.get('settings');
     const access = services.get('access');
     const audit = services.get('audit');
@@ -125,6 +137,8 @@ export const systemModule: AppModule = {
       setupComplete: settings.isSetupComplete(),
       companyName: settings.get<CompanySettings | null>('company', null)?.name ?? null,
       lanUrls: lanUrls(config.port),
+      // The app catalogue (no secrets) — the setup wizard lets the owner choose.
+      apps: apps.list().map(({ id, core, requires, enabled, order }) => ({ id, core, requires, enabled, order })),
     }));
 
     // ---------- First-run setup ----------
@@ -148,6 +162,7 @@ export const systemModule: AppModule = {
           seedChartOfAccounts: input.seedChartOfAccounts,
           vatRateBp: input.vatRateBp,
         });
+        if (input.apps) apps.setEnabled(input.apps);
         settings.set('setupComplete', true);
         audit.log({ userId, action: 'setup', entity: 'system', summary: `Company "${input.company.name}" created` });
       });
@@ -180,6 +195,7 @@ export const systemModule: AppModule = {
 
     r.get('/auth/me', 'auth', ({ user }) => ({
       user: { ...user, permissions: [...user.permissions] },
+      apps: apps.list().filter((a) => a.enabled).map((a) => a.id),
       company: settings.company(),
       lockDate: settings.lockDate(),
     }));

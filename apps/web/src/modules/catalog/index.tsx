@@ -34,6 +34,7 @@ interface UnitRow {
 
 function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; item: Item | null }) {
   const { t, pick } = useI18n();
+  const { hasApp } = useSession();
   const toast = useToast();
   const errText = useErrorText();
   const { scale } = useMoney();
@@ -198,7 +199,7 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             </Field>
           )}
         </div>
-        {f.kind === 'product' && (
+        {f.kind === 'product' && hasApp('inventory') && (
           <div className="card" style={{ padding: 16, background: 'var(--bg-subtle)' }}>
             <div className="row" style={{ marginBottom: stock ? 14 : 0 }}>
               <Checkbox label={t('items.trackStock')} checked={f.trackStock} onChange={(v) => set('trackStock', v)} />
@@ -631,7 +632,15 @@ function TaxesPage() {
 export const catalogModule: WebModule = {
   id: 'catalog',
   nav: [
-    { to: '/items', label: 'nav.items', icon: Package, section: 'inventory', order: 10, perm: 'catalog.read' },
+    {
+      to: '/items',
+      label: 'nav.items',
+      icon: Package,
+      // Products sit with stock when Inventory is on, otherwise with what the company does.
+      section: (has) => (has('inventory') ? 'inventory' : has('sales') ? 'sales' : 'purchases'),
+      order: 10,
+      perm: 'catalog.read',
+    },
     { to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'accounting', order: 40, perm: 'catalog.read' },
   ],
   routes: [

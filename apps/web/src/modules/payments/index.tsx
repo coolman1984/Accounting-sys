@@ -101,14 +101,14 @@ const routesFor = (direction: Direction) => {
 export const paymentsModule: WebModule = {
   id: 'payments',
   nav: [
-    { to: '/receipts', label: 'nav.receipts', icon: ArrowDownLeft, section: 'banking', order: 10, perm: 'payments.read' },
-    { to: '/payments', label: 'nav.payments', icon: ArrowUpRight, section: 'banking', order: 20, perm: 'payments.read' },
+    { to: '/receipts', label: 'nav.receipts', icon: ArrowDownLeft, section: 'banking', order: 10, perm: 'payments.read', app: 'banking' },
+    { to: '/payments', label: 'nav.payments', icon: ArrowUpRight, section: 'banking', order: 20, perm: 'payments.read', app: 'banking' },
   ],
   routes: [...routesFor('in'), ...routesFor('out')],
   commands: [
-    { id: 'new-receipt', label: 'payments.in.new', icon: ArrowDownLeft, group: 'create', to: '/receipts/new', perm: 'payments.write', keywords: 'receipt receive قبض تحصيل' },
-    { id: 'new-payment', label: 'payments.out.new', icon: ArrowUpRight, group: 'create', to: '/payments/new', perm: 'payments.write', keywords: 'pay expense صرف دفع' },
-    { id: 'go-receipts', label: 'nav.receipts', icon: ArrowDownLeft, group: 'navigate', to: '/receipts', perm: 'payments.read' },
-    { id: 'go-payments', label: 'nav.payments', icon: ArrowUpRight, group: 'navigate', to: '/payments', perm: 'payments.read' },
+    { id: 'new-receipt', label: 'payments.in.new', icon: ArrowDownLeft, group: 'create', to: '/receipts/new', perm: 'payments.write', app: 'banking', keywords: 'receipt receive قبض تحصيل' },
+    { id: 'new-payment', label: 'payments.out.new', icon: ArrowUpRight, group: 'create', to: '/payments/new', perm: 'payments.write', app: 'banking', keywords: 'pay expense صرف دفع' },
+    { id: 'go-receipts', label: 'nav.receipts', icon: ArrowDownLeft, group: 'navigate', to: '/receipts', perm: 'payments.read', app: 'banking' },
+    { id: 'go-payments', label: 'nav.payments', icon: ArrowUpRight, group: 'navigate', to: '/payments', perm: 'payments.read', app: 'banking' },
   ],
 };

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
+import { useSession } from '../../core/session';
 import { api } from '../../core/api';
 import { addDaysIso, formatQty, QTY_SCALE, todayIso } from '../../core/format';
 import { isStockItem, type DocKind, type DocumentFull, type DocumentRow, type Item, type LineExt, type Paged, type Party, type Warehouse } from '../../core/types';
@@ -71,8 +72,9 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
   const [showWarehouses, setShowWarehouses] = useState(false);
   const [err, setErr] = useState('');
 
+  const { can } = useSession();
   // Inventory is optional: without it (or without permission) the warehouse controls simply don't show.
-  const { data: warehouses } = useApi<Warehouse[]>('/inventory/warehouses', undefined, { retry: false, staleTime: 60_000 });
+  const { data: warehouses } = useApi<Warehouse[]>(can('inventory.read') ? '/inventory/warehouses' : null, undefined, { retry: false, staleTime: 60_000 });
   const activeWarehouses = (warehouses ?? []).filter((w) => w.is_active || w.id === warehouseId);
   useEffect(() => {
     if (!editing && warehouseId == null && warehouses?.length) setWarehouseId(warehouses.find((w) => w.is_default)?.id ?? warehouses[0].id);

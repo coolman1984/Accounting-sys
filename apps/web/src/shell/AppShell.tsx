@@ -11,7 +11,7 @@ import { ChangePasswordDialog } from './ChangePassword';
 
 export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[] }) {
   const { t } = useI18n();
-  const { user, company, info, can, logout } = useSession();
+  const { user, company, info, can, allowed, hasApp, logout } = useSession();
   const [navOpen, setNavOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -42,11 +42,12 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
   }, [menu]);
 
   const sections = useMemo(() => {
-    const visible = nav.filter((n) => !n.perm || can(n.perm));
-    return SECTION_ORDER.map((s) => ({ s, items: visible.filter((n) => n.section === s).sort((a, b) => a.order - b.order) })).filter(
+    const visible = nav.filter(allowed);
+    const sectionOf = (n: (typeof nav)[number]) => (typeof n.section === 'function' ? n.section(hasApp) : n.section);
+    return SECTION_ORDER.map((s) => ({ s, items: visible.filter((n) => sectionOf(n) === s).sort((a, b) => a.order - b.order) })).filter(
       (g) => g.items.length > 0,
     );
-  }, [nav, can]);
+  }, [nav, allowed, hasApp]);
 
   const initials = (user?.displayName ?? '?')
     .split(/\s+/)

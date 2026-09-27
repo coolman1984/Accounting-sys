@@ -212,6 +212,13 @@ export const purchasingModule: AppModule = {
   id: 'purchasing',
   dependsOn: ['documents', 'inventory', 'parties', 'catalog'],
   permissions: ['purchasing.read', 'purchasing.write', 'purchasing.approve'],
+  apps: [{ id: 'purchasing', order: 50, requires: ['purchases'], permissions: ['purchasing'] }],
+  health({ db }) {
+    const over = db.get<{ n: number }>(
+      'SELECT COUNT(*) n FROM purchase_order_lines WHERE received_base > base_quantity OR billed_base > base_quantity OR received_base < 0 OR billed_base < 0',
+    )!.n;
+    return [{ id: 'progress', ok: over === 0, details: { count: over } }];
+  },
   migrations: [
     {
       id: '001_purchase_orders',

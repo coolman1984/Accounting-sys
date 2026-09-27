@@ -21,7 +21,7 @@ interface Item {
 export function CommandPalette({ open, onClose, commands }: { open: boolean; onClose(): void; commands: Command[] }) {
   const { t, locale, setLocale } = useI18n();
   const { toggle } = useTheme();
-  const { can, user } = useSession();
+  const { allowed, user } = useSession();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
@@ -29,7 +29,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = commands
-      .filter((c) => !c.perm || can(c.perm))
+      .filter(allowed)
       .map((c) => ({
         id: c.id,
         label: t(c.label),
@@ -55,7 +55,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
       },
     );
     return out;
-  }, [commands, can, t, navigate, toggle, locale, setLocale, user]);
+  }, [commands, allowed, t, navigate, toggle, locale, setLocale, user]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();

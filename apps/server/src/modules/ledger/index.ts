@@ -48,6 +48,17 @@ export const ledgerModule: AppModule = {
   dependsOn: ['system'],
   migrations,
   permissions: ['accounts.read', 'accounts.write', 'journal.read', 'journal.write', 'journal.post', 'fiscal.manage'],
+  apps: [{ id: 'accounting', core: true, order: 0, permissions: ['accounts', 'journal', 'fiscal'] }],
+  health({ db }) {
+    const t = db.get<{ d: number; c: number }>('SELECT COALESCE(SUM(debit), 0) d, COALESCE(SUM(credit), 0) c FROM ledger')!;
+    const unbalanced = db.get<{ n: number }>(
+      `SELECT COUNT(*) n FROM (SELECT entry_id FROM ledger GROUP BY entry_id HAVING SUM(debit) <> SUM(credit))`,
+    )!.n;
+    return [
+      { id: 'balanced', ok: t.d === t.c, details: { difference: t.d - t.c } },
+      { id: 'entries', ok: unbalanced === 0, details: { count: unbalanced } },
+    ];
+  },
 
   setup(ctx) {
     const ledger = createLedger(ctx);

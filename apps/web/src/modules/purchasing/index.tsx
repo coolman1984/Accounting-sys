@@ -267,7 +267,7 @@ function PoView() {
 
 export const purchasingModule: WebModule = {
   id: 'purchasing',
-  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchases', order: 5, perm: 'purchasing.read' }],
+  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchases', order: 5, perm: 'purchasing.read', app: 'purchasing' }],
   routes: [
     { path: '/purchasing/orders', element: <PoList /> },
     { path: '/purchasing/orders/new', element: <PoEditor key="new" /> },
@@ -275,7 +275,7 @@ export const purchasingModule: WebModule = {
     { path: '/purchasing/orders/:id/edit', element: <PoEditor key="edit" /> },
   ],
   commands: [
-    { id: 'new-po', label: 'adv.newPo', icon: ShoppingCart, group: 'create', to: '/purchasing/orders/new', perm: 'purchasing.write', keywords: 'purchase order po أمر شراء' },
-    { id: 'go-po', label: 'nav.purchaseOrders', icon: ClipboardList, group: 'navigate', to: '/purchasing/orders', perm: 'purchasing.read', keywords: 'أوامر شراء' },
+    { id: 'new-po', label: 'adv.newPo', icon: ShoppingCart, group: 'create', to: '/purchasing/orders/new', perm: 'purchasing.write', app: 'purchasing', keywords: 'purchase order po أمر شراء' },
+    { id: 'go-po', label: 'nav.purchaseOrders', icon: ClipboardList, group: 'navigate', to: '/purchasing/orders', perm: 'purchasing.read', app: 'purchasing', keywords: 'أوامر شراء' },
   ],
 };

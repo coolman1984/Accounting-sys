@@ -11,6 +11,7 @@ import { purchasingModule } from './purchasing';
 import { pricingModule } from './pricing';
 import { reportsModule } from './reports';
 import { settingsModule } from './settings';
+import { systemModule } from './system';
 
 /**
  * Installed web modules. Each one contributes its own navigation, pages and
@@ -29,4 +30,5 @@ export const webModules: WebModule[] = [
   catalogModule,
   reportsModule,
   settingsModule,
+  systemModule,
 ];

@@ -3,6 +3,7 @@ import type { Database } from './db.js';
 import type { EventBus } from './events.js';
 import type { ServiceRegistry } from './services.js';
 import type { AppConfig } from '../config.js';
+import type { AppManifest, AppRegistry } from './apps.js';
 
 /**
  * The "mechano" contract. Every feature of the system — ledger, sales,
@@ -23,6 +24,24 @@ export interface AppModule {
   setup?(ctx: ModuleContext): void;
   /** Mount HTTP endpoints (all under `/api`). */
   routes?(router: Router, ctx: ModuleContext): void;
+  /** The apps (switchable features) this module provides or adds to. */
+  apps?: AppManifest[];
+  /**
+   * Self-checks of the module's own data (e.g. "stock value equals the
+   * inventory accounts"). Each module is checked on its own, so a fault
+   * points straight at the part of the system that has it.
+   */
+  health?(ctx: ModuleContext): HealthCheck[];
+}
+
+export interface HealthCheck {
+  /** Stable key, also the translation key suffix (health.<module>.<id>). */
+  id: string;
+  ok: boolean;
+  /** Numbers for the message, e.g. { difference: 120 }. */
+  details?: Record<string, string | number | undefined>;
+  /** Warnings are advice (e.g. "no backup for 3 days"), not errors. */
+  severity?: 'error' | 'warning';
 }
 
 export interface Migration {
@@ -38,6 +57,8 @@ export interface ModuleContext {
   config: AppConfig;
   /** Every permission key declared by every module. */
   permissions: readonly string[];
+  /** Which apps are switched on. */
+  apps: AppRegistry;
 }
 
 export interface SessionUser {

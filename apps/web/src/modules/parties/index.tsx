@@ -306,8 +306,8 @@ function PartyView({ kind }: { kind: Kind }) {
 export const partiesModule: WebModule = {
   id: 'parties',
   nav: [
-    { to: '/customers', label: 'nav.customers', icon: Users, section: 'sales', order: 30, perm: 'parties.read' },
-    { to: '/suppliers', label: 'nav.suppliers', icon: Truck, section: 'purchases', order: 30, perm: 'parties.read' },
+    { to: '/customers', label: 'nav.customers', icon: Users, section: 'sales', order: 30, perm: 'parties.read', app: ['sales', 'banking'] },
+    { to: '/suppliers', label: 'nav.suppliers', icon: Truck, section: 'purchases', order: 30, perm: 'parties.read', app: ['purchases', 'banking', 'inventory'] },
   ],
   routes: [
     { path: '/customers', element: <PartyList key="c" kind="customer" /> },
@@ -316,7 +316,7 @@ export const partiesModule: WebModule = {
     { path: '/suppliers/:id', element: <PartyView key="sv" kind="supplier" /> },
   ],
   commands: [
-    { id: 'go-customers', label: 'nav.customers', icon: Users, group: 'navigate', to: '/customers', perm: 'parties.read', keywords: 'clients عملاء' },
-    { id: 'go-suppliers', label: 'nav.suppliers', icon: Truck, group: 'navigate', to: '/suppliers', perm: 'parties.read', keywords: 'vendors موردين' },
+    { id: 'go-customers', label: 'nav.customers', icon: Users, group: 'navigate', to: '/customers', perm: 'parties.read', app: ['sales', 'banking'], keywords: 'clients عملاء' },
+    { id: 'go-suppliers', label: 'nav.suppliers', icon: Truck, group: 'navigate', to: '/suppliers', perm: 'parties.read', app: ['purchases', 'banking', 'inventory'], keywords: 'vendors موردين' },
   ],
 };

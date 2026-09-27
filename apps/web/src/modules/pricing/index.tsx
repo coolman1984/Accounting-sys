@@ -327,11 +327,11 @@ function PriceListEditor() {
 
 export const pricingModule: WebModule = {
   id: 'pricing',
-  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.read' }],
+  nav: [{ to: '/sales/price-lists', label: 'nav.priceLists', icon: Tags, section: 'sales', order: 50, perm: 'pricing.read', app: 'pricing' }],
   routes: [
     { path: '/sales/price-lists', element: <PriceListsPage /> },
     { path: '/sales/price-lists/new', element: <PriceListEditor key="new" /> },
     { path: '/sales/price-lists/:id', element: <PriceListEditor key="edit" /> },
   ],
-  commands: [{ id: 'go-price-lists', label: 'nav.priceLists', icon: Tags, group: 'navigate', to: '/sales/price-lists', perm: 'pricing.read', keywords: 'price list قائمة أسعار' }],
+  commands: [{ id: 'go-price-lists', label: 'nav.priceLists', icon: Tags, group: 'navigate', to: '/sales/price-lists', perm: 'pricing.read', app: 'pricing', keywords: 'price list قائمة أسعار' }],
 };

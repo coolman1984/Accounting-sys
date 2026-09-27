@@ -1428,3 +1428,191 @@
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* ------------------------------------------------------------------ Switch */
+.switch {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+.switch span {
+  position: absolute;
+  top: 3px;
+  inset-inline-start: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: inset-inline-start 0.15s var(--ease);
+}
+.switch[aria-checked='true'] {
+  background: var(--app, var(--primary));
+}
+.switch[aria-checked='true'] span {
+  inset-inline-start: 19px;
+}
+.switch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.switch:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ Apps */
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.app-card.on {
+  border-color: color-mix(in srgb, var(--app) 45%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app) 10%, transparent);
+}
+.app-card.compact {
+  padding: 12px 14px;
+  gap: 8px;
+}
+.app-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.app-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--app) 14%, transparent);
+  color: var(--app);
+}
+.app-card.compact .app-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+.app-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.app-name {
+  font-weight: 650;
+  font-size: 15px;
+}
+.app-desc {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.app-core {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.app-features {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.app-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.app-features svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--app);
+}
+.app-requires {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------------ Health */
+.health-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  font-size: 13.5px;
+}
+.health-banner svg {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.health-banner strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+.health-banner.good {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.health-banner.warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.health-banner.bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.health-banner div div {
+  color: var(--text-muted);
+}
+.health-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.health-row svg {
+  flex: none;
+  margin-top: 2px;
+}
+.health-row.ok svg {
+  color: var(--success);
+}
+.health-row.warn svg {
+  color: var(--warning);
+}
+.health-row.bad {
+  color: var(--danger);
+}

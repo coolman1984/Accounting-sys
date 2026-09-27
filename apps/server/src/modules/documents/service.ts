@@ -98,7 +98,8 @@ export function computeLine(l: { quantity: number; unitPrice: number; discountBp
 
 export type DocumentsService = ReturnType<typeof createDocuments>;
 
-export function createDocuments({ db, services, events }: ModuleContext) {
+export function createDocuments({ db, services, events, apps }: ModuleContext) {
+  const inventoryOn = () => services.has('inventory') && apps.isEnabled('inventory');
   const ledger = () => services.get('ledger');
   const parties = () => services.get('parties');
   const catalog = () => services.get('catalog');
@@ -128,9 +129,9 @@ export function createDocuments({ db, services, events }: ModuleContext) {
 
       // Stock items are bought into the inventory asset, everything else into an expense.
       // When inventory is installed it may redirect a stock line (e.g. goods already received => GRNI).
-      const stock = item ? catalog().isStockItem(item) : false;
-      const hooked =
-        side === 'purchases' && stock && services.has('inventory') ? services.get('inventory').purchaseLineAccount(item!, l.ext ?? null) : null;
+      // Without the Inventory app a product is simply bought as an expense (periodic stock).
+      const stock = item && inventoryOn() ? catalog().isStockItem(item) : false;
+      const hooked = side === 'purchases' && stock ? services.get('inventory').purchaseLineAccount(item!, l.ext ?? null) : null;
       const accountId =
         l.accountId ??
         hooked ??

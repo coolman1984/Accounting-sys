@@ -17,7 +17,7 @@ export interface TestClient {
 export const FY_START = '2026-01-01';
 
 /** A fresh, fully set-up company in an in-memory database. */
-export async function setupCompany(opts: { vatRateBp?: number | null } = {}): Promise<TestClient> {
+export async function setupCompany(opts: { vatRateBp?: number | null; apps?: string[] } = {}): Promise<TestClient> {
   const app = await buildApp(loadConfig({ dbFile: ':memory:', dataDir: '/tmp/mizan-test', logLevel: process.env.TLOG ?? "silent", webDir: null }));
   const raw = async (method: string, url: string, body?: unknown, cookie?: string) => {
     const res = await app.http.inject({
@@ -35,6 +35,7 @@ export async function setupCompany(opts: { vatRateBp?: number | null } = {}): Pr
     locale: 'en',
     seedChartOfAccounts: true,
     vatRateBp: opts.vatRateBp === undefined ? 1400 : opts.vatRateBp,
+    apps: opts.apps,
   });
   if (setup.status !== 200) throw new Error('setup failed: ' + JSON.stringify(setup.body));
 

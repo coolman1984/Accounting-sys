@@ -7,6 +7,8 @@ import { api } from '../../core/api';
 import { Button } from '../../ui/Button';
 import { Field, Input, Select } from '../../ui/Field';
 import { AuthFrame } from './Login';
+import { toggleApp } from '../../core/apps';
+import { AppCard } from '../system/AppCard';
 
 const CURRENCIES = [
   ['EGP', 2],
@@ -25,7 +27,10 @@ const CURRENCIES = [
 
 export function SetupPage() {
   const { t, locale } = useI18n();
-  const { refresh, login } = useSession();
+  const { refresh, login, info } = useSession();
+  const catalogue = (info?.apps ?? []).slice().sort((a, b) => a.order - b.order);
+  // Everything on by default; the owner unticks what the company does not need.
+  const [apps, setApps] = useState<Set<string>>(() => new Set(catalogue.filter((a) => !a.core).map((a) => a.id)));
   const errText = useErrorText();
   const year = new Date().getFullYear();
   const [step, setStep] = useState(0);
@@ -46,7 +51,8 @@ export function SetupPage() {
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
 
-  const canNext = [f.name.trim().length > 0, !!f.fiscalYearStart, f.displayName.trim() && f.username.trim().length >= 3 && f.password.length >= 8][step];
+  const LAST = 3;
+  const canNext = [f.name.trim().length > 0, !!f.fiscalYearStart, true, f.displayName.trim() && f.username.trim().length >= 3 && f.password.length >= 8][step];
 
   const submit = async () => {
     setBusy(true);
@@ -66,6 +72,7 @@ export function SetupPage() {
         locale,
         seedChartOfAccounts: f.chart === 'standard',
         vatRateBp: vat,
+        apps: catalogue.length ? [...apps] : undefined,
       });
       await refresh();
       await login(f.username, f.password);
@@ -80,11 +87,11 @@ export function SetupPage() {
     <AuthFrame title={t('setup.title')} text={t('setup.subtitle')}>
       <div className="auth-card wide">
         <div className="steps">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2, 3].map((i) => (
             <span key={i} className={i <= step ? 'on' : ''} />
           ))}
         </div>
-        <h2 style={{ fontSize: 19, marginBottom: 18 }}>{[t('setup.stepCompany'), t('setup.stepBooks'), t('setup.stepAdmin')][step]}</h2>
+        <h2 style={{ fontSize: 19, marginBottom: 18 }}>{[t('setup.stepCompany'), t('setup.stepBooks'), t('setup.stepApps'), t('setup.stepAdmin')][step]}</h2>
 
         {step === 0 && (
           <div className="stack">
@@ -149,6 +156,17 @@ export function SetupPage() {
         )}
 
         {step === 2 && (
+          <div className="stack" style={{ '--gap': '10px' } as React.CSSProperties}>
+            <p className="muted" style={{ fontSize: 13.5, marginTop: -8 }}>
+              {t('setup.appsHint')}
+            </p>
+            {catalogue.map((a) => (
+              <AppCard key={a.id} app={a} compact on={a.core || apps.has(a.id)} onToggle={(v) => setApps(toggleApp(catalogue, apps, a.id, v))} />
+            ))}
+          </div>
+        )}
+
+        {step === 3 && (
           <div className="stack">
             <Field label={t('setup.adminName')}>
               <Input autoFocus value={f.displayName} onChange={(e) => set('displayName', e.target.value)} />
@@ -177,7 +195,7 @@ export function SetupPage() {
             </Button>
           )}
           <div className="spacer" />
-          {step < 2 ? (
+          {step < LAST ? (
             <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
               {t('setup.next')} <ArrowRight className="flip-rtl" />
             </Button>
