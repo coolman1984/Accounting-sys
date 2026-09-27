@@ -411,7 +411,8 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
       const a = db.get<Account>('SELECT * FROM accounts WHERE id = ?', [l.accountId]);
       if (!a) return fail('journal.unknown_account', `Line ${i + 1}: unknown account`, { line: i + 1 });
       if (a.is_group) fail('journal.group_account', `Line ${i + 1}: ${a.code} is a group account`, { line: i + 1, code: a.code });
-      if (!a.is_active) fail('journal.inactive_account', `Line ${i + 1}: ${a.code} is inactive`, { line: i + 1, code: a.code });
+      // A copy of an entry already in the books (reversal, closing) may touch accounts deactivated since.
+      if (!a.is_active && !mirror) fail('journal.inactive_account', `Line ${i + 1}: ${a.code} is inactive`, { line: i + 1, code: a.code });
       if ((a.subtype === 'receivable' || a.subtype === 'payable') && !l.partyId) {
         fail('journal.party_required', `Line ${i + 1}: ${a.code} needs a customer or supplier`, { line: i + 1, code: a.code });
       }
@@ -481,7 +482,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         updated_at: now,
       });
       writeLines(id, input.lines);
-      if (post) postEntry(id, opts.userId, { silentAudit: true });
+      if (post) postEntry(id, opts.userId, { silentAudit: true, mirror });
       audit().log({
         userId: opts.userId,
         action: post ? 'post' : 'create',
@@ -519,14 +520,14 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     });
   }
 
-  function postEntry(id: number, userId: number | null, o: { silentAudit?: boolean } = {}): void {
+  function postEntry(id: number, userId: number | null, o: { silentAudit?: boolean; mirror?: boolean } = {}): void {
     const cur = header(id);
     if (cur.status !== 'draft') conflict('journal.not_draft', 'Entry is already posted');
     const lines = db.all<{ account_id: number; party_id: number | null; debit: number; credit: number; currency: string | null; amount_fx: number | null }>(
       'SELECT account_id, party_id, debit, credit, currency, amount_fx FROM journal_lines WHERE entry_id = ? ORDER BY line_no',
       [id],
     ).map((l) => ({ accountId: l.account_id, partyId: l.party_id, debit: l.debit, credit: l.credit, currency: l.currency, amountFx: l.amount_fx }));
-    validateLines(lines);
+    validateLines(lines, o.mirror);
     const total = assertBalanced(lines);
     assertPostingDate(cur.date);
     db.tx(() => {
@@ -568,7 +569,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         true,
       );
       db.run('UPDATE journal_entries SET reversal_of_id = ? WHERE id = ?', [id, revId]);
-      postEntry(revId, userId, { silentAudit: true });
+      postEntry(revId, userId, { silentAudit: true, mirror: true });
       db.run('UPDATE journal_entries SET reversed_by_id = ? WHERE id = ?', [revId, id]);
       audit().log({ userId, action: 'reverse', entity: 'journal_entry', entityId: id, summary: `${cur.number} → ${entryNumber(revId)}` });
       events.emit('journal.reversed', { entryId: id, reversalId: revId });
@@ -644,6 +645,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
         closingEntryId = createEntry(
           { date: fy.end_date, memo: `Closing of ${fy.name}`, reference: fy.name, lines },
           { sourceType: 'closing', sourceId: fy.id, userId },
+          true,
         );
       }
       db.update('fiscal_years', id, { status: 'closed', closing_entry_id: closingEntryId, closed_at: nowIso(), closed_by: userId });

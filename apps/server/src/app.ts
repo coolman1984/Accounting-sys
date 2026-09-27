@@ -38,8 +38,13 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
     const e = err as { statusCode?: number; message?: string; code?: string };
     const msg = e.message ?? '';
     // Database-level guards (triggers / constraints) are the last line of defense.
-    if (msg.includes('ledger:') || msg.includes('documents:') || msg.includes('payments:') || msg.includes('bank:') || msg.includes('audit log')) {
+    // Trigger messages are "<module>: reason" (RAISE(ABORT, …)); every module's, not a fixed list.
+    const sqlite = e.code === 'ERR_SQLITE_ERROR';
+    if (sqlite && (/^[a-z_]+: /.test(msg) || msg.includes('audit log'))) {
       return reply.status(409).send({ error: { code: 'integrity', message: msg, details: null } });
+    }
+    if (sqlite && msg.includes('UNIQUE constraint failed')) {
+      return reply.status(409).send({ error: { code: 'duplicate', message: 'That value is already used by another record', details: null } });
     }
     if (msg.includes('FOREIGN KEY constraint failed')) {
       return reply.status(409).send({ error: { code: 'in_use', message: 'This record is referenced by other records', details: null } });

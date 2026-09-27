@@ -67,6 +67,14 @@ non-obvious cause or a tool behaved unexpectedly.
 - **Test the arithmetic in the test itself**: a wrong hand calculation (standard price 50 vs 48) looked like
   a bug; write the worked example in the file header and derive every expected number from it.
 
+- **zod 4 applies `.default()` inside `.partial()`** — a partial update schema built from a create schema
+  silently sends defaults (`isActive: true`). Write update schemas with plain `.optional()` fields.
+- **"Copies" of posted entries must skip today's rules**: reversals and year-end closing re-validated
+  accounts and failed on accounts deactivated since. Pass `mirror` through every validation step.
+- **Match trigger errors by format, not by a list of module names** — a hard-coded list missed three
+  modules and turned their guards into 500s.
+- **A regression test must fail without the fix** — stash the fix and run the test once before trusting it.
+
 ## Tools
 
 - `@fastify/static` pre-indexes files at start; after a rebuild use `wildcard: true`, and `res.header`

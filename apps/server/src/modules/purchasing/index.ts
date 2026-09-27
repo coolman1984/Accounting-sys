@@ -106,6 +106,7 @@ function createPurchasing({ db, services, apps }: ModuleContext) {
       if (item && !item.is_active) fail('document.inactive_item', `Line ${n}: item ${item.sku} is inactive`, { line: n });
       const description = (l.description ?? '').trim() || item?.name_en || '';
       if (!description) fail('document.line_description', `Line ${n}: description is required`, { line: n });
+      if (!item && l.unitId) fail('document.unit_without_item', `Line ${n}: a unit needs an item`, { line: n });
       const factor = item ? catalog().unitFactor(item, l.unitId) : 1000;
       let rate = 0;
       if (l.taxId && services.has('tax') && apps.isEnabled('tax')) {

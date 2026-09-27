@@ -290,8 +290,20 @@ export const systemModule: AppModule = {
 
     r.put('/users/:id', 'admin.users.manage', ({ user, params, body }) => {
       const id = Number(params.id);
-      const input = parse(zUser.partial(), body);
+      // Only the fields sent change: no defaults here (zod 4 applies .default() inside .partial()).
+      const input = parse(
+        z.object({
+          username: zUser.shape.username.optional(),
+          displayName: zUser.shape.displayName.optional(),
+          roleIds: zUser.shape.roleIds,
+          role: zUser.shape.role,
+          locale: z.enum(['en', 'ar']).optional(),
+          isActive: z.boolean().optional(),
+        }),
+        body,
+      );
       if (!db.get('SELECT 1 FROM users WHERE id = ?', [id])) return notFound('user', id);
+      if (input.username && db.get('SELECT 1 FROM users WHERE username = ? AND id <> ?', [input.username, id])) conflict('user.exists', 'Username already taken');
       const roleIds = resolveRoles(input);
       db.tx(() => {
         db.update('users', id, {

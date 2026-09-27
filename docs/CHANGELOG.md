@@ -43,6 +43,16 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Journal entries of bank transfers opened a stock operation; goods receipts, landed costs, bank
   statements and production orders now link to their own page.
 - A receipt or payment for a party that is only a customer (or only a supplier) no longer asks which one.
+- Reversing an entry, voiding a document or closing the year failed when one of its accounts had been
+  deactivated since; copies of posted entries now keep their accounts (new postings are still refused).
+- Editing one field of a user (e.g. the name) reactivated a deactivated user and reset their language
+  (zod 4 applies defaults inside `.partial()`); a username clash on edit is now a clear message.
+- Database guards of inventory, purchasing and manufacturing (and duplicate values) answered
+  "Unexpected server error"; every guard now returns its reason (409).
+- A credit note whose invoice was voided while it was a draft is refused with a clear message.
+- Dashboard cash per account counted entries dated in the future (total and breakdown now agree).
+- Login answers in the same time whether or not the username exists; the failed-attempts list is bounded.
+- Purchase order lines refuse a unit of measure without an item.
 - Health check for document settlements now also covers credit notes and base-currency amounts.
 
 ### Added

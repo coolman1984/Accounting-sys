@@ -34,7 +34,7 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
 | `apps/server/src/modules/` | 39 | one folder per module (below) |
-| `apps/server/src/test/` | 16 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/test/` | 17 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -47,7 +47,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `audit_log`, `role_permissions`, `roles`, `sequences`, `sessions`, `settings`, `user_roles`, `users`
 - **Provides services:** `access`, `audit`, `backup`, `sequences`, `settings`
 - **Events:** emits `system.setup` · listens —
-- **Files:** `auth.ts` (182), `index.ts` (490), `schema.ts` (95), `settings.ts` (116)
+- **Files:** `auth.ts` (188), `index.ts` (502), `schema.ts` (95), `settings.ts` (116)
 
 <details><summary>25 routes</summary>
 
@@ -89,7 +89,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (208), `schema.ts` (180), `service.ts` (730), `statements.ts` (268)
+- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (732), `statements.ts` (268)
 
 <details><summary>25 routes</summary>
 
@@ -176,7 +176,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `document_lines`, `documents`, `settlements`
 - **Provides services:** `documents`
 - **Events:** emits `document.posted`, `document.voided` · listens `system.setup`
-- **Files:** `index.ts` (306), `schema.ts` (170), `service.ts` (482)
+- **Files:** `index.ts` (306), `schema.ts` (170), `service.ts` (484)
 
 <details><summary>9 routes</summary>
 
@@ -287,7 +287,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `purchase_order_lines`, `purchase_orders`
 - **Provides services:** `purchasing`
 - **Events:** emits — · listens `document.posted`, `document.voided`, `stock.receipt.posted`, `stock.receipt.voided`
-- **Files:** `index.ts` (408)
+- **Files:** `index.ts` (409)
 
 <details><summary>9 routes</summary>
 

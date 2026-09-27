@@ -1920,6 +1920,7 @@ const en = {
     network: 'Cannot reach the Mizan server. Check that it is running.',
     validation: 'Please check the highlighted fields',
     not_found: 'Not found',
+    duplicate: 'That value is already used by another record',
     in_use: 'This record is used elsewhere and cannot be removed',
     integrity: 'Blocked to protect your books: {message}',
     auth: {
