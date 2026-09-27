@@ -17,7 +17,8 @@ import { ItemPicker, PartyPicker, useItems } from '../../ui/Pickers';
 import { LotChip, LotsDialog } from '../../ui/LotsDialog';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
-import { Qty, WarehouseSelect } from './common';
+import { Qty, WarehouseSelect, useWarehouses } from './common';
+import { unitLabel } from '../../core/units';
 
 interface Line {
   key: number;
@@ -60,6 +61,13 @@ export function ReceiptEditor() {
   const [lines, setLines] = useState<Line[]>([blank()]);
   const [lotsFor, setLotsFor] = useState<number | null>(null);
   const [err, setErr] = useState('');
+  const { data: warehouses } = useWarehouses();
+  // New receipts go to the default warehouse unless the order names one.
+  useEffect(() => {
+    if (editing || wh != null || !warehouses || (poParam && !po)) return;
+    const w = warehouses.find((x) => x.is_default && x.is_active) ?? warehouses.find((x) => x.is_active);
+    if (w) setWh(w.id);
+  }, [warehouses, po]);
 
   useEffect(() => {
     if (!existing) return;
@@ -178,7 +186,7 @@ export function ReceiptEditor() {
                   <th className="end" style={{ width: 110 }}>
                     {t('docs.qty')}
                   </th>
-                  <th style={{ width: 130 }}>{t('adv.unit')}</th>
+                  <th style={{ width: 150 }}>{t('adv.unit')}</th>
                   <th className="end" style={{ width: 140 }}>
                     {t('adv.unitCost')}
                   </th>
@@ -216,7 +224,7 @@ export function ReceiptEditor() {
                             <option value="">{item?.unit || t('adv.baseUnit')}</option>
                             {units.map((u) => (
                               <option key={u.id} value={u.id}>
-                                {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+                                {unitLabel(u, pick)}
                               </option>
                             ))}
                           </Select>
@@ -260,7 +268,7 @@ export function ReceiptEditor() {
             direction="in"
             warehouseId={wh}
             factor={factorOf(lotsItem, lotsLine.unitId)}
-            qty={Math.round(((lotsLine.quantity ?? 0) * factorOf(lotsItem, lotsLine.unitId)) / 1000)}
+            qty={lotsLine.quantity ?? 0}
             value={lotsLine.lots}
             onChange={(lots) => update(lotsLine.key, { lots })}
           />

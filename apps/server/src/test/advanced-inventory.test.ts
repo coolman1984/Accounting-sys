@@ -188,6 +188,13 @@ describe('inventory — units, lots, serials, receipts, landed costs, recosting,
       lines: [{ itemId: widget, quantity: 1000, unitCost: 5000, poLineId: poLine }],
     });
     assert.equal(over.body.error.code, 'po.over_quantity');
+    // An order line only counts goods of its own item.
+    const other = await item({ sku: 'WDG-X', nameEn: 'Other widget', nameAr: 'قطعة أخرى' });
+    const wrong = await c.raw('POST', '/api/inventory/receipts', {
+      supplierId: supplier, poId: po, date: '2026-04-06', warehouseId: main, post: true,
+      lines: [{ itemId: other, quantity: 1000, unitCost: 5000, poLineId: poLine }],
+    });
+    assert.equal(wrong.body.error.code, 'po.other_item');
     await reconciled();
   });
 
@@ -238,6 +245,8 @@ describe('inventory — units, lots, serials, receipts, landed costs, recosting,
     });
     const view = await c.get(`/api/inventory/landed-costs/${lc.id}`);
     assert.equal(view.number, 'LC-00001');
+    const blocked = await c.raw('POST', `/api/documents/${b}/void`, {});
+    assert.equal(blocked.body.error.code, 'landed.has_costs', 'a bill carrying landed costs cannot be voided first');
     assert.equal(view.allocations[0].to_inventory, 8000);
     assert.equal(view.allocations[0].to_cogs, 2000);
     assert.equal((await card(gadget)).value, 160000 + 8000);
@@ -259,6 +268,9 @@ describe('inventory — units, lots, serials, receipts, landed costs, recosting,
       targets: [{ sourceType: 'goods_receipt', sourceId: r }],
     });
     assert.equal((await card(gear)).value, 12000);
+    // The freight must go first: otherwise its value would stay in stock with no goods left.
+    const blocked = await c.raw('POST', `/api/inventory/receipts/${r}/void`, {});
+    assert.equal(blocked.body.error.code, 'landed.has_costs');
     await c.post(`/api/inventory/landed-costs/${lc.id}/void`, {});
     await c.post(`/api/inventory/receipts/${r}/void`, {});
     assert.equal(await level(gear), 0);

@@ -14,6 +14,7 @@ import { ItemPicker, PartyPicker, TaxSelect, useItems, useTaxes } from '../../ui
 import { useToast } from '../../ui/Toast';
 import { computeLine } from '../documents/kinds';
 import { WarehouseSelect } from '../inventory/common';
+import { unitLabel } from '../../core/units';
 
 interface Line {
   key: number;
@@ -163,7 +164,7 @@ export function PoEditor() {
               <Input type="date" value={expected} min={date} onChange={(e) => setExpected(e.target.value)} />
             </Field>
             <Field label={t('inventory.warehouse')}>
-              <WarehouseSelect value={wh} onChange={setWh} all />
+              <WarehouseSelect value={wh} onChange={setWh} />
             </Field>
             <Field label={t('common.reference')}>
               <Input value={reference} onChange={(e) => setReference(e.target.value)} />
@@ -176,12 +177,12 @@ export function PoEditor() {
               <thead>
                 <tr>
                   <th className="shrink center">#</th>
-                  <th style={{ width: 170 }}>{t('docs.item')}</th>
+                  <th style={{ width: 260 }}>{t('docs.item')}</th>
                   <th>{t('common.description')}</th>
                   <th className="end" style={{ width: 90 }}>
                     {t('docs.qty')}
                   </th>
-                  <th style={{ width: 110 }}>{t('adv.unit')}</th>
+                  <th style={{ width: 150 }}>{t('adv.unit')}</th>
                   <th className="end" style={{ width: 120 }}>
                     {t('docs.price')}
                   </th>
@@ -224,7 +225,7 @@ export function PoEditor() {
                             <option value="">{item?.unit || t('adv.baseUnit')}</option>
                             {units.map((u) => (
                               <option key={u.id} value={u.id}>
-                                {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+                                {unitLabel(u, pick)}
                               </option>
                             ))}
                           </Select>

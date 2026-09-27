@@ -12,10 +12,11 @@ import { PageHeader, Loading } from '../../ui/Page';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { Checkbox, DecimalInput, Field, Input, Select, Textarea } from '../../ui/Field';
-import { AccountPicker, ItemPicker, PartyPicker, TaxSelect, useItems, useTaxes } from '../../ui/Pickers';
+import { AccountPicker, ItemPicker, PartyPicker, TaxSelect, useItems, useParties, useTaxes } from '../../ui/Pickers';
 import { Kbd, modKey } from '../../ui/Brand';
 import { useToast } from '../../ui/Toast';
 import { computeLine, KIND_UI } from './kinds';
+import { unitLabel } from '../../core/units';
 
 interface Line {
   key: number;
@@ -119,6 +120,16 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
     if (!dueTouched) setDueDate(addDaysIso(date, terms));
   }, [date, terms, dueTouched]);
 
+  // Payment terms follow the party however it was chosen (picker, link or prefill).
+  const { data: partyList } = useParties(ui.partyKind);
+  useEffect(() => {
+    if (editing || !partyId) return;
+    const p = partyList?.rows.find((x) => x.id === partyId);
+    if (p) setTerms(p.payment_terms_days ?? 0);
+  }, [partyId, partyList, editing]);
+  // Start in the party field only when a blank document opens.
+  const [focusParty] = useState(() => !editing && !params.get('party') && !params.get('fromReceipt') && !params.get('fromPo') && !params.get('against'));
+
   const { data: originals } = useApi<Paged<DocumentRow>>(
     ui.creditOf && partyId ? '/documents' : null,
     { kind: ui.creditOf, partyId: partyId ?? undefined, status: 'posted', limit: 200 },
@@ -145,9 +156,13 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
       .filter((x) => x.itemId === item.id && ((showWarehouses && x.warehouseId) || warehouseId) === wh)
       .reduce((s, x) => s + baseOf(x.quantity, factorOf(item, x.unitId)), 0);
     const short = want > avail;
+    // Shown in the line's own unit: "15 Carton", not 180 bottles.
+    const f = factorOf(item, l.unitId);
+    const u = l.unitId ? item.units.find((x) => x.id === l.unitId) : null;
+    const qty = `${formatQty(Math.floor((avail * 1000) / f), locale)} ${u ? pick(u.name_en, u.name_ar) : item.unit ?? ''}`.trim();
     return (
       <div className={short ? 'danger-text' : 'faint'} style={{ fontSize: 11.5, textAlign: 'end', padding: '2px 4px 0', whiteSpace: 'nowrap' }}>
-        {short ? t('inventory.notEnough', { qty: formatQty(avail, locale) }) : t('inventory.available', { qty: formatQty(avail, locale) })}
+        {short ? t('inventory.notEnough', { qty }) : t('inventory.available', { qty })}
       </div>
     );
   };
@@ -185,7 +200,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
         <option value="">{item.unit || t('adv.baseUnit')}</option>
         {units.map((u) => (
           <option key={u.id} value={u.id}>
-            {pick(u.name_en, u.name_ar)} ({u.factor / 1000})
+            {unitLabel(u, pick)}
           </option>
         ))}
       </Select>
@@ -347,7 +362,7 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
               <PartyPicker
                 kind={ui.partyKind}
                 value={partyId}
-                autoFocus={!editing && !partyId}
+                autoFocus={focusParty}
                 onChange={(pid, p?: Party) => {
                   setPartyId(pid);
                   setTerms(p?.payment_terms_days ?? 0);
@@ -412,14 +427,14 @@ export function DocumentEditor({ kind }: { kind: DocKind }) {
               <thead>
                 <tr>
                   <th className="shrink center">#</th>
-                  <th style={{ width: 170 }}>{t('docs.item')}</th>
+                  <th style={{ width: 240 }}>{t('docs.item')}</th>
                   <th>{t('common.description')}</th>
                   {showAccounts && <th style={{ width: 200 }}>{t('common.account')}</th>}
                   {showWarehouses && <th style={{ width: 150 }}>{t('inventory.warehouse')}</th>}
                   <th className="end" style={{ width: 90 }}>
                     {t('docs.qty')}
                   </th>
-                  {hasUnits && <th style={{ width: 110 }}>{t('adv.unit')}</th>}
+                  {hasUnits && <th style={{ width: 150 }}>{t('adv.unit')}</th>}
                   <th className="end" style={{ width: 120 }}>
                     {t('docs.price')}
                   </th>

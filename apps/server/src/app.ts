@@ -80,13 +80,25 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
     if (req.url.startsWith('/api/')) {
       return reply.status(404).send({ error: { code: 'not_found', message: 'Unknown endpoint', details: null } });
     }
-    // Single-page app: unknown paths render index.html.
-    if (config.webDir && existsSync(config.webDir)) return reply.sendFile('index.html');
+    // A missing asset is a 404 — never the HTML shell, which browsers reject as a script.
+    if (/^\/assets\//.test(req.url)) return reply.status(404).send('Not found');
+    // Single-page app: unknown paths render index.html (never cached, so updates show at once).
+    if (config.webDir && existsSync(config.webDir)) return reply.header('Cache-Control', 'no-cache').sendFile('index.html');
     return reply.status(404).send('Web app not built. Run "npm run build" or use "npm run dev".');
   });
 
   if (config.webDir && existsSync(config.webDir)) {
-    await http.register(fastifyStatic, { root: config.webDir, wildcard: false, index: ['index.html'], maxAge: '1h' });
+    // wildcard: files are looked up per request, so a rebuilt web app is served without a restart.
+    await http.register(fastifyStatic, {
+      root: config.webDir,
+      wildcard: true,
+      index: ['index.html'],
+      cacheControl: false,
+      setHeaders: (res, path) => {
+        // Hashed bundles never change; the HTML shell must always be revalidated.
+        res.header('Cache-Control', /[\\/]assets[\\/]/.test(path) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
   }
 
   http.addHook('onClose', async () => kernel.close());

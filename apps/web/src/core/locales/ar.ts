@@ -891,12 +891,14 @@ const ar: Dictionary = {
       other_supplier: 'السطر {line}: هذا الإذن يخص مورداً آخر',
     },
     po: {
+      other_item: 'الصنف مختلف عن أمر الشراء {number}',
+      other_supplier: 'أمر الشراء هذا يخص موردًا آخر',
       over_quantity: 'أكثر من المطلوب في {number} (المتبقي {left})',
       not_open: 'أمر الشراء {number} غير مفتوح',
       has_activity: 'تم استلام أو فوترة بضاعة — أغلق الأمر بدلاً من إلغائه',
     },
     price: { below_minimum: 'السطر {line}: سعر {sku} أقل من الحد الأدنى' },
-    landed: { no_goods: 'المشتريات المختارة لا تحتوي أصنافاً مخزنية', counter_account: 'اختر الحساب الذي سُجلت عليه المصاريف' },
+    landed: { has_costs: 'تم تحميل مصاريف الشحن {number} على هذه المشتريات — ألغها أولاً', no_goods: 'المشتريات المختارة لا تحتوي أصنافاً مخزنية', counter_account: 'اختر الحساب الذي سُجلت عليه المصاريف' },
     warehouse: {
       duplicate_code: 'كود المخزن موجود بالفعل',
       has_stock: 'انقل البضاعة أولاً قبل إيقاف هذا المخزن',

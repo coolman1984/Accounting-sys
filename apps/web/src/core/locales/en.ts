@@ -894,12 +894,14 @@ const en = {
       other_supplier: 'Line {line}: that receipt belongs to another supplier',
     },
     po: {
+      other_item: 'The item differs from order {number}',
+      other_supplier: 'That order belongs to another supplier',
       over_quantity: 'More than ordered on {number} ({left} left)',
       not_open: 'Order {number} is not open',
       has_activity: 'Goods were already received or invoiced — close the order instead',
     },
     price: { below_minimum: 'Line {line}: {sku} is below its minimum price' },
-    landed: { no_goods: 'The chosen purchases contain no stock items', counter_account: 'Choose where the costs were booked' },
+    landed: { has_costs: 'Landed cost {number} is booked on this purchase — void it first', no_goods: 'The chosen purchases contain no stock items', counter_account: 'Choose where the costs were booked' },
     warehouse: {
       duplicate_code: 'That warehouse code already exists',
       has_stock: 'Move the stock out before deactivating this warehouse',

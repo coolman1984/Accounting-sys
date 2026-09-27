@@ -62,6 +62,7 @@ export const pricingModule: AppModule = {
         [e.documentId],
       );
       for (const l of lines) {
+        if (l.base_quantity <= 0) continue;
         const perUnit = Number(divRound(BigInt(l.net) * 1000n, BigInt(l.base_quantity)));
         if (perUnit < l.min_sale_price) {
           fail('price.below_minimum', `Line ${l.line_no}: ${l.sku} is below its minimum price`, {

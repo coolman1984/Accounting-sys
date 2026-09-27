@@ -51,7 +51,7 @@ export function AccountPicker({
 }
 
 export function useParties(kind?: 'customer' | 'supplier') {
-  return useApi<Paged<Party>>('/parties', { kind, active: 1, limit: 500 }, { staleTime: 30_000 });
+  return useApi<Paged<Party>>('/parties', { kind, active: 1, limit: 20000 }, { staleTime: 30_000 });
 }
 
 export function PartyPicker({

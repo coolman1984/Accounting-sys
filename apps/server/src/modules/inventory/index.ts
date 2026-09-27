@@ -553,7 +553,7 @@ export const inventoryModule: AppModule = {
       return db.all(
         `SELECT l.id, l.item_id, l.lot_no, l.expiry_date, ll.warehouse_id, w.code AS warehouse_code, ll.qty
          FROM lot_levels ll JOIN stock_lots l ON l.id = ll.lot_id JOIN warehouses w ON w.id = ll.warehouse_id
-         WHERE ${where.join(' AND ')} ORDER BY (l.expiry_date IS NULL), l.expiry_date, l.id LIMIT 5000`,
+         WHERE ${where.join(' AND ')} ORDER BY (l.expiry_date IS NULL), l.expiry_date, l.id LIMIT 20000`,
         p,
       );
     });
