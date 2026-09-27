@@ -71,3 +71,13 @@ routes guarded by `assertApp`; writes keep their specific permissions.
 stale; a Stop hook regenerates it. Changelog, decisions and lessons are updated in the same commit
 as the code (rules in `CLAUDE.md`).
 **Consequences:** The map never lies; finding where to change something takes one read.
+
+## ADR-010 · Bank reconciliation ticks ledger lines from outside the ledger
+**Status:** Accepted · 2026-09-27
+**Context:** Posted journal lines are immutable (triggers), and reconciliation belongs to Treasury, not GL.
+**Decision:** The `bank` module stores the tick on its own statement line (`journal_line_id`, unique),
+never on `journal_lines`. It protects history by locking reconciled statements (triggers) and by
+refusing reversals through the `journal.reversed` event (listeners run inside the same transaction).
+CSV files are parsed in the browser, so the server receives clean JSON lines and needs no upload handling.
+**Consequences:** GL stays untouched and removable-module rules hold; a GL-only edition simply has no
+reconciliation. Voided pairs are hidden from the open items instead of needing a manual tick.

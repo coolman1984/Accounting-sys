@@ -11,7 +11,7 @@ Where to find things: pick the module, then the file. Modules talk only through
 | App | Server modules | Needs | Permission prefixes |
 |---|---|---|---|
 | **gl** (core) | `system`, `ledger` | — | `admin`, `gl` |
-| **treasury** | `payments` | — | `treasury` |
+| **treasury** | `payments`, `bank` | — | `treasury` |
 | **inventory** | `inventory` | — | `inventory`, `catalog` |
 | **purchasing** | `purchasing` | `ap` | `purchasing` |
 | **pricing** | `pricing` | `ar` | `pricing` |
@@ -28,8 +28,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 6 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 26 | one folder per module (below) |
-| `apps/server/src/test/` | 9 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 29 | one folder per module (below) |
+| `apps/server/src/test/` | 11 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -380,6 +380,44 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 
 </details>
 
+### `bank` — apps/server/src/modules/bank/
+
+- **Apps:** `treasury` · **Depends on:** `ledger` · **Health checks:** yes
+- **Permissions:** `treasury.transfers.read`, `treasury.transfers.write`, `treasury.transfers.post`, `treasury.statements.read`, `treasury.statements.write`, `treasury.statements.post`
+- **Tables / views:** `bank_statement_lines`, `bank_statements`, `bank_transfers`
+- **Provides services:** —
+- **Events:** emits — · listens `journal.reversed`
+- **Files:** `index.ts` (224), `schema.ts` (68), `service.ts` (453)
+
+<details><summary>22 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/bank/accounts` | `auth` |
+| GET | `/api/bank/transfers` | `treasury.transfers.read` |
+| GET | `/api/bank/transfers/:id` | `treasury.transfers.read` |
+| POST | `/api/bank/transfers` | `treasury.transfers.write` |
+| PUT | `/api/bank/transfers/:id` | `treasury.transfers.write` |
+| POST | `/api/bank/transfers/:id/post` | `treasury.transfers.post` |
+| POST | `/api/bank/transfers/:id/void` | `treasury.transfers.post` |
+| DELETE | `/api/bank/transfers/:id` | `treasury.transfers.write` |
+| GET | `/api/bank/statements` | `treasury.statements.read` |
+| GET | `/api/bank/statements/next` | `treasury.statements.read` |
+| GET | `/api/bank/statements/:id` | `treasury.statements.read` |
+| POST | `/api/bank/statements` | `treasury.statements.write` |
+| PUT | `/api/bank/statements/:id` | `treasury.statements.write` |
+| POST | `/api/bank/statements/:id/lines` | `treasury.statements.write` |
+| DELETE | `/api/bank/statement-lines/:id` | `treasury.statements.write` |
+| POST | `/api/bank/statements/:id/auto-match` | `treasury.statements.write` |
+| POST | `/api/bank/statement-lines/:id/match` | `treasury.statements.write` |
+| POST | `/api/bank/statement-lines/:id/unmatch` | `treasury.statements.write` |
+| POST | `/api/bank/statement-lines/:id/entry` | `treasury.statements.write` |
+| POST | `/api/bank/statements/:id/reconcile` | `treasury.statements.post` |
+| POST | `/api/bank/statements/:id/reopen` | `treasury.statements.post` |
+| DELETE | `/api/bank/statements/:id` | `treasury.statements.write` |
+
+</details>
+
 ## Web layout
 
 | Folder | Files | What lives there |
@@ -398,7 +436,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `inventory.ts`, `parties.ts`, 
 | `tax` | `tax` | `/reports/tax`, `/taxes` | 1 (264 lines) |
 | `ar` | `ar` | `/customers`, `/customers/:id`, `/documents/:id`, `/reports/aging/receivable` | 1 (40 lines) |
 | `ap` | `ap` | `/documents/:id`, `/reports/aging/payable`, `/suppliers`, `/suppliers/:id` | 1 (36 lines) |
-| `treasury` | `treasury` | — | 3 (648 lines) |
+| `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1675 lines) |
 | `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (232 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |

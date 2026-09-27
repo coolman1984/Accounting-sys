@@ -16,6 +16,13 @@ non-obvious cause or a tool behaved unexpectedly.
 
 ## Modules & permissions
 
+- **`useConfirm()` resolves to `{ ok, date? }`, not a boolean.** `if (await confirm(…))` is always true
+  and would void or delete without asking. Always test `.ok`.
+- **Header guessing needs word boundaries for short words** ("in" matches "description"), but not for
+  prefixes like "ref" → "reference": list the long form too.
+- **A voided payment leaves a +/− pair on the bank account** that the bank never sees; exclude reversed
+  pairs from open items, or reconciliation never gets clean.
+
 - **A screen that waits for optional data must not wait forever.** The invoice editor waited for tax
   codes before adding the first line; with Tax off it never appeared. Gate on `hasApp()` too.
 - **Hiding a menu item is not access control on the page.** A typed or bookmarked link skipped the

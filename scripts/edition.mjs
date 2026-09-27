@@ -28,7 +28,7 @@ export const APPS = {
   gl: { server: ['system', 'ledger'], web: ['auth', 'dashboard', 'gl', 'admin'], requires: [] },
   ar: { server: ['ar'], web: ['ar', 'catalog'], requires: [] },
   ap: { server: ['ap'], web: ['ap', 'catalog'], requires: [] },
-  treasury: { server: ['payments'], web: ['treasury'], requires: [] },
+  treasury: { server: ['payments', 'bank'], web: ['treasury'], requires: [] },
   tax: { server: ['tax'], web: ['tax'], requires: [] },
   co: { server: ['co'], web: ['co'], requires: [] },
   inventory: { server: ['inventory'], web: ['inventory', 'catalog'], requires: [] },

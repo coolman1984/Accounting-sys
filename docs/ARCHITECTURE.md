@@ -82,7 +82,7 @@ Modules are how the code is built; **apps** are what a company switches on
 | General ledger (core, always on) | system, ledger | accounts, journal, fiscal years, statements, users & roles, settings | — |
 | Receivables (AR) | ar (+ parties, catalog, documents) | customers, sales invoices, credit notes, ageing | — |
 | Payables (AP) | ap (+ engines) | suppliers, bills, debit notes, ageing | — |
-| Treasury | payments | receipts and payments (separate rights) | — |
+| Treasury | payments, bank | receipts and payments (separate rights), transfers, bank reconciliation | — |
 | Tax | tax | tax codes, tax on lines, tax summary | — |
 | Cost centers (CO) | co | cost centers on lines, P&L per center | — |
 | Inventory | inventory | warehouses, lots, receipts, landed costs | — |
@@ -152,6 +152,8 @@ trial balance, statements, party balances and aging always agree.
 | Receipt from customer | Cash / bank | Accounts receivable (party) |
 | Payment to supplier | Accounts payable (party) | Cash / bank |
 | Direct receipt / payment | Cash / bank ↔ chosen income / expense account | |
+| Transfer between cash / bank | Receiving account (amount); Bank charges (fee) | Sending account (amount + fee) |
+| Bank line recorded from a statement | Bank ↔ chosen income / expense account | |
 | Year-end close | Revenue accounts | Expense accounts; net → Retained earnings |
 | Purchase of a stock item | Inventory (instead of an expense) | — as a normal bill |
 | Sale of a stock item (automatic, separate "cost of goods" entry) | Cost of goods sold | Inventory — at average cost |
@@ -203,6 +205,20 @@ Next level (Phase 2b): units of measure with conversions, lots with expiry
 goods receipts with a GRNI account, landed costs split by value or quantity,
 back-dated postings that re-cost later sales automatically, purchase orders
 and price lists with a minimum price guard.
+
+### Bank reconciliation
+
+A statement (per cash/bank account and date) holds the bank's lines: + money in,
+− money out. Each line is ticked against exactly one posted ledger line of that
+account (`bank_statement_lines.journal_line_id`, unique) — the ledger itself is
+never changed. Automatic matching pairs equal amounts within ten days, preferring
+the same reference. Lines the books do not have yet (charges, interest) are
+posted in one step. A statement can be finished only when every line is matched
+and opening + lines = closing; the next statement must start from that closing
+balance. Reconciled statements are locked by triggers, and the `journal.reversed`
+listener refuses to reverse an entry they contain. An entry that was reversed
+(a voided payment or transfer) cancels out with its reversal and is left out of
+the "not yet at the bank" list.
 
 ## 5. Reports
 
