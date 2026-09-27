@@ -146,6 +146,9 @@ const ar: Dictionary = {
     priceLists: 'قوائم الأسعار',
   },
   shell: {
+    menu: 'القائمة الرئيسية',
+    menuTop: 'القوائم في الأعلى',
+    menuSide: 'القوائم على الجانب',
     searchPlaceholder: 'ابحث أو انتقل إلى…',
     openMenu: 'فتح القائمة',
     themeLight: 'الوضع الفاتح',

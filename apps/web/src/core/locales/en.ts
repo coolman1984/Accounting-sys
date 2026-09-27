@@ -144,6 +144,9 @@ const en = {
     priceLists: 'Price lists',
   },
   shell: {
+    menu: 'Main menu',
+    menuTop: 'Menus across the top',
+    menuSide: 'Menus on the side',
     searchPlaceholder: 'Search or jump to…',
     openMenu: 'Open menu',
     themeLight: 'Light theme',

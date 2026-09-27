@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
-import { KeyRound, LogOut, Menu, Search } from 'lucide-react';
+import { KeyRound, LogOut, Menu, PanelLeft, PanelTop, Search } from 'lucide-react';
 import { useI18n } from '../core/i18n';
 import { useSession } from '../core/session';
 import { api } from '../core/api';
@@ -8,6 +8,17 @@ import { SECTION_ORDER, type Command, type NavItem } from '../core/registry';
 import { Kbd, LangToggle, Logo, modKey, ThemeToggle } from '../ui/Brand';
 import { CommandPalette } from './CommandPalette';
 import { ChangePasswordDialog } from './ChangePassword';
+import { TopNav } from './TopNav';
+
+type Layout = 'sidebar' | 'topbar';
+const LAYOUT_KEY = 'mizan.layout';
+const readLayout = (): Layout => {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === 'topbar' ? 'topbar' : 'sidebar';
+  } catch {
+    return 'sidebar';
+  }
+};
 
 export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[] }) {
   const { t } = useI18n();
@@ -18,6 +29,17 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
   const [pwd, setPwd] = useState(false);
   const location = useLocation();
   const menuRef = useRef<HTMLDivElement>(null);
+  // Menus on the side or across the top — a per-computer preference.
+  const [layout, setLayout] = useState<Layout>(readLayout);
+  const switchLayout = () => {
+    const next: Layout = layout === 'sidebar' ? 'topbar' : 'sidebar';
+    setLayout(next);
+    try {
+      localStorage.setItem(LAYOUT_KEY, next);
+    } catch {
+      /* private mode */
+    }
+  };
 
   useEffect(() => setNavOpen(false), [location.pathname]);
 
@@ -57,7 +79,7 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
     .toUpperCase();
 
   return (
-    <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
+    <div className={`shell layout-${layout} ${navOpen ? 'nav-open' : ''}`}>
       <aside className="sidebar">
         <div className="brand">
           <Logo company={company?.name} />
@@ -89,6 +111,14 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
           <button className="btn btn-ghost btn-icon mobile-only" onClick={() => setNavOpen(true)} aria-label={t('shell.openMenu')}>
             <Menu />
           </button>
+          {layout === 'topbar' && (
+            <>
+              <div className="topbar-brand">
+                <Logo company={company?.name} />
+              </div>
+              <TopNav sections={sections} />
+            </>
+          )}
           <button className="search-trigger" onClick={() => setPalette(true)} aria-label={t('shell.searchPlaceholder')}>
             <Search />
             <span className="label-text">{t('shell.searchPlaceholder')}</span>
@@ -98,6 +128,14 @@ export function AppShell({ nav, commands }: { nav: NavItem[]; commands: Command[
             </span>
           </button>
           <div className="right">
+            <button
+              className="btn btn-ghost btn-icon desktop-only"
+              onClick={switchLayout}
+              title={layout === 'sidebar' ? t('shell.menuTop') : t('shell.menuSide')}
+              aria-label={layout === 'sidebar' ? t('shell.menuTop') : t('shell.menuSide')}
+            >
+              {layout === 'sidebar' ? <PanelTop /> : <PanelLeft className="flip-rtl" />}
+            </button>
             <ThemeToggle />
             <LangToggle onChange={(l) => void api.put('/auth/me', { locale: l }).catch(() => undefined)} />
             <div ref={menuRef} style={{ position: 'relative' }}>
