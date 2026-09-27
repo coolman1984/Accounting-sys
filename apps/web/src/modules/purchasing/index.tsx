@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Ban, ClipboardList, FilePlus, Lock, LockOpen, Pencil, PackageCheck, Plus, Printer, Search, ShoppingCart, Trash2 } from 'lucide-react';
+import { Ban, ClipboardList, FilePlus, Lock, LockOpen, Pencil, PackageCheck, Plus, Printer, ShoppingCart, Trash2 } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useDate, useErrorText } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
@@ -8,7 +8,8 @@ import { useSession } from '../../core/session';
 import { api } from '../../core/api';
 import { formatBp } from '../../core/format';
 import type { Paged } from '../../core/types';
-import { PageHeader, Loading, EmptyState, ErrorBlock, Pager } from '../../ui/Page';
+import { PageHeader, Loading, EmptyState, ErrorBlock } from '../../ui/Page';
+import { DataGrid, type Column, type Preset } from '../../ui/DataGrid';
 import { Button } from '../../ui/Button';
 import { Card, CardHeader } from '../../ui/Card';
 import { Badge, type Tone } from '../../ui/Badge';
@@ -41,13 +42,27 @@ function Progress({ ratio }: { ratio: number | null }) {
 
 function PoList() {
   const { t } = useI18n();
-  const date = useDate();
   const { can } = useSession();
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
-  const [q, setQ] = useState('');
-  const [offset, setOffset] = useState(0);
-  const { data, isLoading } = useApi<Paged<any>>('/purchase-orders', { status, q, limit: 50, offset });
+  const { data, isLoading } = useApi<Paged<any>>('/purchase-orders', { limit: 20000 });
+  const columns = useMemo<Column<any>[]>(
+    () => [
+      { id: 'number', header: t('common.number'), pinned: true, nowrap: true, value: (r) => r.number, render: (r) => <span style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</span> },
+      { id: 'supplier', header: t('docs.supplier'), type: 'enum', value: (r) => r.supplier_name },
+      { id: 'date', header: t('common.date'), type: 'date', nowrap: true, value: (r) => r.date },
+      { id: 'expected', header: t('adv.expectedDate'), type: 'date', nowrap: true, value: (r) => r.expected_date },
+      { id: 'reference', header: t('common.reference'), hidden: true, value: (r) => r.reference },
+      { id: 'received', header: t('adv.received'), type: 'number', value: (r) => Math.round((r.received_ratio ?? 0) * 100), format: (v) => `${v}%`, render: (r) => <Progress ratio={r.received_ratio} /> },
+      { id: 'billed', header: t('adv.billed'), type: 'number', value: (r) => Math.round((r.billed_ratio ?? 0) * 100), format: (v) => `${v}%`, render: (r) => <Progress ratio={r.billed_ratio} /> },
+      { id: 'total', header: t('common.total'), type: 'money', total: true, value: (r) => (r.status === 'cancelled' ? 0 : r.total), render: (r) => <Money v={r.total} /> },
+      { id: 'status', header: t('common.status'), type: 'enum', value: (r) => r.status, format: (v) => t('adv.poStatus.' + v), render: (r) => <PoStatus status={r.status} /> },
+    ],
+    [t],
+  );
+  const presets = useMemo<Preset<any>[]>(
+    () => ['draft', 'open', 'closed', 'cancelled'].map((k) => ({ id: k, label: t('adv.poStatus.' + k), test: (r: any) => r.status === k })),
+    [t],
+  );
   return (
     <div className="page">
       <PageHeader
@@ -61,68 +76,17 @@ function PoList() {
           )
         }
       />
-      <div className="toolbar">
-        <div className="input-group">
-          <Search />
-          <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => (setQ(e.target.value), setOffset(0))} />
-        </div>
-        <div className="segmented">
-          {['', 'draft', 'open', 'closed', 'cancelled'].map((s) => (
-            <button key={s} aria-pressed={status === s} onClick={() => (setStatus(s), setOffset(0))}>
-              {s ? t('adv.poStatus.' + s) : t('common.all')}
-            </button>
-          ))}
-        </div>
-      </div>
-      <Card className="table-card">
-        {isLoading ? (
-          <Loading />
-        ) : !data?.rows.length ? (
-          <EmptyState icon={<ShoppingCart size={22} />} title={t('common.noResults')} />
-        ) : (
-          <>
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t('common.number')}</th>
-                    <th>{t('docs.supplier')}</th>
-                    <th>{t('common.date')}</th>
-                    <th>{t('adv.expectedDate')}</th>
-                    <th className="end">{t('adv.received')}</th>
-                    <th className="end">{t('adv.billed')}</th>
-                    <th className="end">{t('common.total')}</th>
-                    <th>{t('common.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((r) => (
-                    <tr key={r.id} className="clickable" onClick={() => navigate(`/purchasing/orders/${r.id}`)}>
-                      <td style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</td>
-                      <td>{r.supplier_name}</td>
-                      <td className="nowrap">{date(r.date)}</td>
-                      <td className="nowrap muted">{r.expected_date ? date(r.expected_date) : '—'}</td>
-                      <td className="end">
-                        <Progress ratio={r.received_ratio} />
-                      </td>
-                      <td className="end">
-                        <Progress ratio={r.billed_ratio} />
-                      </td>
-                      <td className="end">
-                        <Money v={r.total} />
-                      </td>
-                      <td>
-                        <PoStatus status={r.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pager total={data.total} limit={50} offset={offset} onChange={setOffset} />
-          </>
-        )}
-      </Card>
+      <DataGrid
+        id="purchase-orders"
+        rows={data?.rows}
+        loading={isLoading}
+        columns={columns}
+        presets={presets}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => navigate(`/purchasing/orders/${r.id}`)}
+        exportName={t('adv.purchaseOrders')}
+        empty={<EmptyState icon={<ShoppingCart size={22} />} title={t('common.noResults')} text={t('adv.poSubtitle')} />}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Download, FilePlus, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, Truck, Users, Wallet } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
@@ -17,6 +17,7 @@ import { Money } from '../../ui/Money';
 import { Input } from '../../ui/Field';
 import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
+import { DataGrid, type Column, type Preset } from '../../ui/DataGrid';
 import { PartyDialog } from './PartyDialog';
 
 type Kind = 'customer' | 'supplier';
@@ -26,80 +27,82 @@ function PartyList({ kind }: { kind: Kind }) {
   const { t } = useI18n();
   const { can } = useSession();
   const navigate = useNavigate();
-  const [q, setQ] = useState('');
   const [dialog, setDialog] = useState(false);
-  const { data, isLoading } = useApi<Paged<Party>>('/parties', { kind, q, limit: 500 });
+  const { data, isLoading } = useApi<Paged<Party>>('/parties', { kind, limit: 20000 });
   const Icon = kind === 'customer' ? Users : Truck;
   const balanceOf = (p: Party) => (kind === 'customer' ? p.receivable : p.payable);
 
+  const columns = useMemo<Column<Party>[]>(
+    () => [
+      { id: 'code', header: t('common.code'), pinned: true, width: 90, value: (p) => p.code, render: (p) => <span className="num faint">{p.code}</span> },
+      {
+        id: 'name',
+        header: t('common.name'),
+        value: (p) => p.name,
+        render: (p) => (
+          <span style={{ fontWeight: 550 }}>
+            {p.name}
+            {p.name_alt && <div className="faint" style={{ fontSize: 12, fontWeight: 400 }}>{p.name_alt}</div>}
+          </span>
+        ),
+      },
+      { id: 'phone', header: t('common.phone'), value: (p) => p.phone, render: (p) => <span className="muted" dir="ltr">{p.phone}</span> },
+      { id: 'email', header: t('common.email'), hidden: true, value: (p) => p.email },
+      { id: 'city', header: t('common.city'), type: 'enum', value: (p) => p.city },
+      { id: 'country', header: t('common.country'), type: 'enum', hidden: true, value: (p) => p.country },
+      { id: 'taxNumber', header: t('common.taxNumber'), hidden: true, value: (p) => p.tax_number },
+      { id: 'terms', header: t('parties.terms'), type: 'number', hidden: true, value: (p) => p.payment_terms_days },
+      ...(kind === 'customer'
+        ? [{ id: 'limit', header: t('parties.creditLimit'), type: 'money' as const, hidden: true, value: (p: Party) => p.credit_limit }]
+        : []),
+      {
+        id: 'active',
+        header: t('common.status'),
+        type: 'enum',
+        hidden: true,
+        value: (p) => (p.is_active ? 'active' : 'inactive'),
+        format: (v) => t('common.' + v),
+      },
+      {
+        id: 'balance',
+        header: kind === 'customer' ? t('parties.receivable') : t('parties.payable'),
+        type: 'money',
+        total: true,
+        value: balanceOf,
+        render: (p) => <Money v={balanceOf(p)} dashZero tone />,
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, kind],
+  );
+  const presets = useMemo<Preset<Party>[]>(
+    () => [
+      { id: 'balance', label: kind === 'customer' ? t('parties.receivable') : t('parties.payable'), test: (p) => balanceOf(p) !== 0 },
+      { id: 'inactive', label: t('common.inactive'), test: (p) => !p.is_active },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, kind],
+  );
+  const newBtn = can('parties.write') && (
+    <Button variant="primary" icon={<Plus />} onClick={() => setDialog(true)}>
+      {t(`parties.${kind}s.new`)}
+    </Button>
+  );
+
   return (
     <div className="page">
-      <PageHeader
-        title={t(`parties.${kind}s.title`)}
-        subtitle={t(`parties.${kind}s.subtitle`)}
-        actions={
-          can('parties.write') && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setDialog(true)}>
-              {t(`parties.${kind}s.new`)}
-            </Button>
-          )
-        }
+      <PageHeader title={t(`parties.${kind}s.title`)} subtitle={t(`parties.${kind}s.subtitle`)} actions={newBtn} />
+      <DataGrid
+        id={`parties.${kind}`}
+        rows={data?.rows}
+        loading={isLoading}
+        columns={columns}
+        presets={presets}
+        rowKey={(p) => p.id}
+        onRowClick={(p) => navigate(`${base(kind)}/${p.id}`)}
+        exportName={t(`parties.${kind}s.title`)}
+        empty={<EmptyState icon={<Icon size={22} />} title={t('common.noResults')} action={newBtn} />}
       />
-      <div className="toolbar">
-        <div className="input-group">
-          <Search />
-          <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-      </div>
-      <Card className="table-card">
-        {isLoading ? (
-          <Loading />
-        ) : !data?.rows.length ? (
-          <EmptyState
-            icon={<Icon size={22} />}
-            title={t('common.noResults')}
-            action={
-              can('parties.write') && (
-                <Button variant="primary" icon={<Plus />} onClick={() => setDialog(true)}>
-                  {t(`parties.${kind}s.new`)}
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t('common.code')}</th>
-                  <th>{t('common.name')}</th>
-                  <th>{t('common.phone')}</th>
-                  <th>{t('common.city')}</th>
-                  <th className="end">{kind === 'customer' ? t('parties.receivable') : t('parties.payable')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((p) => (
-                  <tr key={p.id} className="clickable" onClick={() => navigate(`${base(kind)}/${p.id}`)} style={{ opacity: p.is_active ? 1 : 0.55 }}>
-                    <td className="num faint">{p.code}</td>
-                    <td style={{ fontWeight: 550 }}>
-                      {p.name}
-                      {p.name_alt && <div className="faint" style={{ fontSize: 12, fontWeight: 400 }}>{p.name_alt}</div>}
-                    </td>
-                    <td className="muted" dir="ltr" style={{ textAlign: 'start' }}>
-                      {p.phone}
-                    </td>
-                    <td className="muted">{p.city}</td>
-                    <td className="end">
-                      <Money v={balanceOf(p)} dashZero tone />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
       <PartyDialog open={dialog} onClose={() => setDialog(false)} kind={kind} onSaved={(id) => navigate(`${base(kind)}/${id}`)} />
     </div>
   );
