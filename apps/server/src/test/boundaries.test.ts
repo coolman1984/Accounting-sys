@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 /**
@@ -46,4 +46,46 @@ test('contracts are types and constants only — no module code', () => {
     const text = readFileSync(file, 'utf8');
     assert.ok(!/from\s+['"]\.\.\/modules/.test(text), `${relative(SRC, file)} imports a module`);
   }
+});
+
+/**
+ * The same rule for the web app: a module folder imports only core/, ui/,
+ * engines/, lib/, styles/ and itself; engines and ui never reach into modules.
+ */
+const WEB = resolve(SRC, '../../web/src');
+const webFiles = (dir: string): string[] =>
+  readdirSync(dir).flatMap((f) => {
+    const p = join(dir, f);
+    return statSync(p).isDirectory() ? webFiles(p) : /\.tsx?$/.test(p) ? [p] : [];
+  });
+
+test('web modules only use core, ui and engines', { skip: !existsSync(WEB) }, () => {
+  const offences: string[] = [];
+  for (const file of webFiles(WEB)) {
+    const rel = relative(WEB, file);
+    const [top, own] = rel.split(sep);
+    if (rel === join('modules', 'index.ts')) continue; // the edition's list
+    for (const m of readFileSync(file, 'utf8').matchAll(/(?:import|export)[^'"]*from\s+['"](\.[^'"]+)['"]/g)) {
+      const [ttop, town] = relative(WEB, resolve(join(file, '..'), m[1])).split(sep);
+      const bad =
+        (top === 'modules' && ttop === 'modules' && town !== own) ||
+        ((top === 'engines' || top === 'ui' || top === 'core') && ttop === 'modules') ||
+        ((top === 'ui' || top === 'core') && ttop === 'engines');
+      if (bad) offences.push(`${rel} → ${m[1]}`);
+    }
+  }
+  assert.deepEqual(offences, [], 'web cross-module imports:\n' + offences.join('\n'));
+});
+
+test('every module folder belongs to an app in the edition map', { skip: !existsSync(join(SRC, '../../../scripts/edition.mjs')) }, async () => {
+  const { APPS } = await import(join(SRC, '../../../scripts/edition.mjs'));
+  const engines = new Set(['parties', 'catalog', 'documents']); // pulled in through dependsOn
+  const mapped = { server: new Set<string>(engines), web: new Set<string>() };
+  for (const a of Object.values(APPS) as { server: string[]; web: string[] }[]) {
+    a.server.forEach((m) => mapped.server.add(m));
+    a.web.forEach((m) => mapped.web.add(m));
+  }
+  const dirs = (d: string) => readdirSync(d).filter((f) => statSync(join(d, f)).isDirectory());
+  assert.deepEqual(dirs(join(SRC, 'modules')).filter((m) => !mapped.server.has(m)), [], 'server modules missing from scripts/edition.mjs');
+  if (existsSync(WEB)) assert.deepEqual(dirs(join(WEB, 'modules')).filter((m) => !mapped.web.has(m)), [], 'web modules missing from scripts/edition.mjs');
 });
