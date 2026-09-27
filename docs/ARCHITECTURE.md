@@ -43,6 +43,8 @@ interface AppModule {
   permissions?: string[];     // e.g. 'sales.post'
   setup?(ctx): void;          // provide a typed service, subscribe to events
   routes?(router, ctx): void; // mount HTTP endpoints under /api
+  apps?: AppManifest[];       // the switchable apps this module provides
+  health?(ctx): HealthCheck[];// self-checks of the module's own data
 }
 ```
 
@@ -58,11 +60,46 @@ each other's tables for writes:
 Adding a feature (inventory, payroll, fixed assets…) = write a module, add it
 to `modules/index.ts`. The kernel does not change.
 
+### Apps — sell only what a customer needs
+
+Modules are how the code is built; **apps** are what a company switches on
+(`kernel/apps.ts`, the Apps page, and a step in the setup wizard):
+
+| App | Unlocks | Needs |
+|---|---|---|
+| Accounting (core, always on) | accounts, journal, fiscal years, reports, settings | — |
+| Sales | `sales.*`, customers, products | — |
+| Purchases | `purchases.*`, suppliers, products | — |
+| Cash & bank | `payments.*` | — |
+| Inventory | `inventory.*` (warehouses, lots, receipts, landed costs) | — |
+| Purchase orders | `purchasing.*` | Purchases |
+| Price lists | `pricing.*` | Sales |
+
+A module declares the apps it provides; one module can serve several
+(documents → Sales and Purchases) and several modules can add to one app.
+Switching an app off removes its permissions from every user on the next
+request (no restart), its listeners go to sleep (without Inventory, products
+are bought as expenses and sold without stock checks), and its data stays for
+when it is switched back on. Voids always run, so turning an app off never
+leaves stock or balances half-undone.
+
+### Health checks — find faults by module
+
+Every module checks its own figures (`health()`): the ledger balances, every
+posted document has its entry, payments are not over-applied, stock value
+equals the inventory accounts, lots add up to warehouses, GRNI equals its
+account, order progress stays within the orders, the database file is intact,
+a recent backup exists. `/api/system/health` runs each module separately — one
+failing check never hides the others — and the **System health** page shows the
+result per module, so a problem points straight at the part that has it.
+
 ### Web
 
 The front end mirrors this. A `WebModule` contributes navigation items, pages
 and command-palette actions; the shell composes whatever is installed
-(`web/src/core/registry.ts`, `web/src/modules/index.ts`).
+(`web/src/core/registry.ts`, `web/src/modules/index.ts`). Menu items, commands
+and report tiles carry the app they belong to (`app: 'inventory'`), so the
+menus follow the Apps page.
 
 ## 3. Accounting core — rules that can never be broken
 
@@ -140,9 +177,11 @@ through events — the documents module does not know it exists.
   invoice, barcode-ready item search, stock panel on every document, dashboard
   widget, report tiles — all contributed through the web module slots.
 
-Known limits (see roadmap): stock checks use the current balance (not the
-balance at a back-dated date), one unit of measure per item, no batches /
-expiry / serial numbers yet.
+Next level (Phase 2b): units of measure with conversions, lots with expiry
+(first to expire goes first, expired lots are never sold), serial numbers,
+goods receipts with a GRNI account, landed costs split by value or quantity,
+back-dated postings that re-cost later sales automatically, purchase orders
+and price lists with a minimum price guard.
 
 ## 5. Reports
 
@@ -184,5 +223,11 @@ All reports are computed from posted ledger movements:
 * Keyboard-first data entry: searchable pickers, Ctrl+S save draft,
   Ctrl+Enter post, live balance bar in the journal editor, live totals in
   documents.
+* **Excel-like lists** (`web/src/ui/DataGrid.tsx`): every column sorts and
+  filters on its own (value lists with counts, ranges, dates), quick filters,
+  group by any column with subtotals, show/hide columns, saved favourite views
+  and CSV export of exactly what is shown — the same grid on every list.
+* **Menus on the side or across the top** (Odoo-style dropdowns), switched
+  with one click and remembered per computer.
 * Printable invoices and reports; CSV export (Excel-friendly UTF-8 BOM).
 * Responsive down to phones (slide-in navigation).
