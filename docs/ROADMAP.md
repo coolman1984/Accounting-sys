@@ -33,14 +33,14 @@ away.
 - [x] Reports: stock on hand, valuation reconciled to the ledger, movement summary,
       reorder suggestions, item profitability; dashboard widget
 
-## Phase 2b — Inventory, next level
+## Phase 2b — Inventory, next level ✅
 
-- [ ] Units of measure with conversions (box of 12 → pieces)
-- [ ] Batches / lots with expiry dates (FEFO), serial numbers
-- [ ] Landed costs (freight, customs) spread over received goods
-- [ ] Back-dated postings with automatic cost revaluation
-- [ ] Price lists per customer group; minimum selling price guard
-- [ ] Purchase orders from the reorder report; goods received notes
+- [x] Units of measure with conversions (box of 12 → pieces)
+- [x] Batches / lots with expiry dates (FEFO), serial numbers
+- [x] Landed costs (freight, customs) spread over received goods
+- [x] Back-dated postings with automatic cost revaluation
+- [x] Price lists per customer group; minimum selling price guard
+- [x] Purchase orders from the reorder report; goods received notes
 
 ## Phase 2 — Operations
 

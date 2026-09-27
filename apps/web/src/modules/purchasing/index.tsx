@@ -1,0 +1,317 @@
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
+import { Ban, ClipboardList, FilePlus, Lock, LockOpen, Pencil, PackageCheck, Plus, Printer, Search, ShoppingCart, Trash2 } from 'lucide-react';
+import type { WebModule } from '../../core/registry';
+import { useApi, useApiMutation, useDate, useErrorText } from '../../core/hooks';
+import { useI18n } from '../../core/i18n';
+import { useSession } from '../../core/session';
+import { api } from '../../core/api';
+import { formatBp } from '../../core/format';
+import type { Paged } from '../../core/types';
+import { PageHeader, Loading, EmptyState, ErrorBlock, Pager } from '../../ui/Page';
+import { Button } from '../../ui/Button';
+import { Card, CardHeader } from '../../ui/Card';
+import { Badge, type Tone } from '../../ui/Badge';
+import { Money } from '../../ui/Money';
+import { useConfirm } from '../../ui/Dialog';
+import { useToast } from '../../ui/Toast';
+import { Qty } from '../inventory/common';
+import { PoEditor } from './PoEditor';
+
+const TONE: Record<string, Tone> = { draft: 'neutral', open: 'blue', closed: 'green', cancelled: 'red' };
+
+export function PoStatus({ status }: { status: string }) {
+  const { t } = useI18n();
+  return <Badge tone={TONE[status] ?? 'neutral'}>{t('adv.poStatus.' + status)}</Badge>;
+}
+
+function Progress({ ratio }: { ratio: number | null }) {
+  const pct = Math.round(Math.min(1, ratio ?? 0) * 100);
+  return (
+    <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+      <span style={{ width: 54, height: 6, borderRadius: 3, background: 'var(--bg-muted)', overflow: 'hidden', display: 'inline-block' }}>
+        <span style={{ display: 'block', width: `${pct}%`, height: '100%', background: pct === 100 ? 'var(--success)' : 'var(--primary)' }} />
+      </span>
+      <span className="num faint" style={{ minWidth: 34, fontSize: 12 }}>
+        {pct}%
+      </span>
+    </span>
+  );
+}
+
+function PoList() {
+  const { t } = useI18n();
+  const date = useDate();
+  const { can } = useSession();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('');
+  const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const { data, isLoading } = useApi<Paged<any>>('/purchase-orders', { status, q, limit: 50, offset });
+  return (
+    <div className="page">
+      <PageHeader
+        title={t('adv.purchaseOrders')}
+        subtitle={t('adv.poSubtitle')}
+        actions={
+          can('purchasing.write') && (
+            <Link to="/purchasing/orders/new" className="btn btn-primary">
+              <Plus /> {t('adv.newPo')}
+            </Link>
+          )
+        }
+      />
+      <div className="toolbar">
+        <div className="input-group">
+          <Search />
+          <input className="input" placeholder={t('common.search')} value={q} onChange={(e) => (setQ(e.target.value), setOffset(0))} />
+        </div>
+        <div className="segmented">
+          {['', 'draft', 'open', 'closed', 'cancelled'].map((s) => (
+            <button key={s} aria-pressed={status === s} onClick={() => (setStatus(s), setOffset(0))}>
+              {s ? t('adv.poStatus.' + s) : t('common.all')}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Card className="table-card">
+        {isLoading ? (
+          <Loading />
+        ) : !data?.rows.length ? (
+          <EmptyState icon={<ShoppingCart size={22} />} title={t('common.noResults')} />
+        ) : (
+          <>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t('common.number')}</th>
+                    <th>{t('docs.supplier')}</th>
+                    <th>{t('common.date')}</th>
+                    <th>{t('adv.expectedDate')}</th>
+                    <th className="end">{t('adv.received')}</th>
+                    <th className="end">{t('adv.billed')}</th>
+                    <th className="end">{t('common.total')}</th>
+                    <th>{t('common.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((r) => (
+                    <tr key={r.id} className="clickable" onClick={() => navigate(`/purchasing/orders/${r.id}`)}>
+                      <td style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</td>
+                      <td>{r.supplier_name}</td>
+                      <td className="nowrap">{date(r.date)}</td>
+                      <td className="nowrap muted">{r.expected_date ? date(r.expected_date) : '—'}</td>
+                      <td className="end">
+                        <Progress ratio={r.received_ratio} />
+                      </td>
+                      <td className="end">
+                        <Progress ratio={r.billed_ratio} />
+                      </td>
+                      <td className="end">
+                        <Money v={r.total} />
+                      </td>
+                      <td>
+                        <PoStatus status={r.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pager total={data.total} limit={50} offset={offset} onChange={setOffset} />
+          </>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PoView() {
+  const { id } = useParams();
+  const { t, pick } = useI18n();
+  const date = useDate();
+  const { can } = useSession();
+  const navigate = useNavigate();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const errText = useErrorText();
+  const { data: o, isLoading, error } = useApi<any>(`/purchase-orders/${id}`);
+  const act = useApiMutation((fn: () => Promise<unknown>) => fn());
+  if (isLoading) return <Loading />;
+  if (error || !o) return <ErrorBlock message={errText(error)} />;
+  const run = (fn: () => Promise<unknown>, msg: string, after?: () => void) =>
+    act.mutate(fn, { onSuccess: () => (toast.success(msg), after?.()), onError: (x) => toast.error(errText(x)) });
+  const toReceive = o.lines.some((l: any) => l.item_id && l.to_receive > 0);
+  const toBill = o.lines.some((l: any) => l.to_bill > 0);
+  return (
+    <div className="page">
+      <PageHeader
+        crumbs={[{ to: '/purchasing/orders', label: t('adv.purchaseOrders') }]}
+        title={o.number ?? `${t('adv.purchaseOrder')} · ${t('status.draft')}`}
+        badge={<PoStatus status={o.status} />}
+        subtitle={`${o.supplier.name} · ${date(o.date, 'long')}`}
+        actions={
+          <>
+            <Button icon={<Printer />} onClick={() => window.print()}>
+              {t('common.print')}
+            </Button>
+            {o.status === 'draft' && can('purchasing.write') && (
+              <>
+                <Button
+                  variant="danger"
+                  icon={<Trash2 />}
+                  onClick={async () => {
+                    if ((await confirm({ title: t('common.areYouSure'), danger: true, confirmLabel: t('common.delete') })).ok)
+                      run(() => api.del(`/purchase-orders/${o.id}`), t('common.deleted'), () => navigate('/purchasing/orders'));
+                  }}
+                >
+                  {t('common.delete')}
+                </Button>
+                <Link to={`/purchasing/orders/${o.id}/edit`} className="btn">
+                  <Pencil /> {t('common.edit')}
+                </Link>
+              </>
+            )}
+            {o.status === 'draft' && can('purchasing.approve') && (
+              <Button variant="primary" loading={act.isPending} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/approve`), t('common.saved'))}>
+                {t('adv.approve')}
+              </Button>
+            )}
+            {(o.status === 'draft' || o.status === 'open') && can('purchasing.write') && !o.lines.some((l: any) => l.received_base || l.billed_base) && (
+              <Button variant="danger" icon={<Ban />} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/cancel`), t('common.saved'))}>
+                {t('adv.cancelOrder')}
+              </Button>
+            )}
+            {o.status === 'open' && can('purchasing.write') && (
+              <Button icon={<Lock />} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/close`), t('common.saved'))}>
+                {t('adv.closeOrder')}
+              </Button>
+            )}
+            {o.status === 'closed' && can('purchasing.write') && (
+              <Button icon={<LockOpen />} onClick={() => run(() => api.post(`/purchase-orders/${o.id}/reopen`), t('common.saved'))}>
+                {t('adv.reopenOrder')}
+              </Button>
+            )}
+            {o.status === 'open' && toBill && can('purchases.write') && (
+              <Link to={`/purchases/bills/new?fromPo=${o.id}`} className="btn">
+                <FilePlus /> {t('adv.createBill')}
+              </Link>
+            )}
+            {o.status === 'open' && toReceive && can('inventory.write') && (
+              <Link to={`/inventory/receipts/new?po=${o.id}`} className="btn btn-primary">
+                <PackageCheck /> {t('adv.receiveGoods')}
+              </Link>
+            )}
+          </>
+        }
+      />
+      <div className="stack" style={{ '--gap': '20px' } as React.CSSProperties}>
+        <Card className="table-card">
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th className="shrink">#</th>
+                  <th>{t('common.description')}</th>
+                  <th className="end">{t('docs.qty')}</th>
+                  <th className="end">{t('docs.price')}</th>
+                  <th className="end">{t('docs.discount')}</th>
+                  <th className="end">{t('adv.received')}</th>
+                  <th className="end">{t('adv.billed')}</th>
+                  <th className="end">{t('docs.lineTotal')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {o.lines.map((l: any) => (
+                  <tr key={l.id}>
+                    <td className="faint">{l.line_no}</td>
+                    <td>
+                      {l.description}
+                      {l.sku && <span className="faint" style={{ fontSize: 12, marginInline: 8 }}>{l.sku}</span>}
+                    </td>
+                    <td className="end nowrap">
+                      <Qty v={l.quantity} unit={l.unit_id ? pick(l.unit_name_en, l.unit_name_ar) : l.base_unit} />
+                    </td>
+                    <td className="end">
+                      <Money v={l.unit_price} />
+                    </td>
+                    <td className="end muted">{l.discount_bp ? formatBp(l.discount_bp) : '—'}</td>
+                    <td className={`end ${l.received_base >= l.base_quantity ? 'success-text' : ''}`}>
+                      <Qty v={l.received_base} />
+                    </td>
+                    <td className={`end ${l.billed_base >= l.base_quantity ? 'success-text' : ''}`}>
+                      <Qty v={l.billed_base} />
+                    </td>
+                    <td className="end">
+                      <Money v={l.total} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={7}>{t('common.total')}</td>
+                  <td className="end">
+                    <Money v={o.total} />
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Card>
+        {(o.receipts.length > 0 || o.bills.length > 0) && (
+          <div className="grid-2">
+            <Card>
+              <CardHeader title={t('adv.receipts')} icon={<PackageCheck size={18} className="muted" />} />
+              <div className="card-body stack" style={{ '--gap': '6px' } as React.CSSProperties}>
+                {o.receipts.map((r: any) => (
+                  <Link key={r.id} to={`/inventory/receipts/${r.id}`} className="row">
+                    <span style={{ fontWeight: 550 }}>{r.number ?? t('status.draft')}</span>
+                    <span className="muted">{date(r.date)}</span>
+                    <span className="spacer" />
+                    <Badge tone={r.status === 'posted' ? 'green' : r.status === 'void' ? 'red' : 'neutral'}>{t('status.' + r.status)}</Badge>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+            <Card>
+              <CardHeader title={t('nav.bills')} icon={<FilePlus size={18} className="muted" />} />
+              <div className="card-body stack" style={{ '--gap': '6px' } as React.CSSProperties}>
+                {o.bills.map((b: any) => (
+                  <Link key={b.id} to={`/purchases/bills/${b.id}`} className="row">
+                    <span style={{ fontWeight: 550 }}>{b.number ?? t('status.draft')}</span>
+                    <span className="muted">{date(b.date)}</span>
+                    <span className="spacer" />
+                    <Badge tone={b.status === 'posted' ? 'green' : b.status === 'void' ? 'red' : 'neutral'}>{t('status.' + b.status)}</Badge>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+        {o.notes && (
+          <Card pad>
+            <div className="label">{t('common.notes')}</div>
+            <p style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{o.notes}</p>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export const purchasingModule: WebModule = {
+  id: 'purchasing',
+  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchases', order: 5, perm: 'purchasing.read' }],
+  routes: [
+    { path: '/purchasing/orders', element: <PoList /> },
+    { path: '/purchasing/orders/new', element: <PoEditor key="new" /> },
+    { path: '/purchasing/orders/:id', element: <PoView /> },
+    { path: '/purchasing/orders/:id/edit', element: <PoEditor key="edit" /> },
+  ],
+  commands: [
+    { id: 'new-po', label: 'adv.newPo', icon: ShoppingCart, group: 'create', to: '/purchasing/orders/new', perm: 'purchasing.write', keywords: 'purchase order po أمر شراء' },
+    { id: 'go-po', label: 'nav.purchaseOrders', icon: ClipboardList, group: 'navigate', to: '/purchasing/orders', perm: 'purchasing.read', keywords: 'أوامر شراء' },
+  ],
+};

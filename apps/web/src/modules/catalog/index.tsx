@@ -21,6 +21,16 @@ import { useConfirm } from '../../ui/Dialog';
 
 // ------------------------------------------------------------------ items
 
+interface UnitRow {
+  id?: number;
+  nameEn: string;
+  nameAr: string;
+  factor: number | null;
+  barcode: string;
+  salePrice: number | null;
+  purchasePrice: number | null;
+}
+
 function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; item: Item | null }) {
   const { t, pick } = useI18n();
   const toast = useToast();
@@ -47,6 +57,10 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
     cogsAccountId: null as number | null,
     reorderLevel: 0 as number | null,
     reorderQty: 0 as number | null,
+    tracking: 'none' as Item['tracking'],
+    requiresExpiry: false,
+    minSalePrice: 0 as number | null,
+    units: [] as UnitRow[],
   };
   const [f, setF] = useState(blank);
   const [err, setErr] = useState('');
@@ -78,6 +92,12 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             cogsAccountId: item.cogs_account_id,
             reorderLevel: item.reorder_level,
             reorderQty: item.reorder_qty,
+            tracking: item.tracking,
+            requiresExpiry: !!item.requires_expiry,
+            minSalePrice: item.min_sale_price,
+            units: item.units
+              .filter((u) => u.is_active)
+              .map((u) => ({ id: u.id, nameEn: u.name_en, nameAr: u.name_ar, factor: u.factor, barcode: u.barcode ?? '', salePrice: u.sale_price, purchasePrice: u.purchase_price })),
           }
         : blank,
     );
@@ -94,6 +114,10 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
         purchasePrice: f.purchasePrice ?? 0,
         reorderLevel: f.reorderLevel ?? 0,
         reorderQty: f.reorderQty ?? 0,
+        minSalePrice: f.minSalePrice ?? 0,
+        units: (f.kind === 'product' && f.tracking !== 'serial' ? f.units : [])
+          .filter((u) => u.nameEn.trim() && u.factor)
+          .map((u) => ({ ...u, nameAr: u.nameAr.trim() || u.nameEn, barcode: u.barcode.trim() || null })),
       },
       { onSuccess: () => (toast.success(t('common.saved')), onClose()), onError: (e) => setErr(errText(e)) },
     );
@@ -180,6 +204,18 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             </div>
             {stock && (
               <div className="grid-2">
+                <Field label={t('adv.tracking')}>
+                  <Select value={f.tracking} onChange={(e) => set('tracking', e.target.value as Item['tracking'])}>
+                    {(['none', 'batch', 'serial'] as const).map((x) => (
+                      <option key={x} value={x}>
+                        {t('adv.trackings.' + x)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="field" style={{ justifyContent: 'flex-end', paddingBottom: 8 }}>
+                  {f.tracking === 'batch' && <Checkbox label={t('adv.requiresExpiry')} checked={f.requiresExpiry} onChange={(v) => set('requiresExpiry', v)} />}
+                </div>
                 <Field label={t('items.reorderLevel')}>
                   <DecimalInput trim scale={QTY_SCALE} value={f.reorderLevel} onChange={(v) => set('reorderLevel', v)} />
                 </Field>
@@ -196,6 +232,67 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             )}
           </div>
         )}
+        {f.kind === 'product' && f.tracking !== 'serial' && (
+          <div className="stack" style={{ '--gap': '8px' } as React.CSSProperties}>
+            <div className="label">{t('adv.units')}</div>
+            <p className="faint" style={{ fontSize: 12.5 }}>
+              {t('adv.unitsHint')}
+            </p>
+            {f.units.length > 0 && (
+              <table className="table table-compact">
+                <thead>
+                  <tr>
+                    <th>{t('common.nameEn')}</th>
+                    <th>{t('common.nameAr')}</th>
+                    <th className="end">{t('adv.contains')}</th>
+                    <th>{t('adv.unitBarcode')}</th>
+                    <th className="end">{t('items.salePrice')}</th>
+                    <th className="end">{t('items.purchasePrice')}</th>
+                    <th className="shrink" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {f.units.map((u, i) => {
+                    const setU = (patch: Partial<UnitRow>) => set('units', f.units.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                    return (
+                      <tr key={i}>
+                        <td>
+                          <Input sm dir="ltr" value={u.nameEn} onChange={(e) => setU({ nameEn: e.target.value })} placeholder="Box" />
+                        </td>
+                        <td>
+                          <Input sm dir="rtl" value={u.nameAr} onChange={(e) => setU({ nameAr: e.target.value })} placeholder="كرتونة" />
+                        </td>
+                        <td style={{ width: 90 }}>
+                          <DecimalInput sm trim scale={QTY_SCALE} value={u.factor} onChange={(v) => setU({ factor: v })} />
+                        </td>
+                        <td>
+                          <Input sm dir="ltr" value={u.barcode} onChange={(e) => setU({ barcode: e.target.value })} />
+                        </td>
+                        <td style={{ width: 110 }}>
+                          <DecimalInput sm scale={scale} value={u.salePrice} onChange={(v) => setU({ salePrice: v })} placeholder={f.salePrice && u.factor ? String(((f.salePrice * u.factor) / 1000 / 10 ** scale).toFixed(scale)) : ''} />
+                        </td>
+                        <td style={{ width: 110 }}>
+                          <DecimalInput sm scale={scale} value={u.purchasePrice} onChange={(v) => setU({ purchasePrice: v })} />
+                        </td>
+                        <td>
+                          <Button size="sm" variant="ghost" iconOnly icon={<Trash2 />} onClick={() => set('units', f.units.filter((_, j) => j !== i))} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+            <div>
+              <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => set('units', [...f.units, { nameEn: '', nameAr: '', factor: null, barcode: '', salePrice: null, purchasePrice: null }])}>
+                {t('adv.addUnit')}
+              </Button>
+            </div>
+          </div>
+        )}
+        <Field label={t('adv.minSalePrice')} hint={t('adv.minSalePriceHint')}>
+          <DecimalInput scale={scale} value={f.minSalePrice} onChange={(v) => set('minSalePrice', v)} />
+        </Field>
         <Field label={t('common.description')}>
           <Textarea rows={2} value={f.description} onChange={(e) => set('description', e.target.value)} />
         </Field>

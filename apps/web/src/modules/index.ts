@@ -7,6 +7,8 @@ import { accountsModule } from './accounts';
 import { journalModule } from './journal';
 import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
+import { purchasingModule } from './purchasing';
+import { pricingModule } from './pricing';
 import { reportsModule } from './reports';
 import { settingsModule } from './settings';
 
@@ -19,6 +21,8 @@ export const webModules: WebModule[] = [
   documentsModule,
   partiesModule,
   inventoryModule,
+  purchasingModule,
+  pricingModule,
   paymentsModule,
   accountsModule,
   journalModule,

@@ -113,7 +113,7 @@ export function ItemPicker({
       (data ?? [])
         .filter((i) => !filter || filter(i))
         // Barcode scanners type the code then Enter: the barcode is searchable too.
-        .map((i) => ({ id: i.id, code: i.sku, label: pick(i.name_en, i.name_ar), search: `${i.name_en} ${i.name_ar} ${i.barcode ?? ''}` })),
+        .map((i) => ({ id: i.id, code: i.sku, label: pick(i.name_en, i.name_ar), search: `${i.name_en} ${i.name_ar} ${i.barcode ?? ''} ${(i.units ?? []).map((u) => u.barcode ?? '').join(' ')}` })),
     [data, pick, filter],
   );
   return (

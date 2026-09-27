@@ -21,7 +21,7 @@ import { useSlot } from '../../core/slots';
 export function DocumentView({ kind }: { kind: DocKind }) {
   const { id } = useParams();
   const ui = KIND_UI[kind];
-  const { t, locale } = useI18n();
+  const { t, locale, pick } = useI18n();
   const date = useDate();
   const { fmt } = useMoney();
   const { can, company } = useSession();
@@ -201,13 +201,24 @@ export function DocumentView({ kind }: { kind: DocKind }) {
                     <td className="faint">{l.line_no}</td>
                     <td>
                       {l.description}
+                      {!!l.ext?.lots?.length && (
+                        <div className="faint mono" style={{ fontSize: 11.5 }}>
+                          {l.ext.lots.map((x) => x.lotNo + (x.expiry ? ` (${x.expiry})` : '')).join(' · ')}
+                        </div>
+                      )}
                       {l.item_sku && (
                         <span className="faint" style={{ fontSize: 12, marginInline: 8, unicodeBidi: 'isolate' }}>
                           {l.item_sku}
                         </span>
                       )}
                     </td>
-                    <td className="end num">{formatQty(l.quantity, locale)}</td>
+                    <td className="end num nowrap">
+                      {formatQty(l.quantity, locale)}
+                      <span className="faint" style={{ fontSize: 12 }}>
+                        {' '}
+                        {l.unit_id ? pick(l.unit_name_en, l.unit_name_ar) : l.base_unit ?? ''}
+                      </span>
+                    </td>
                     <td className="end">
                       <Money v={l.unit_price} />
                     </td>
