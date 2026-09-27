@@ -290,7 +290,7 @@ export function DocumentView({ kind }: { kind: DocKind }) {
                   {d.settlements.map((s) => (
                     <tr key={s.id}>
                       <td>
-                        <Link to={s.source_type === 'credit' ? `${creditBase}/${s.source_id}` : `${payBase}/${s.source_id}`}>
+                        <Link to={s.source_type === 'credit' ? `${creditBase}/${s.source_id}` : s.source_type === 'cheque' ? `/cheques/${s.source_id}` : `${payBase}/${s.source_id}`}>
                           {s.source_number}
                         </Link>
                       </td>

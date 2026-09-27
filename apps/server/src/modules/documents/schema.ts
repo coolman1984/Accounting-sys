@@ -166,4 +166,28 @@ export const migrations: Migration[] = [
       BEGIN SELECT RAISE(ABORT, 'documents: posted documents are frozen'); END;
     `,
   },
+  {
+    // Cheques (post-dated cheques app) settle invoices and bills too: widen the source types.
+    id: '006_cheque_settlements',
+    up: `
+      CREATE TABLE settlements_new (
+        id                 INTEGER PRIMARY KEY,
+        document_id        INTEGER NOT NULL REFERENCES documents(id),
+        source_type        TEXT NOT NULL CHECK (source_type IN ('payment', 'credit', 'cheque')),
+        source_id          INTEGER NOT NULL,
+        source_number      TEXT,
+        amount             INTEGER NOT NULL CHECK (amount > 0),
+        date               TEXT NOT NULL,
+        created_at         TEXT NOT NULL,
+        base_amount        INTEGER NOT NULL DEFAULT 0,
+        source_base_amount INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO settlements_new (id, document_id, source_type, source_id, source_number, amount, date, created_at, base_amount, source_base_amount)
+        SELECT id, document_id, source_type, source_id, source_number, amount, date, created_at, base_amount, source_base_amount FROM settlements;
+      DROP TABLE settlements;
+      ALTER TABLE settlements_new RENAME TO settlements;
+      CREATE INDEX settlements_doc ON settlements(document_id);
+      CREATE INDEX settlements_source ON settlements(source_type, source_id);
+    `,
+  },
 ];

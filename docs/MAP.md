@@ -24,6 +24,9 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **budget** | `budget` | — | `budget` |
 | **cashflow** | `cashflow` | — | `cashflow` |
 | **mfg** | `manufacturing` | `inventory` | `mfg` |
+| **assets** | `assets` | — | `assets` |
+| **payroll** | `payroll` | — | `payroll` |
+| **cheques** | `cheques` | — | `cheques` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -33,8 +36,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 39 | one folder per module (below) |
-| `apps/server/src/test/` | 17 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 44 | one folder per module (below) |
+| `apps/server/src/test/` | 20 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -89,7 +92,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (732), `statements.ts` (268)
+- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (749), `statements.ts` (268)
 
 <details><summary>25 routes</summary>
 
@@ -173,10 +176,10 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 
 - **Apps:** — · **Depends on:** `ledger`, `parties`, `catalog` · **Health checks:** yes
 - **Permissions:** —
-- **Tables / views:** `document_lines`, `documents`, `settlements`
+- **Tables / views:** `document_lines`, `documents`, `settlements`, `settlements_new`
 - **Provides services:** `documents`
 - **Events:** emits `document.posted`, `document.voided` · listens `system.setup`
-- **Files:** `index.ts` (306), `schema.ts` (170), `service.ts` (484)
+- **Files:** `index.ts` (306), `schema.ts` (194), `service.ts` (484)
 
 <details><summary>9 routes</summary>
 
@@ -507,7 +510,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Role templates:** `cash_manager`
 - **Tables / views:** `cash_plan`, `cashflow_settings`
 - **Provides services:** —
-- **Files:** `engine.ts` (149), `index.ts` (283)
+- **Files:** `engine.ts` (149), `index.ts` (300)
 
 <details><summary>8 routes</summary>
 
@@ -553,6 +556,98 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | GET | `/api/mfg/variances` | `mfg.reports.read` |
 | GET | `/api/mfg/settings` | `mfg.orders.read` |
 | PUT | `/api/mfg/settings` | `mfg.settings.manage` |
+
+</details>
+
+### `assets` — apps/server/src/modules/assets/
+
+- **Apps:** `assets` · **Depends on:** `ledger` · **Health checks:** yes
+- **Permissions:** `assets.register.read`, `assets.register.write`, `assets.depreciation.post`, `assets.reports.read`
+- **Role templates:** `asset_accountant`
+- **Tables / views:** `asset_categories`, `asset_settings`, `assets`, `depreciation_lines`, `depreciation_runs`
+- **Provides services:** —
+- **Files:** `engine.ts` (91), `index.ts` (614)
+
+<details><summary>15 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/assets/categories` | `assets.register.read` |
+| POST | `/api/assets/categories` | `assets.register.write` |
+| PUT | `/api/assets/categories/:id` | `assets.register.write` |
+| GET | `/api/assets` | `assets.register.read` |
+| GET | `/api/assets/depreciation/runs` | `assets.register.read` |
+| GET | `/api/assets/depreciation/preview` | `assets.register.read` |
+| POST | `/api/assets/depreciation/run` | `assets.depreciation.post` |
+| POST | `/api/assets/depreciation/runs/:id/undo` | `assets.depreciation.post` |
+| GET | `/api/assets/report` | `assets.reports.read` |
+| GET | `/api/assets/:id` | `assets.register.read` |
+| POST | `/api/assets` | `assets.register.write` |
+| PUT | `/api/assets/:id` | `assets.register.write` |
+| DELETE | `/api/assets/:id` | `assets.register.write` |
+| POST | `/api/assets/:id/dispose` | `assets.depreciation.post` |
+| POST | `/api/assets/:id/undo-disposal` | `assets.depreciation.post` |
+
+</details>
+
+### `payroll` — apps/server/src/modules/payroll/
+
+- **Apps:** `payroll` · **Depends on:** `ledger` · **Health checks:** yes
+- **Permissions:** `payroll.employees.read`, `payroll.employees.write`, `payroll.runs.read`, `payroll.runs.write`, `payroll.runs.post`, `payroll.settings.manage`
+- **Role templates:** `payroll_officer`
+- **Duties to split:** `payroll.employees.write × payroll.runs.post`
+- **Tables / views:** `employee_components`, `employees`, `pay_components`, `payroll_lines`, `payroll_runs`, `payroll_settings`
+- **Provides services:** —
+- **Files:** `engine.ts` (138), `index.ts` (637)
+
+<details><summary>19 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/payroll/employees` | `payroll.employees.read` |
+| GET | `/api/payroll/employees/:id` | `payroll.employees.read` |
+| POST | `/api/payroll/employees` | `payroll.employees.write` |
+| PUT | `/api/payroll/employees/:id` | `payroll.employees.write` |
+| DELETE | `/api/payroll/employees/:id` | `payroll.employees.write` |
+| GET | `/api/payroll/components` | `payroll.employees.read` |
+| POST | `/api/payroll/components` | `payroll.settings.manage` |
+| PUT | `/api/payroll/components/:id` | `payroll.settings.manage` |
+| GET | `/api/payroll/runs` | `payroll.runs.read` |
+| GET | `/api/payroll/runs/:id` | `payroll.runs.read` |
+| POST | `/api/payroll/runs` | `payroll.runs.write` |
+| PUT | `/api/payroll/runs/:id` | `payroll.runs.write` |
+| POST | `/api/payroll/runs/:id/recalculate` | `payroll.runs.write` |
+| PUT | `/api/payroll/runs/:id/lines/:lineId` | `payroll.runs.write` |
+| POST | `/api/payroll/runs/:id/post` | `payroll.runs.post` |
+| POST | `/api/payroll/runs/:id/unpost` | `payroll.runs.post` |
+| POST | `/api/payroll/runs/:id/pay` | `payroll.runs.post` |
+| POST | `/api/payroll/runs/:id/unpay` | `payroll.runs.post` |
+| DELETE | `/api/payroll/runs/:id` | `payroll.runs.write` |
+
+</details>
+
+### `cheques` — apps/server/src/modules/cheques/
+
+- **Apps:** `cheques` · **Depends on:** `ledger`, `parties`, `documents` · **Health checks:** yes
+- **Permissions:** `cheques.received.read`, `cheques.received.write`, `cheques.issued.read`, `cheques.issued.write`
+- **Role templates:** `cheque_clerk`
+- **Tables / views:** `cheque_allocations`, `cheque_settings`, `cheques`
+- **Provides services:** —
+- **Files:** `index.ts` (397)
+
+<details><summary>9 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/cheques` | `auth` |
+| GET | `/api/cheques/portfolio` | `auth` |
+| GET | `/api/cheques/open-documents` | `auth` |
+| GET | `/api/cheques/:id` | `auth` |
+| POST | `/api/cheques` | `auth` |
+| POST | `/api/cheques/:id/deposit` | `auth` |
+| POST | `/api/cheques/:id/clear` | `auth` |
+| POST | `/api/cheques/:id/unclear` | `auth` |
+| POST | `/api/cheques/:id/cancel` | `auth` |
 
 </details>
 

@@ -5,7 +5,7 @@ import { computeLine, divRound, fxToBase, sum } from '../../kernel/money.js';
 import { ON_DEMAND } from '../ledger/chart-template.js';
 import type {} from '../../contracts/fx.js';
 import type { JournalLineInput } from '../ledger/service.js';
-import type { DocKindInfo, DocSide, DocSideInfo, Document, DocumentLine, DocumentsService as DocumentsContract } from '../../contracts/documents.js';
+import type { SettlementSource, DocKindInfo, DocSide, DocSideInfo, Document, DocumentLine, DocumentsService as DocumentsContract } from '../../contracts/documents.js';
 import type { Tax } from '../../contracts/tax.js';
 import { KIND_INFO, type DocKind } from './schema.js';
 
@@ -431,7 +431,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
 
   function settle(
     documentId: number,
-    s: { sourceType: 'payment' | 'credit'; sourceId: number; sourceNumber: string | null; amount: number; date: string; baseAmount?: number; sourceBaseAmount?: number },
+    s: { sourceType: SettlementSource; sourceId: number; sourceNumber: string | null; amount: number; date: string; baseAmount?: number; sourceBaseAmount?: number },
   ): void {
     const doc = get(documentId);
     if (doc.status !== 'posted') fail('settlement.not_posted', `${doc.number ?? 'Draft'} is not posted`);
@@ -456,7 +456,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     });
   }
 
-  function unsettleSource(sourceType: 'payment' | 'credit', sourceId: number): void {
+  function unsettleSource(sourceType: SettlementSource, sourceId: number): void {
     db.tx(() => {
       const rows = db.all<{ id: number; document_id: number; amount: number; base_amount: number }>(
         'SELECT id, document_id, amount, base_amount FROM settlements WHERE source_type = ? AND source_id = ?',

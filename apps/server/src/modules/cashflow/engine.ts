@@ -12,7 +12,7 @@ import { addDays, addMonths, daysBetween, endOfMonth } from '../../kernel/dates.
 
 export type Granularity = 'week' | 'month';
 export type Repeat = 'once' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
-export type FlowSource = 'receivables' | 'payables' | 'orders' | 'planned' | 'booked';
+export type FlowSource = 'receivables' | 'payables' | 'orders' | 'cheques' | 'payroll' | 'planned' | 'booked';
 
 export interface Bucket {
   from: string;
@@ -105,7 +105,7 @@ export interface ForecastBucket extends Bucket {
  * flows after the last period are left out and returned as `beyond`.
  */
 export function forecast(opening: number, periods: Bucket[], flows: Flow[], minCash: number) {
-  const empty = (): Record<FlowSource, number> => ({ receivables: 0, payables: 0, orders: 0, planned: 0, booked: 0 });
+  const empty = (): Record<FlowSource, number> => ({ receivables: 0, payables: 0, orders: 0, cheques: 0, payroll: 0, planned: 0, booked: 0 });
   const out: ForecastBucket[] = periods.map((p) => ({ ...p, opening: 0, inflow: 0, outflow: 0, net: 0, closing: 0, bySource: empty(), flows: [], belowMinimum: false }));
   let beyond = 0;
   const last = periods.at(-1)?.to ?? '';

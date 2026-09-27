@@ -79,17 +79,20 @@ export interface DocSideInfo {
   reportPerm: string;
 }
 
+/** What settled part of an invoice or bill: a receipt/payment, a credit note, or a cheque. */
+export type SettlementSource = 'payment' | 'credit' | 'cheque';
+
 export interface DocumentsService {
   get(id: number): Document;
   lines(id: number): DocumentLine[];
   /** `baseAmount` defaults to {@link baseFor}; `sourceBaseAmount` is the settling side's base value (credit notes). */
   settle(
     documentId: number,
-    s: { sourceType: 'payment' | 'credit'; sourceId: number; sourceNumber: string | null; amount: number; date: string; baseAmount?: number; sourceBaseAmount?: number },
+    s: { sourceType: SettlementSource; sourceId: number; sourceNumber: string | null; amount: number; date: string; baseAmount?: number; sourceBaseAmount?: number },
   ): void;
   /** Base value of settling `amount` of a document: its rate, or exactly what is left when it clears the document. */
   baseFor(doc: Document, amount: number): number;
-  unsettleSource(sourceType: 'payment' | 'credit', sourceId: number): void;
+  unsettleSource(sourceType: SettlementSource, sourceId: number): void;
   registerKind(kind: DocKind, info: DocKindInfo): void;
   registerSide(side: DocSide, info: DocSideInfo): void;
   kind(kind: DocKind): DocKindInfo | null;

@@ -332,6 +332,22 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     });
   }
 
+  /**
+   * An account a feature needs (fixed assets, payroll, cheques…): the chart's account with that code
+   * when it is a posting account of the same subtype, else a new one at the next free code under the
+   * usual parent group (top level when the chart has no such group). The caller remembers the id.
+   */
+  function ensureAccount(t: TemplateAccount & { parentCode: string }): number {
+    return db.tx(() => {
+      const existing = db.get<{ id: number; subtype: string; is_group: number; is_active: number }>('SELECT id, subtype, is_group, is_active FROM accounts WHERE code = ?', [t.code]);
+      if (existing && !existing.is_group && existing.subtype === t.subtype && existing.is_active) return existing.id;
+      let code = t.code;
+      for (let n = Number(t.code) + 1; db.get('SELECT 1 FROM accounts WHERE code = ?', [code]); n++) code = String(n);
+      const parent = db.get<{ id: number }>('SELECT id FROM accounts WHERE code = ? AND is_group = 1 AND type = ?', [t.parentCode, t.type]);
+      return db.insert('accounts', { code, name_en: t.en, name_ar: t.ar, type: t.type, subtype: t.subtype, parent_id: parent?.id ?? null, is_group: 0, is_active: 1, created_at: nowIso() });
+    });
+  }
+
   /** Charts made before interest, tax, borrowings and dividends had their own subtypes get those accounts (standard chart only). */
   function upgradeChart(list: (TemplateAccount & { parentCode: string })[]): void {
     for (const t of list) {
@@ -711,6 +727,7 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     setDefaultAccounts,
     seedChart,
     ensureDefaultAccount,
+    ensureAccount,
     upgradeChart,
     fiscalYears,
     fiscalYear,
