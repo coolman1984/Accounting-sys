@@ -57,6 +57,16 @@ non-obvious cause or a tool behaved unexpectedly.
   `can('catalog.items.read')` (the server ties permissions to installed apps), not `hasApp('catalog')`.
 - **CSS: `.box span` also hits spans nested in values.** Use child selectors (`> div > span`) for labels.
 
+- **One word, two meanings: `transfer`.** Stock moves use source type `transfer` (a stock document) while
+  journal entries of bank transfers use `transfer` too — journal links must use the journal's own source
+  types (`stock_transfer` for stock). Check both tables before mapping a source type to a page.
+- **Account codes created on demand can collide with template codes** (`5160` is already the inventory
+  adjustments account). Always loop on `accountByCode` and pick codes away from the template's.
+- **A period report for "this year" must not charge the whole year's budget** before the year is over —
+  cap budget-driven figures at today.
+- **Test the arithmetic in the test itself**: a wrong hand calculation (standard price 50 vs 48) looked like
+  a bug; write the worked example in the file header and derive every expected number from it.
+
 ## Tools
 
 - `@fastify/static` pre-indexes files at start; after a rebuild use `wildcard: true`, and `res.header`

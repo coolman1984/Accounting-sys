@@ -34,6 +34,8 @@ export const APPS = {
   fx: { server: ['fx'], web: ['fx'], requires: [] },
   analysis: { server: ['analysis'], web: ['analysis'], requires: [] },
   budget: { server: ['budget'], web: ['budget'], requires: [] },
+  cashflow: { server: ['cashflow'], web: ['cashflow'], requires: [] },
+  mfg: { server: ['manufacturing'], web: ['manufacturing'], requires: ['inventory'] },
   inventory: { server: ['inventory'], web: ['inventory', 'catalog'], requires: [] },
   purchasing: { server: ['purchasing'], web: ['purchasing'], requires: ['ap'] },
   pricing: { server: ['pricing'], web: ['pricing'], requires: ['ar'] },
@@ -41,7 +43,7 @@ export const APPS = {
 export const PRESETS = {
   ledger: ['gl'],
   finance: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx'],
-  trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'inventory', 'purchasing', 'pricing', 'analysis', 'budget'],
+  trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'inventory', 'purchasing', 'pricing', 'analysis', 'budget', 'cashflow'],
   full: Object.keys(APPS),
 };
 /** Tests that only use the always-present parts. */

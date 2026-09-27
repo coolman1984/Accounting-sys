@@ -1962,8 +1962,8 @@
   background: var(--success);
 }
 
-/* Budgets */
-.budget-kpis {
+/* KPI strip (budgets, cash forecast) */
+.kpi-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 1px;
@@ -1973,18 +1973,18 @@
   overflow: hidden;
   margin-bottom: 16px;
 }
-.budget-kpis > div {
+.kpi-strip > div {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 12px 16px;
   background: var(--surface);
 }
-.budget-kpis > div > span {
+.kpi-strip > div > span {
   font-size: 12px;
   color: var(--text-muted);
 }
-.budget-kpis strong {
+.kpi-strip strong {
   font-size: 17px;
 }
 .budget-grid td {
@@ -1993,7 +1993,7 @@
 .budget-grid td:not(:first-child) input {
   text-align: end;
 }
-.budget-kpis strong small {
+.kpi-strip strong small {
   font-size: 12px;
 }
 .budget-grid td:first-child {
@@ -2001,4 +2001,23 @@
   inset-inline-start: 0;
   background: var(--surface);
   z-index: 1;
+}
+
+/* Cash forecast */
+.cash-table td:first-child,
+.cash-table th:first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  background: var(--surface);
+  z-index: 1;
+  white-space: nowrap;
+}
+.cash-table td {
+  min-width: 104px;
+}
+.cash-table th.clickable {
+  cursor: pointer;
+}
+.cash-table th.selected {
+  color: var(--primary);
 }

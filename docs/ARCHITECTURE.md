@@ -90,6 +90,8 @@ Modules are how the code is built; **apps** are what a company switches on
 | Price lists | pricing | price lists, minimum price guard | AR |
 | Multi-currency | fx | currencies, rates, foreign documents and payments, revaluation | — |
 | Financial analysis | analysis | ratios, notes, break-even, trend (read-only) | — |
+| Cash forecast | cashflow | 13-week / 12-month forecast, planned items, minimum-cash alert (read-only on the books) | — |
+| Manufacturing | manufacturing | recipes, production orders, standard cost variances | Inventory |
 | Budgets | budget | monthly budgets, approval, budget vs actual, sales variances (read-only on the books) | — |
 
 ### Editions — deliver only what was bought
@@ -257,6 +259,14 @@ All reports are computed from posted ledger movements:
   DuPont, Z'' score and plain-language findings; `/analysis/break-even` runs
   what-if scenarios; `/analysis/trend` gives 12 months. Statements are shared
   from `modules/ledger/statements.ts`.
+* **Cash forecast app** — `modules/cashflow/engine.ts` (pure): periods, repeat
+  dates, expected collection date from a customer's habit, running balance with
+  lowest point and shortfall. Inputs are read from documents, purchase orders,
+  the `cash_plan` table and future-dated cash lines.
+* **Manufacturing app** — `modules/manufacturing/engine.ts` (pure): standard cost
+  roll-up, order variances, period overhead variances. Stock and books move
+  through `inventory.produce()` / `reverseProduction()` (contract), so the
+  inventory module stays the only writer of stock tables.
 * **Budgets app** — `modules/budget/engine.ts` (pure): `seedMonths` (new budget
   from past months, calendar-aligned), `flexibleVariances` (planned → flexed to
   actual sales → actual) and `salesVariances` (price, mix, quantity, volume).

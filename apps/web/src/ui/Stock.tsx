@@ -74,5 +74,6 @@ export function WarehouseSelect({
 /** Minor units per unit → shown as money by the caller. Link targets for stock move sources. */
 export function moveSourceLink(sourceType: string, sourceId: number): string {
   if (['adjustment', 'opening', 'count', 'transfer'].includes(sourceType)) return `/inventory/operations/${sourceId}`;
+  if (sourceType === 'production') return `/mfg/orders/${sourceId}`;
   return `/documents/${sourceId}`;
 }

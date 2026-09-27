@@ -96,8 +96,10 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
     if (acc.subtype !== 'cash' && acc.subtype !== 'bank') fail('payment.account_not_cash', 'Choose a cash or bank account');
     if (!acc.is_active) fail('payment.account_inactive', `${acc.code} is inactive`);
     if (input.partyId) {
-      if (!input.partyRole) fail('payment.role_required', 'Specify whether the party is a customer or a supplier');
       const party = parties().get(input.partyId);
+      // A party that is only a customer (or only a supplier) needs no role; "both" must say which.
+      if (!input.partyRole && party.kind !== 'both') input.partyRole = party.kind as PartyRole;
+      if (!input.partyRole) fail('payment.role_required', 'Specify whether the party is a customer or a supplier');
       parties().assertKind(party, input.partyRole!);
       if (input.counterAccountId) fail('payment.party_or_account', 'Choose either a party or a counter account');
     } else {

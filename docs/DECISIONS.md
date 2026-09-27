@@ -119,3 +119,33 @@ Overspends are ranked by the flexible-budget variance, not the total, so a volum
 blamed on a manager.
 **Consequences:** Works with any chart of accounts and without inventory; unit-level standard costing
 (material/labour price and efficiency variances) stays out until there is manufacturing.
+
+## ADR-014 · Cash forecast: computed on demand from open items, plus a small plan table
+**Status:** Accepted · 2026-09-27
+**Context:** A small company's first money question is "will we have enough cash next month?" Most of
+the answer is already in the books (open invoices, bills, purchase orders); the rest (payroll, rent,
+loans, tax) is not an invoice yet.
+**Decision:** A `cashflow` module/app that stores only what is not in the books — `cash_plan` (planned
+receipts/payments with a repeat rule) and one settings row (minimum cash, customer habits on/off,
+doubtful threshold) — and computes the forecast on every request (pure `engine.ts`). Customer invoices
+are expected at due date + the customer's amount-weighted delay over the last year; invoices overdue
+beyond the threshold are listed "at risk" and left out; overdue items land in the first period; cash
+lines already dated in the future count as "post-dated". It reads other modules' tables only.
+**Consequences:** Always current, nothing to reconcile; a forecast is not saved (a snapshot can be
+exported). Monthly repeats keep the day and clamp to month end.
+
+## ADR-015 · Manufacturing: production through the inventory service, normal costing in the books
+**Status:** Accepted · 2026-09-27
+**Context:** Standard costing variances (materials price/usage, labour rate/efficiency, overhead) are
+expected by management accountants, but the stock ledger is moving-average actual cost.
+**Decision:** A `manufacturing` module/app (needs Inventory). Recipes (`boms`, `bom_lines`) hold the
+standard; a production order snapshots it (`std` JSON) so later recipe edits never change old variances.
+Completing an order calls a new `inventory.produce()` (contract): components leave at moving average,
+the product enters at materials + labour + overhead applied (labour and overhead credited to two
+"absorbed" cost-of-sales accounts, created on first use), in one balanced entry. Books are at normal
+cost (actual materials and labour, overhead at the standard rate on actual hours); variances against
+standard are computed for reports, not posted. The period report compares overhead applied with the
+actual overhead accounts chosen in settings (spending / efficiency / volume, under/over-absorbed).
+Reversal goes through `inventory.reverseProduction()`.
+**Consequences:** No WIP account or multi-step routing yet; a back-dated purchase that re-costs a
+component after production adjusts cost of goods sold, not the finished product.
