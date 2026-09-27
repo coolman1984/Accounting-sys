@@ -21,6 +21,7 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **co** | `co` | — | `co` |
 | **fx** | `fx` | — | `fx` |
 | **analysis** | `analysis` | — | `analysis` |
+| **budget** | `budget` | — | `budget` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -30,8 +31,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 33 | one folder per module (below) |
-| `apps/server/src/test/` | 13 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 35 | one folder per module (below) |
+| `apps/server/src/test/` | 14 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -469,6 +470,34 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 
 </details>
 
+### `budget` — apps/server/src/modules/budget/
+
+- **Apps:** `budget` · **Depends on:** `ledger` · **Health checks:** no
+- **Permissions:** `budget.budgets.read`, `budget.budgets.write`, `budget.budgets.approve`, `budget.reports.read`
+- **Role templates:** `budget_controller`
+- **Duties to split:** `budget.budgets.write × budget.budgets.approve`
+- **Tables / views:** `budget_lines`, `budget_sales`, `budgets`
+- **Provides services:** —
+- **Files:** `engine.ts` (163), `index.ts` (389)
+
+<details><summary>11 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/budgets` | `budget.budgets.read` |
+| GET | `/api/budgets/:id` | `budget.budgets.read` |
+| POST | `/api/budgets` | `budget.budgets.write` |
+| PUT | `/api/budgets/:id` | `budget.budgets.write` |
+| PUT | `/api/budgets/:id/lines` | `budget.budgets.write` |
+| PUT | `/api/budgets/:id/sales` | `budget.budgets.write` |
+| POST | `/api/budgets/:id/approve` | `budget.budgets.approve` |
+| POST | `/api/budgets/:id/reopen` | `budget.budgets.approve` |
+| DELETE | `/api/budgets/:id` | `budget.budgets.write` |
+| GET | `/api/budgets/:id/variance` | `budget.reports.read` |
+| GET | `/api/budgets/:id/sales-variance` | `budget.reports.read` |
+
+</details>
+
 ## Web layout
 
 | Folder | Files | What lives there |
@@ -491,6 +520,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (235 lines) |
 | `fx` | `fx` | `/currencies`, `/fx/revaluation` | 1 (305 lines) |
 | `analysis` | `analysis` | `/analysis`, `/analysis/break-even`, `/analysis/trend` | 1 (499 lines) |
+| `budget` | `budget` | `/budgets`, `/budgets/:id`, `/budgets/:id/variance` | 1 (989 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

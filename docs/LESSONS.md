@@ -45,6 +45,18 @@ non-obvious cause or a tool behaved unexpectedly.
 - Every folder in `web/src/modules` must be in the edition map — `auth` (login/setup) was forgotten
   at first; the edition check caught it.
 
+- **Test data must land in the account you budget.** Service items post to 4200, so a budget on 4100
+  saw no revenue until the test items got `incomeAccountId`. Check where a document posts before
+  asserting on an account.
+- **Rank overspends by the flexible-budget variance**, not the total: the total mixes in the volume
+  effect, and the "worst" list then blamed cost of sales for selling more.
+- **Seeding from "last year" is often a year still running.** Unfinished months are unknown, not zero —
+  estimate them; and match months by calendar month, or a source starting in September plans January
+  from September.
+- **Catalog is not an app** — it comes with sales, purchasing or inventory. Gate item screens with
+  `can('catalog.items.read')` (the server ties permissions to installed apps), not `hasApp('catalog')`.
+- **CSS: `.box span` also hits spans nested in values.** Use child selectors (`> div > span`) for labels.
+
 ## Tools
 
 - `@fastify/static` pre-indexes files at start; after a rebuild use `wildcard: true`, and `res.header`

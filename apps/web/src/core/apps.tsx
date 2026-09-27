@@ -10,6 +10,7 @@ export const APP_META: Record<string, { icon: LucideIcon; color: string }> = {
   co: { icon: Target, color: '#0d9488' },
   fx: { icon: Coins, color: '#b45309' },
   analysis: { icon: Gauge, color: '#7c3aed' },
+  budget: { icon: ClipboardList, color: '#0369a1' },
   inventory: { icon: Package, color: '#9333ea' },
   purchasing: { icon: ClipboardList, color: '#db2777' },
   pricing: { icon: Tags, color: '#ca8a04' },

@@ -90,6 +90,7 @@ Modules are how the code is built; **apps** are what a company switches on
 | Price lists | pricing | price lists, minimum price guard | AR |
 | Multi-currency | fx | currencies, rates, foreign documents and payments, revaluation | — |
 | Financial analysis | analysis | ratios, notes, break-even, trend (read-only) | — |
+| Budgets | budget | monthly budgets, approval, budget vs actual, sales variances (read-only on the books) | — |
 
 ### Editions — deliver only what was bought
 
@@ -256,6 +257,10 @@ All reports are computed from posted ledger movements:
   DuPont, Z'' score and plain-language findings; `/analysis/break-even` runs
   what-if scenarios; `/analysis/trend` gives 12 months. Statements are shared
   from `modules/ledger/statements.ts`.
+* **Budgets app** — `modules/budget/engine.ts` (pure): `seedMonths` (new budget
+  from past months, calendar-aligned), `flexibleVariances` (planned → flexed to
+  actual sales → actual) and `salesVariances` (price, mix, quantity, volume).
+  Actuals come from the `ledger` view, closing entries excluded.
 
 ## 6. Security & multi-user
 
