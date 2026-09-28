@@ -80,6 +80,17 @@ export interface Slots {
   'dashboard.widgets'?: ComponentType;
 }
 
+/**
+ * A help article. Its words are `help.topics.<id>.*` in both dictionaries (title, what, steps,
+ * entries, calc, rules, tips); `routes` are the pages it explains, for the "?" button.
+ */
+export interface HelpTopic {
+  id: string;
+  group: string;
+  routes: string[];
+  app?: AppGate;
+}
+
 export interface WebModule {
   id: string;
   nav?: NavItem[];
@@ -87,6 +98,7 @@ export interface WebModule {
   commands?: Command[];
   reports?: ReportLink[];
   slots?: Slots;
+  help?: HelpTopic[];
 }
 
 export const SECTION_ORDER: NavSection[] = ['overview', 'gl', 'assets', 'ar', 'ap', 'treasury', 'tax', 'co', 'purchasing', 'inventory', 'production', 'hr', 'insights', 'admin'];
