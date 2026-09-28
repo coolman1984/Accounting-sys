@@ -4,7 +4,8 @@ import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { endOfMonth, nowIso, today } from '../../kernel/dates.js';
 import { parse, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import type { JournalLineInput } from '../ledger/service.js';
-import { payslip, workedShare, type Bracket, type Calc, type Component, type Kind, type PayslipLine } from './engine.js';
+import { EG_INSURANCE } from '../../contracts/egypt.js';
+import { payslip, workedShare, type Bracket, type Calc, type Component, type Kind, type PayslipLine, type TaxRule } from './engine.js';
 
 interface Employee {
   id: number;
@@ -17,6 +18,7 @@ interface Employee {
   hire_date: string;
   end_date: string | null;
   basic_salary: number;
+  insurable_wage: number | null;
   cost_center_id: number | null;
   bank_account: string | null;
   payment_method: 'bank' | 'cash';
@@ -34,6 +36,9 @@ interface ComponentRow {
   prorate: number;
   applies_to_all: number;
   cap: number;
+  floor: number;
+  insurable: number;
+  tax_rule: TaxRule | null;
   exemption: number;
   brackets: string | null;
   expense_account_id: number | null;
@@ -105,6 +110,8 @@ function createPayroll({ db, services, apps }: ModuleContext) {
     hireDate: zDate,
     endDate: zDate.nullish().transform((v) => v ?? null),
     basicSalary: z.number().int().min(0).max(1e13),
+    /** Monthly wage declared to social insurance (أجر الاشتراك); null = the month's gross pay. */
+    insurableWage: z.number().int().min(0).max(1e13).nullish().transform((v) => v ?? null),
     costCenterId: zOptId.transform((v) => v ?? null),
     bankAccount: zOptText(60),
     paymentMethod: z.enum(['bank', 'cash']).default('bank'),
@@ -129,6 +136,7 @@ function createPayroll({ db, services, apps }: ModuleContext) {
       hire_date: input.hireDate,
       end_date: input.endDate,
       basic_salary: input.basicSalary,
+      insurable_wage: input.insurableWage,
       cost_center_id: input.costCenterId,
       bank_account: input.bankAccount,
       payment_method: input.paymentMethod,
@@ -153,12 +161,15 @@ function createPayroll({ db, services, apps }: ModuleContext) {
     nameEn: z.string().trim().min(1).max(100),
     nameAr: z.string().trim().min(1).max(100),
     kind: z.enum(['earning', 'deduction', 'employer']),
-    calc: z.enum(['fixed', 'percent_basic', 'percent_gross', 'tax']),
+    calc: z.enum(['fixed', 'percent_basic', 'percent_gross', 'percent_insurable', 'tax']),
     value: z.number().int().min(0).max(1e13).default(0),
     preTax: z.boolean().default(false),
     prorate: z.boolean().default(true),
     appliesToAll: z.boolean().default(true),
     cap: z.number().int().min(0).max(1e13).default(0),
+    floor: z.number().int().min(0).max(1e13).default(0),
+    /** A built-in tax law instead of the brackets (eg_2024 = Egypt, Law 7/2024). */
+    taxRule: z.enum(['eg_2024']).nullish().transform((v) => v ?? null),
     exemption: z.number().int().min(0).max(1e15).default(0),
     brackets: z.array(zBracket).max(20).default([]),
     expenseAccountId: zOptId.transform((v) => v ?? null),
@@ -168,9 +179,11 @@ function createPayroll({ db, services, apps }: ModuleContext) {
   });
   function writeComponent(id: number | null, input: z.infer<typeof zComponent>, userId: number | null): number {
     if (input.calc === 'tax' && input.kind !== 'deduction') fail('payroll.tax_kind', 'Income tax is a deduction');
-    if (input.calc === 'tax' && !input.brackets.length) fail('payroll.brackets', 'Enter the tax brackets');
+    if (input.taxRule && input.calc !== 'tax') fail('payroll.tax_rule', 'A tax law applies to an income tax component only');
+    if (input.calc === 'tax' && !input.taxRule && !input.brackets.length) fail('payroll.brackets', 'Enter the tax brackets');
+    if (input.floor && input.cap && input.floor > input.cap) fail('payroll.floor_cap', 'The minimum base is above the ceiling');
     if (input.calc !== 'fixed' && input.calc !== 'tax' && input.value > 10000 * 10) fail('payroll.rate', 'Rate is too high');
-    if (input.calc === 'percent_gross' && input.kind === 'earning') fail('payroll.gross_earning', 'An earning cannot be a share of gross pay');
+    if ((input.calc === 'percent_gross' || input.calc === 'percent_insurable') && input.kind === 'earning') fail('payroll.gross_earning', 'An earning cannot be a share of gross pay');
     const check = (accId: number | null, types: string[]) => {
       if (!accId) return;
       const a = ledger().account(accId);
@@ -183,12 +196,16 @@ function createPayroll({ db, services, apps }: ModuleContext) {
       name_en: input.nameEn,
       name_ar: input.nameAr,
       kind: input.kind,
-      calc: input.calc,
+      // "% of the insurable wage" is stored as a share of gross pay flagged insurable (the calc column predates it).
+      calc: input.calc === 'percent_insurable' ? 'percent_gross' : input.calc,
+      insurable: input.calc === 'percent_insurable' ? 1 : 0,
       value: input.value,
       pre_tax: input.preTax ? 1 : 0,
       prorate: input.prorate ? 1 : 0,
       applies_to_all: input.appliesToAll ? 1 : 0,
       cap: input.cap,
+      floor: input.floor,
+      tax_rule: input.calc === 'tax' ? input.taxRule : null,
       exemption: input.exemption,
       brackets: input.calc === 'tax' ? JSON.stringify(input.brackets) : null,
       expense_account_id: input.kind === 'deduction' ? null : input.expenseAccountId,
@@ -218,11 +235,13 @@ function createPayroll({ db, services, apps }: ModuleContext) {
         id: c.id,
         name: c.name_en,
         kind: c.kind,
-        calc: c.calc,
+        calc: c.insurable ? 'percent_insurable' : c.calc,
         value: own.get(c.id)?.value ?? c.value,
         preTax: !!c.pre_tax,
         prorate: !!c.prorate,
         cap: c.cap,
+        floor: c.floor,
+        taxRule: c.tax_rule,
         exemption: c.exemption,
         brackets: c.brackets ? (JSON.parse(c.brackets) as Bracket[]) : [],
       }));
@@ -231,7 +250,8 @@ function createPayroll({ db, services, apps }: ModuleContext) {
   // --------------------------------------------------------------- runs
   function compute(e: Employee, m: string, bonus: number, otherDeduction: number) {
     const w = workedShare(m, e.hire_date, e.end_date);
-    const slip = payslip({ basicSalary: e.basic_salary, share: w.share, components: componentsFor(e.id), bonus, otherDeduction });
+    const unit = 10 ** services.get('settings').company().moneyScale;
+    const slip = payslip({ basicSalary: e.basic_salary, share: w.share, components: componentsFor(e.id), bonus, otherDeduction, insurableWage: e.insurable_wage, unit });
     return { w, slip };
   }
 
@@ -525,6 +545,16 @@ export const payrollModule: AppModule = {
         INSERT INTO payroll_settings (id) VALUES (1);
       `,
     },
+    {
+      // Egypt: the wage declared to social insurance, a minimum base, and the salary-tax law as a rule.
+      id: '002_egypt',
+      up: `
+        ALTER TABLE employees ADD COLUMN insurable_wage INTEGER CHECK (insurable_wage IS NULL OR insurable_wage >= 0);
+        ALTER TABLE pay_components ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE pay_components ADD COLUMN insurable INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE pay_components ADD COLUMN tax_rule TEXT CHECK (tax_rule IS NULL OR tax_rule IN ('eg_2024'));
+      `,
+    },
   ],
 
   setup(ctx) {
@@ -567,8 +597,46 @@ export const payrollModule: AppModule = {
 
     // --------------------------------------------------------- components
     r.get('/payroll/components', 'payroll.employees.read', () =>
-      db.all<Record<string, unknown> & { brackets: string | null }>('SELECT * FROM pay_components ORDER BY kind, sort, id').map((c) => ({ ...c, brackets: c.brackets ? JSON.parse(c.brackets) : [] })),
+      db
+        .all<Record<string, unknown> & { brackets: string | null; insurable: number; calc: string }>('SELECT * FROM pay_components ORDER BY kind, sort, id')
+        .map((c) => ({ ...c, calc: c.insurable ? 'percent_insurable' : c.calc, brackets: c.brackets ? JSON.parse(c.brackets) : [] })),
     );
+    /**
+     * Egypt in one click: social insurance (Law 148/2019 — employee 11%, employer 18.75% of the insurable
+     * wage between the year's minimum and maximum) and salary tax (Law 7/2024, 20,000 personal exemption),
+     * each booked to its own account. Values the authorities change every January are editable after.
+     */
+    r.post('/payroll/components/egypt', 'payroll.settings.manage', ({ body, user }) => {
+      const q = parse(z.object({ year: z.number().int().min(2024).max(2100).default(Number(today().slice(0, 4))) }), body ?? {});
+      if (db.get("SELECT 1 FROM pay_components WHERE tax_rule = 'eg_2024' OR insurable = 1")) conflict('payroll.egypt_exists', 'The Egyptian components are already set up');
+      const unit = 10 ** ctx.services.get('settings').company().moneyScale;
+      const limits = EG_INSURANCE.limits[q.year] ?? EG_INSURANCE.limits[2026];
+      const ledger = ctx.services.get('ledger');
+      const acc = (t: { code: string; en: string; ar: string; type: 'liability' | 'expense'; parentCode: string }) =>
+        ledger.ensureAccount({ ...t, subtype: t.type === 'liability' ? 'current_liability' : 'operating_expense' });
+      const siPayable = acc({ code: '2141', en: 'Social Insurance Payable', ar: 'هيئة التأمينات الاجتماعية - مستحق', type: 'liability', parentCode: '21' });
+      const taxPayable = acc({ code: '2142', en: 'Salary Tax Payable', ar: 'ضريبة كسب العمل المستحقة', type: 'liability', parentCode: '21' });
+      const siExpense = acc({ code: '5211', en: 'Social Insurance — Employer Share', ar: 'حصة الشركة في التأمينات الاجتماعية', type: 'expense', parentCode: '52' });
+      const ids = db.tx(() => [
+        pr.writeComponent(
+          null,
+          parse(pr.zComponent, { nameEn: 'Social insurance (employee 11%)', nameAr: 'التأمينات الاجتماعية - حصة العامل 11%', kind: 'deduction', calc: 'percent_insurable', value: 1100, preTax: true, floor: limits.min * unit, cap: limits.max * unit, liabilityAccountId: siPayable, sort: 10 }),
+          user.id,
+        ),
+        pr.writeComponent(
+          null,
+          parse(pr.zComponent, { nameEn: 'Salary tax (Law 7/2024)', nameAr: 'ضريبة كسب العمل (قانون 7 لسنة 2024)', kind: 'deduction', calc: 'tax', taxRule: 'eg_2024', exemption: 20_000 * unit, liabilityAccountId: taxPayable, sort: 20 }),
+          user.id,
+        ),
+        pr.writeComponent(
+          null,
+          parse(pr.zComponent, { nameEn: 'Social insurance (employer 18.75%)', nameAr: 'التأمينات الاجتماعية - حصة صاحب العمل 18.75%', kind: 'employer', calc: 'percent_insurable', value: 1875, floor: limits.min * unit, cap: limits.max * unit, expenseAccountId: siExpense, liabilityAccountId: siPayable, sort: 30 }),
+          user.id,
+        ),
+      ]);
+      audit.log({ userId: user.id, action: 'create', entity: 'pay_component', summary: `Egyptian payroll components ${q.year}` });
+      return { ids, year: q.year, insurableMin: limits.min * unit, insurableMax: limits.max * unit };
+    });
     r.post('/payroll/components', 'payroll.settings.manage', ({ body, user }) => ({ id: pr.writeComponent(null, parse(pr.zComponent, body), user.id) }));
     r.put('/payroll/components/:id', 'payroll.settings.manage', ({ params, body, user }) => {
       pr.component(Number(params.id));

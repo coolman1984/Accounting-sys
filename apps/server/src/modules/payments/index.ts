@@ -8,6 +8,7 @@ import type {} from '../../contracts/fx.js';
 import { paging, parse, zDate, zId, zOptId, zOptText, zPositiveMinor } from '../../kernel/validate.js';
 import type { JournalLineInput } from '../ledger/service.js';
 import type { DocKind } from '../../contracts/documents.js';
+import type { WhtType } from '../../contracts/tax.js';
 
 export type Direction = 'in' | 'out';
 export type PartyRole = 'customer' | 'supplier';
@@ -26,6 +27,11 @@ export interface Payment {
   currency: string | null;
   exchange_rate: number;
   base_amount: number;
+  /** Egypt withholding (خصم وإضافة): deducted from (out) or by (in) the party, on the value before VAT. */
+  wht_type: string | null;
+  wht_base: number;
+  wht_rate_bp: number;
+  wht_amount: number;
   method: string | null;
   reference: string | null;
   memo: string | null;
@@ -48,6 +54,8 @@ export interface PaymentInput {
   memo: string | null;
   currency?: string | null;
   exchangeRate?: number | null;
+  /** Withholding: its type and the value before VAT it applies to; the rate comes from the tax settings. */
+  withholding?: { type: WhtType; base: number } | null;
   allocations: { documentId: number; amount: number }[];
 }
 
@@ -88,6 +96,35 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
     return { currency: code, rate };
   }
 
+  /** The withholding of a payment: type, base, the rate in force and the amount (null = none). */
+  function withholdingOf(input: PaymentInput): { type: WhtType; base: number; rateBp: number; amount: number } | null {
+    const w = input.withholding;
+    if (!w || w.base <= 0) return null;
+    if (!services.has('tax')) fail('wht.unavailable', 'Withholding needs the Tax app');
+    const rateBp = services.get('tax').withholding().rates[w.type];
+    const amount = Math.round((w.base * rateBp) / 10000);
+    return amount > 0 ? { type: w.type, base: w.base, rateBp, amount } : null;
+  }
+
+  /**
+   * Withholding a payment would carry: the party's type and the value before VAT of the invoices it
+   * settles (each allocation × net ÷ total). Nothing below the minimum or when the company is not an agent.
+   */
+  function suggestWithholding(input: { partyId: number; direction: Direction; allocations: { documentId: number; amount: number }[] }) {
+    if (!services.has('tax')) return null;
+    const party = parties().get(input.partyId);
+    const settings = services.get('tax').withholding();
+    if (!party.wht_type || (input.direction === 'out' && !settings.agent)) return null;
+    const base = input.allocations.reduce((s, a) => {
+      const d = docs().get(a.documentId);
+      return s + (d.total ? Math.round((a.amount * d.subtotal) / d.total) : 0);
+    }, 0);
+    const type = party.wht_type as WhtType;
+    const rateBp = settings.rates[type];
+    const below = base < settings.minBase;
+    return { type, rateBp, base, amount: below ? 0 : Math.round((base * rateBp) / 10000), belowMinimum: below, minBase: settings.minBase };
+  }
+
   function validate(input: PaymentInput, selfId: number | null): void {
     const acc = ledger().account(input.accountId);
     const { currency } = currencyOf(input);
@@ -112,8 +149,17 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
       if (c.id === acc.id) fail('payment.same_account', 'The counter account must differ from the cash/bank account');
       if (input.allocations.length) fail('payment.alloc_without_party', 'Allocations need a party');
     }
+    const wht = withholdingOf(input);
+    if (wht) {
+      if (!input.partyId) fail('wht.party_required', 'Withholding needs a customer or supplier');
+      if (currency) fail('wht.currency', 'Withholding is in the company currency only');
+      const expected = input.direction === 'out' ? 'supplier' : 'customer';
+      if (input.partyRole !== expected) fail('wht.direction', 'Tax is withheld from payments to suppliers, or by customers from their payments');
+    }
+    // The party is settled by the cash plus the tax withheld.
+    const settled = input.amount + (wht?.amount ?? 0);
     const allocated = sum(input.allocations.map((a) => a.amount));
-    if (allocated > input.amount) fail('payment.over_allocated', 'Allocated more than the payment amount', { allocated, amount: input.amount });
+    if (allocated > settled) fail('payment.over_allocated', 'Allocated more than the payment amount', { allocated, amount: settled });
     const seen = new Set<number>();
     for (const a of input.allocations) {
       if (seen.has(a.documentId)) fail('payment.duplicate_allocation', 'A document appears twice');
@@ -150,6 +196,10 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
       currency,
       exchange_rate: rate,
       base_amount: fxToBase(input.amount, rate),
+      ...(() => {
+        const w = withholdingOf(input);
+        return { wht_type: w?.type ?? null, wht_base: w?.base ?? 0, wht_rate_bp: w?.rateBp ?? 0, wht_amount: w?.amount ?? 0 };
+      })(),
       method: input.method,
       reference: input.reference,
       memo: input.memo,
@@ -191,10 +241,13 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
         memo: p.memo,
         currency: p.currency,
         exchangeRate: p.exchange_rate,
+        withholding: p.wht_amount ? { type: p.wht_type as WhtType, base: p.wht_base } : null,
         allocations: allocs.map((a) => ({ documentId: a.document_id, amount: a.amount })),
       },
       id,
     );
+    // The rate may have changed since the draft was saved: the draft's own amount is what is booked.
+    const wht = p.wht_amount;
     const party = p.party_id ? parties().get(p.party_id) : null;
     const other = party
       ? p.party_role === 'customer'
@@ -209,7 +262,7 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
     // The party side leaves at the value each invoice was booked at; what is not applied stays on account at today's rate.
     const allocated = sum(allocs.map((a) => a.amount));
     const partyBase =
-      allocs.reduce((s, a) => s + docs().baseFor(docs().get(a.document_id), a.amount), 0) + fxToBase(p.amount - allocated, p.exchange_rate);
+      allocs.reduce((s, a) => s + docs().baseFor(docs().get(a.document_id), a.amount), 0) + fxToBase(p.amount + wht - allocated, p.exchange_rate);
     const otherLine: JournalLineInput = {
       accountId: other,
       partyId: party?.id ?? null,
@@ -220,7 +273,13 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
     };
     // Realised exchange difference (IAS 21 §28): cash received above the booked value is a gain.
     const lines: JournalLineInput[] = dirIn ? [cashLine, otherLine] : [otherLine, cashLine];
-    const diff = party ? (dirIn ? cashBase - partyBase : partyBase - cashBase) : 0;
+    // Withholding: by the customer, an advance on the company's income tax (asset); from the supplier, due to the Tax Authority.
+    if (wht) {
+      const key = dirIn ? 'whtReceivable' : 'whtPayable';
+      const whtLine: JournalLineInput = { accountId: ledger().ensureDefaultAccount(key, ON_DEMAND[key]), debit: dirIn ? wht : 0, credit: dirIn ? 0 : wht, description: `Withholding tax ${p.wht_rate_bp / 100}%` };
+      lines.splice(1, 0, whtLine);
+    }
+    const diff = party ? (dirIn ? cashBase + wht - partyBase : partyBase - cashBase - wht) : 0;
     if (diff > 0) lines.push({ accountId: ledger().ensureDefaultAccount('fxGain', ON_DEMAND.fxGain), debit: 0, credit: diff, description: 'Exchange gain' });
     if (diff < 0) lines.push({ accountId: ledger().ensureDefaultAccount('fxLoss', ON_DEMAND.fxLoss), debit: -diff, credit: 0, description: 'Exchange loss' });
     db.tx(() => {
@@ -273,6 +332,7 @@ function createPayments({ db, services, events, apps }: ModuleContext) {
   return {
     get,
     allocations,
+    suggestWithholding,
     create: (input: PaymentInput, userId: number | null) => write(null, input, userId),
     update(id: number, input: PaymentInput, userId: number | null) {
       const p = get(id);
@@ -300,6 +360,10 @@ const zPayment = z.object({
   currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullish().transform((v) => v ?? null),
   exchangeRate: z.number().int().positive().nullish().transform((v) => v ?? null),
   allocations: z.array(z.object({ documentId: zId, amount: zPositiveMinor })).max(500).default([]),
+  withholding: z
+    .object({ type: z.enum(['supplies', 'contracting', 'services', 'commissions']), base: z.number().int().min(0).max(1e15) })
+    .nullish()
+    .transform((v) => v ?? null),
   post: z.boolean().default(false),
 });
 
@@ -389,6 +453,25 @@ export const paymentsModule: AppModule = {
              NEW.amount IS NOT OLD.amount OR NEW.date IS NOT OLD.date OR NEW.party_id IS NOT OLD.party_id
           OR NEW.account_id IS NOT OLD.account_id OR NEW.number IS NOT OLD.number
           OR NEW.currency IS NOT OLD.currency OR NEW.exchange_rate IS NOT OLD.exchange_rate OR NEW.base_amount IS NOT OLD.base_amount
+          OR OLD.status = 'void')
+        BEGIN SELECT RAISE(ABORT, 'payments: posted payments are frozen'); END;
+      `,
+    },
+    {
+      // Egypt withholding (خصم وإضافة): the type, base, rate and amount deducted on the payment.
+      id: '003_withholding',
+      up: `
+        ALTER TABLE payments ADD COLUMN wht_type TEXT CHECK (wht_type IS NULL OR wht_type IN ('supplies', 'contracting', 'services', 'commissions'));
+        ALTER TABLE payments ADD COLUMN wht_base INTEGER NOT NULL DEFAULT 0 CHECK (wht_base >= 0);
+        ALTER TABLE payments ADD COLUMN wht_rate_bp INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE payments ADD COLUMN wht_amount INTEGER NOT NULL DEFAULT 0 CHECK (wht_amount >= 0);
+        DROP TRIGGER payments_posted_frozen;
+        CREATE TRIGGER payments_posted_frozen BEFORE UPDATE ON payments
+        WHEN OLD.status <> 'draft' AND (
+             NEW.amount IS NOT OLD.amount OR NEW.date IS NOT OLD.date OR NEW.party_id IS NOT OLD.party_id
+          OR NEW.account_id IS NOT OLD.account_id OR NEW.number IS NOT OLD.number
+          OR NEW.currency IS NOT OLD.currency OR NEW.exchange_rate IS NOT OLD.exchange_rate OR NEW.base_amount IS NOT OLD.base_amount
+          OR NEW.wht_amount IS NOT OLD.wht_amount OR NEW.wht_base IS NOT OLD.wht_base
           OR OLD.status = 'void')
         BEGIN SELECT RAISE(ABORT, 'payments: posted payments are frozen'); END;
       `,
@@ -496,6 +579,13 @@ export const paymentsModule: AppModule = {
         journal_number: je(p.journal_entry_id),
         void_journal_number: je(p.void_entry_id),
       };
+    });
+
+    /** The withholding a payment should carry (the party's type, the invoices' value before VAT). */
+    r.post('/payments/withholding', 'auth', ({ body, user }) => {
+      const q = parse(z.object({ partyId: zId, direction: z.enum(['in', 'out']), allocations: z.array(z.object({ documentId: zId, amount: zPositiveMinor })).max(500).default([]) }), body);
+      need(user, q.direction, 'write');
+      return payments.suggestWithholding(q);
     });
 
     r.post('/payments', 'auth', ({ body, user }) => {

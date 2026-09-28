@@ -94,6 +94,10 @@ non-obvious cause or a tool behaved unexpectedly.
 - **Keep the network out of posting**: e-invoices are queued by the event listener and sent later; a slow
   or down Tax Authority must never block or roll back an invoice.
 - **Health checks need words too** — a new check without `health.<module>.<id>` / `…Bad` shows a raw key.
+- **`ensureDefaultAccount` had the same code-borrowing trap as `ensureAccount`** — fixed the same way (name
+  must match). Any "find or create" helper needs it.
+- **A new standard-chart account can collide with test data** (the import test used 1180): pick test codes
+  far from the chart.
 
 ## Tools
 

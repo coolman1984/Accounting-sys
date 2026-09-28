@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../core/i18n';
+import { useSession } from '../../core/session';
 import { useApiMutation, useErrorText, useMoney } from '../../core/hooks';
 import { api } from '../../core/api';
 import type { Party } from '../../core/types';
@@ -26,6 +27,7 @@ export function PartyDialog({
   const toast = useToast();
   const errText = useErrorText();
   const { scale } = useMoney();
+  const { hasApp } = useSession();
   const blank = {
     kind: kind as Party['kind'],
     code: '',
@@ -41,6 +43,7 @@ export function PartyDialog({
     payableAccountId: null as number | null,
     paymentTermsDays: kind === 'customer' ? 30 : 30,
     creditLimit: null as number | null,
+    whtType: null as string | null,
     notes: '',
     isActive: true,
   };
@@ -68,6 +71,7 @@ export function PartyDialog({
             payableAccountId: party.payable_account_id,
             paymentTermsDays: party.payment_terms_days,
             creditLimit: party.credit_limit,
+            whtType: party.wht_type ?? null,
             notes: party.notes ?? '',
             isActive: !!party.is_active,
           }
@@ -149,6 +153,18 @@ export function PartyDialog({
           {isCustomer && (
             <Field label={`${t('parties.creditLimit')} (${t('common.optional')})`}>
               <DecimalInput scale={scale} value={f.creditLimit} onChange={(v) => set('creditLimit', v)} />
+            </Field>
+          )}
+          {hasApp('tax') && (
+            <Field label={t('wht.partyType')} hint={t(isSupplier && !isCustomer ? 'wht.partyTypeSupplier' : 'wht.partyTypeCustomer')}>
+              <Select value={f.whtType ?? ''} onChange={(e) => set('whtType', e.target.value || null)}>
+                <option value="">{t('wht.none')}</option>
+                {['supplies', 'contracting', 'services', 'commissions'].map((k) => (
+                  <option key={k} value={k}>
+                    {t('wht.types.' + k)}
+                  </option>
+                ))}
+              </Select>
             </Field>
           )}
         </div>

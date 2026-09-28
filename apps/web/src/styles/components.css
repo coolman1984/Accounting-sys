@@ -2101,3 +2101,70 @@
   font-weight: 600;
   flex: none;
 }
+
+/* Advisor: findings as cards with a coloured edge by severity */
+.advice {
+  border-inline-start: 4px solid var(--border);
+  overflow: hidden;
+}
+.advice-error {
+  border-inline-start-color: var(--danger);
+}
+.advice-warning {
+  border-inline-start-color: var(--warning);
+}
+.advice-tip {
+  border-inline-start-color: var(--primary);
+}
+.advice-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 14px 18px;
+  background: none;
+  border: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.advice-error .advice-icon {
+  color: var(--danger);
+}
+.advice-warning .advice-icon {
+  color: var(--warning);
+}
+.advice-tip .advice-icon {
+  color: var(--primary);
+}
+.advice-body {
+  padding: 0 18px 16px 50px;
+}
+[dir='rtl'] .advice-body {
+  padding: 0 50px 16px 18px;
+}
+.advice-body p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+.advice-fix {
+  background: var(--primary-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  line-height: 1.6;
+}
+.advice-law {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.advice-kpi.advice-error .kpi-value {
+  color: var(--danger);
+}
+.advice-kpi.advice-warning .kpi-value {
+  color: var(--warning);
+}

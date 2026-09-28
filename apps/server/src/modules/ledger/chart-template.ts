@@ -33,12 +33,15 @@ export type DefaultAccountKey =
   | 'fxGain'
   | 'fxLoss'
   | 'fxRevalReceivable'
-  | 'fxRevalPayable';
+  | 'fxRevalPayable'
+  | 'whtReceivable'
+  | 'whtPayable'
+  | 'legalReserve';
 
 export const DEFAULT_ACCOUNT_KEYS: DefaultAccountKey[] = [
   'cash', 'bank', 'receivable', 'payable', 'sales', 'services', 'purchases',
   'inventory', 'cogs', 'vatOutput', 'vatInput', 'retainedEarnings', 'capital', 'inventoryAdjustment', 'grni',
-  'fxGain', 'fxLoss', 'fxRevalReceivable', 'fxRevalPayable',
+  'fxGain', 'fxLoss', 'fxRevalReceivable', 'fxRevalPayable', 'whtReceivable', 'whtPayable', 'legalReserve',
 ];
 
 /**
@@ -46,11 +49,17 @@ export const DEFAULT_ACCOUNT_KEYS: DefaultAccountKey[] = [
  * (e.g. exchange differences the first time a foreign currency is used). The parent is the
  * group with `parentCode` when it exists, otherwise the account sits at the top level.
  */
-export const ON_DEMAND: Record<'fxGain' | 'fxLoss' | 'fxRevalReceivable' | 'fxRevalPayable', TemplateAccount & { parentCode: string }> = {
+export const ON_DEMAND: Record<'fxGain' | 'fxLoss' | 'fxRevalReceivable' | 'fxRevalPayable' | 'whtReceivable' | 'whtPayable' | 'legalReserve', TemplateAccount & { parentCode: string }> = {
   fxGain: { code: '4950', en: 'Exchange Gains', ar: 'أرباح فروق العملة', type: 'income', subtype: 'other_income', parentCode: '4' },
   fxLoss: { code: '5850', en: 'Exchange Losses', ar: 'خسائر فروق العملة', type: 'expense', subtype: 'other_expense', parentCode: '5' },
   fxRevalReceivable: { code: '1195', en: 'FX Revaluation — Receivables', ar: 'فروق تقييم عملة — العملاء', type: 'asset', subtype: 'current_asset', parentCode: '11' },
   fxRevalPayable: { code: '2195', en: 'FX Revaluation — Payables', ar: 'فروق تقييم عملة — الموردون', type: 'liability', subtype: 'current_liability', parentCode: '21' },
+  // Egypt: tax deducted by customers under the withholding scheme — an advance on the company's income tax.
+  whtReceivable: { code: '1180', en: 'Withholding Tax Deducted by Customers', ar: 'ضرائب مخصومة من المنبع (خصم وإضافة)', type: 'asset', subtype: 'current_asset', parentCode: '11' },
+  // Egypt: tax the company deducted from suppliers, due to the Tax Authority with Form 41 each quarter.
+  whtPayable: { code: '2190', en: 'Withholding Tax Payable (Form 41)', ar: 'ضرائب الخصم والإضافة المستحقة (نموذج 41)', type: 'liability', subtype: 'current_liability', parentCode: '21' },
+  // Egypt: Companies Law 159/1981 — 5% of each year's net profit until it reaches half the issued capital.
+  legalReserve: { code: '3150', en: 'Legal Reserve', ar: 'الاحتياطي القانوني', type: 'equity', subtype: 'equity', parentCode: '3' },
 };
 
 /** Analysis accounts added to charts made before they existed (interest, tax, borrowings, dividends). */
@@ -77,6 +86,7 @@ export const STANDARD_CHART: TemplateAccount[] = [
           { code: '1150', en: 'VAT Receivable (Input)', ar: 'ضريبة القيمة المضافة - مدخلات', type: 'asset', subtype: 'current_asset', role: 'vatInput' },
           { code: '1160', en: 'Prepaid Expenses', ar: 'مصروفات مدفوعة مقدماً', type: 'asset', subtype: 'current_asset' },
           { code: '1170', en: 'Employee Advances', ar: 'سلف الموظفين', type: 'asset', subtype: 'current_asset' },
+          { code: '1180', en: 'Withholding Tax Deducted by Customers', ar: 'ضرائب مخصومة من المنبع (خصم وإضافة)', type: 'asset', subtype: 'current_asset', role: 'whtReceivable' },
           { code: '1195', en: 'FX Revaluation — Receivables', ar: 'فروق تقييم عملة — العملاء', type: 'asset', subtype: 'current_asset', role: 'fxRevalReceivable' },
         ],
       },
@@ -105,6 +115,7 @@ export const STANDARD_CHART: TemplateAccount[] = [
           { code: '2160', en: 'Goods Received Not Invoiced', ar: 'بضاعة مستلمة لم تصل فواتيرها', type: 'liability', subtype: 'current_liability', role: 'grni' },
           { code: '2170', en: 'Short-term Loans', ar: 'قروض قصيرة الأجل', type: 'liability', subtype: 'short_term_debt' },
           { code: '2180', en: 'Income Tax Payable', ar: 'ضريبة الدخل المستحقة', type: 'liability', subtype: 'current_liability' },
+          { code: '2190', en: 'Withholding Tax Payable (Form 41)', ar: 'ضرائب الخصم والإضافة المستحقة (نموذج 41)', type: 'liability', subtype: 'current_liability', role: 'whtPayable' },
           { code: '2195', en: 'FX Revaluation — Payables', ar: 'فروق تقييم عملة — الموردون', type: 'liability', subtype: 'current_liability', role: 'fxRevalPayable' },
         ],
       },
@@ -120,6 +131,7 @@ export const STANDARD_CHART: TemplateAccount[] = [
     code: '3', en: 'Equity', ar: 'حقوق الملكية', type: 'equity', subtype: 'equity', group: true,
     children: [
       { code: '3100', en: "Owner's Capital", ar: 'رأس المال', type: 'equity', subtype: 'equity', role: 'capital' },
+      { code: '3150', en: 'Legal Reserve', ar: 'الاحتياطي القانوني', type: 'equity', subtype: 'equity', role: 'legalReserve' },
       { code: '3200', en: 'Retained Earnings', ar: 'الأرباح المحتجزة', type: 'equity', subtype: 'retained_earnings', role: 'retainedEarnings' },
       { code: '3300', en: "Owner's Drawings", ar: 'المسحوبات الشخصية', type: 'equity', subtype: 'dividends' },
       { code: '3400', en: 'Dividends Declared', ar: 'توزيعات الأرباح', type: 'equity', subtype: 'dividends' },

@@ -218,3 +218,12 @@ through the ETA.
 **Consequences:** Receipts (B2C e-receipt) and ZATCA are other modules on the same pattern. The client
 secret is stored in the company database and never sent back to the browser.
 
+## ADR-022 · Egyptian rules as defaults; withholding on payments; an advisor that only reads
+**Status:** Accepted · 2026-09-28
+**Decision:** Egypt's figures (VAT threshold, corporate rate, legal reserve, insurance shares and yearly
+limits, national-ID limit) live in `contracts/egypt.ts`; the ones that change are editable where used.
+Withholding is part of a receipt/payment (cash + tax settle the invoices) with the rate snapshot stored on
+the payment. The `advisor` module only reads the books and returns findings the web app words in both
+languages with the rule behind them.
+**Consequences:** Law changes are one-line updates plus a test; the advisor can never corrupt data.
+

@@ -17,6 +17,7 @@ import { chequesModule } from './cheques';
 import { recurringModule } from './recurring';
 import { importsModule } from './imports';
 import { einvoiceModule } from './einvoice';
+import { advisorModule } from './advisor';
 import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
 import { purchasingModule } from './purchasing';
@@ -33,6 +34,7 @@ export const webModules: WebModule[] = [
   dashboardModule,
   glModule,
   taxModule,
+  advisorModule,
   arModule,
   apModule,
   treasuryModule,

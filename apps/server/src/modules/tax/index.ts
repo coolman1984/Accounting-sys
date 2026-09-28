@@ -3,7 +3,7 @@ import type { AppModule } from '../../kernel/modules.js';
 import { assertApp, conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso, today } from '../../kernel/dates.js';
 import { parse, zBp, zDate, zOptId } from '../../kernel/validate.js';
-import type { Tax, TaxService } from '../../contracts/tax.js';
+import { WHT_TYPES, type Tax, type TaxService, type WhtSettings } from '../../contracts/tax.js';
 
 const zTax = z.object({
   code: z.string().trim().min(1).max(20),
@@ -31,6 +31,13 @@ export const taxModule: AppModule = {
     const { db, services, events } = ctx;
     const service: TaxService = {
       get: (id) => db.get<Tax>('SELECT * FROM taxes WHERE id = ?', [id]) ?? notFound('tax', id),
+      withholding() {
+        const unit = 10 ** services.get('settings').company().moneyScale;
+        // The executive regulations' rates: 1% supplies and contracting, 3% services, 5% commissions; 300 EGP minimum. Editable.
+        const defaults: WhtSettings = { agent: true, minBase: 300 * unit, rates: { supplies: 100, contracting: 100, services: 300, commissions: 500 } };
+        const stored = services.get('settings').get<Partial<WhtSettings>>('withholding', {});
+        return { ...defaults, ...stored, rates: { ...defaults.rates, ...(stored.rates ?? {}) } };
+      },
     };
     services.provide('tax', service);
 
@@ -111,6 +118,56 @@ export const taxModule: AppModule = {
         audit.log({ userId: user.id, action: 'update', entity: 'tax', entityId: id, data: { before: cur, after: input } });
       });
       return { ok: true };
+    });
+
+    // ------------------------------------------------------------ withholding (خصم وإضافة)
+    const zWht = z.object({
+      agent: z.boolean(),
+      minBase: z.number().int().min(0).max(1e13),
+      rates: z.object(Object.fromEntries(WHT_TYPES.map((k) => [k, zBp])) as Record<(typeof WHT_TYPES)[number], typeof zBp>),
+    });
+    r.get('/tax/withholding', 'auth', () => (assertApp(apps, 'tax'), tax.withholding()));
+    r.put('/tax/withholding', 'tax.codes.write', ({ body, user }) => {
+      const input = parse(zWht, body);
+      services.get('settings').set('withholding', input);
+      audit.log({ userId: user.id, action: 'update', entity: 'withholding_settings', data: input });
+      return { ok: true };
+    });
+
+    /**
+     * Withholding report. "deducted": what the company deducted from suppliers (Form 41, due quarterly);
+     * "suffered": what customers deducted from the company (a credit against its income tax).
+     */
+    r.get('/reports/withholding', 'tax.reports.read', ({ query }) => {
+      const t = today();
+      const q = parse(
+        z.object({ from: zDate.default(t.slice(0, 4) + '-01-01'), to: zDate.default(t), side: z.enum(['deducted', 'suffered']).default('deducted') }),
+        query,
+      );
+      if (!services.has('payments')) return { ...q, rows: [], byType: [], total: 0, base: 0, ledger: null };
+      const rows = db.all<{ id: number; number: string; date: string; party_id: number; party_name: string; tax_number: string | null; wht_type: string; wht_base: number; wht_rate_bp: number; wht_amount: number }>(
+        `SELECT p.id, p.number, p.date, p.party_id, pa.name AS party_name, pa.tax_number, p.wht_type, p.wht_base, p.wht_rate_bp, p.wht_amount
+           FROM payments p JOIN parties pa ON pa.id = p.party_id
+          WHERE p.status = 'posted' AND p.wht_amount > 0 AND p.direction = ? AND p.date BETWEEN ? AND ?
+          ORDER BY p.date, p.number`,
+        [q.side === 'deducted' ? 'out' : 'in', q.from, q.to],
+      );
+      const byType = WHT_TYPES.map((type) => {
+        const r = rows.filter((x) => x.wht_type === type);
+        return { type, count: r.length, base: r.reduce((s, x) => s + x.wht_base, 0), amount: r.reduce((s, x) => s + x.wht_amount, 0) };
+      }).filter((x) => x.count > 0);
+      // What the books hold on the withholding account at the end of the period (to reconcile).
+      const key = q.side === 'deducted' ? 'whtPayable' : 'whtReceivable';
+      const accId = ledger.defaultAccounts()[key];
+      const bal = accId ? db.get<{ b: number }>(`SELECT COALESCE(SUM(l.debit - l.credit), 0) b FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id WHERE l.account_id = ? AND e.status = 'posted' AND e.date <= ?`, [accId, q.to])!.b : null;
+      return {
+        ...q,
+        rows,
+        byType,
+        base: rows.reduce((s, x) => s + x.wht_base, 0),
+        total: rows.reduce((s, x) => s + x.wht_amount, 0),
+        ledger: accId ? { accountId: accId, balance: q.side === 'deducted' ? -bal! : bal } : null,
+      };
     });
 
     /** VAT summary for the return: output tax on sales less input tax on purchases. */

@@ -30,6 +30,7 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **recurring** | `recurring` | — | `recurring` |
 | **imports** | `imports` | — | `imports` |
 | **einvoice** | `einvoice` | `ar` | `einvoice` |
+| **advisor** | `advisor` | — | `advisor` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -38,11 +39,11 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | Folder | Files | What lives there |
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
-| `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 50 | one folder per module (below) |
-| `apps/server/src/test/` | 23 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/contracts/` | 8 | shared types and constants modules use to talk to each other |
+| `apps/server/src/modules/` | 52 | one folder per module (below) |
+| `apps/server/src/test/` | 24 | end-to-end tests, boundary and edition tests |
 
-Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
+Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
 ## Server modules (in load order)
 
@@ -95,7 +96,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (754), `statements.ts` (268)
+- **Files:** `chart-template.ts` (195), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (755), `statements.ts` (268)
 
 <details><summary>25 routes</summary>
 
@@ -136,7 +137,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `parties`
 - **Provides services:** `parties`
 - **Events:** emits — · listens `system.setup`
-- **Files:** `index.ts` (281)
+- **Files:** `index.ts` (288)
 
 <details><summary>6 routes</summary>
 
@@ -209,9 +210,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `payment_allocations`, `payments`
 - **Provides services:** `payments`
 - **Events:** emits `payment.posted`, `payment.voided` · listens `system.setup`
-- **Files:** `index.ts` (546)
+- **Files:** `index.ts` (636)
 
-<details><summary>9 routes</summary>
+<details><summary>10 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -219,6 +220,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | GET | `/api/payments/open-documents` | `auth` |
 | GET | `/api/payments` | `auth` |
 | GET | `/api/payments/:id` | `auth` |
+| POST | `/api/payments/withholding` | `auth` |
 | POST | `/api/payments` | `auth` |
 | PUT | `/api/payments/:id` | `auth` |
 | POST | `/api/payments/:id/post` | `auth` |
@@ -340,15 +342,18 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** —
 - **Provides services:** `tax`
 - **Events:** emits — · listens `system.setup`
-- **Files:** `index.ts` (140)
+- **Files:** `index.ts` (197)
 
-<details><summary>4 routes</summary>
+<details><summary>7 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/api/taxes` | `auth` |
 | POST | `/api/taxes` | `tax.codes.write` |
 | PUT | `/api/taxes/:id` | `tax.codes.write` |
+| GET | `/api/tax/withholding` | `auth` |
+| PUT | `/api/tax/withholding` | `tax.codes.write` |
+| GET | `/api/reports/withholding` | `tax.reports.read` |
 | GET | `/api/reports/tax-summary` | `tax.reports.read` |
 
 </details>
@@ -601,9 +606,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Duties to split:** `payroll.employees.write × payroll.runs.post`
 - **Tables / views:** `employee_components`, `employees`, `pay_components`, `payroll_lines`, `payroll_runs`, `payroll_settings`
 - **Provides services:** —
-- **Files:** `engine.ts` (138), `index.ts` (637)
+- **Files:** `engine.ts` (184), `index.ts` (705)
 
-<details><summary>19 routes</summary>
+<details><summary>20 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -613,6 +618,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | PUT | `/api/payroll/employees/:id` | `payroll.employees.write` |
 | DELETE | `/api/payroll/employees/:id` | `payroll.employees.write` |
 | GET | `/api/payroll/components` | `payroll.employees.read` |
+| POST | `/api/payroll/components/egypt` | `payroll.settings.manage` |
 | POST | `/api/payroll/components` | `payroll.settings.manage` |
 | PUT | `/api/payroll/components/:id` | `payroll.settings.manage` |
 | GET | `/api/payroll/runs` | `payroll.runs.read` |
@@ -725,6 +731,23 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 
 </details>
 
+### `advisor` — apps/server/src/modules/advisor/
+
+- **Apps:** `advisor` · **Depends on:** `ledger` · **Health checks:** no
+- **Permissions:** `advisor.findings.read`
+- **Tables / views:** —
+- **Provides services:** —
+- **Files:** `checks.ts` (326), `index.ts` (29)
+
+<details><summary>2 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/advisor` | `advisor.findings.read` |
+| GET | `/api/advisor/documents/:id` | `advisor.findings.read` |
+
+</details>
+
 ## Web layout
 
 | Folder | Files | What lives there |
@@ -740,10 +763,10 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 |---|---|---|---|
 | `dashboard` | — | `/` | 1 (268 lines) |
 | `gl` | — | `/accounts`, `/journal`, `/journal/:id`, `/journal/:id/edit`, `/journal/new`, `/reports`, `/reports/balance-sheet`, `/reports/cash-flow`, `/reports/equity-changes`, `/reports/general-ledger`, `/reports/income-statement`, `/reports/trial-balance` | 9 (1849 lines) |
-| `tax` | `tax` | `/reports/tax`, `/taxes` | 1 (267 lines) |
+| `tax` | `tax` | `/reports/tax`, `/reports/withholding`, `/taxes` | 2 (494 lines) |
 | `ar` | `ar` | `/customers`, `/customers/:id`, `/documents/:id`, `/reports/aging/receivable` | 1 (41 lines) |
 | `ap` | `ap` | `/documents/:id`, `/reports/aging/payable`, `/suppliers`, `/suppliers/:id` | 1 (37 lines) |
-| `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1738 lines) |
+| `treasury` | `treasury` | `/bank`, `/bank/statements/:id`, `/bank/transfers` | 6 (1852 lines) |
 | `co` | `co` | `/cost-centers`, `/reports/cost-centers` | 1 (235 lines) |
 | `fx` | `fx` | `/currencies`, `/fx/revaluation` | 1 (305 lines) |
 | `analysis` | `analysis` | `/analysis`, `/analysis/break-even`, `/analysis/trend` | 1 (499 lines) |
@@ -751,11 +774,12 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | `cashflow` | `cashflow` | `/cashflow`, `/cashflow/plan` | 1 (586 lines) |
 | `manufacturing` | `mfg` | `/mfg/boms`, `/mfg/boms/:id`, `/mfg/orders`, `/mfg/orders/:id`, `/mfg/variances` | 1 (1005 lines) |
 | `assets` | `assets` | `/fixed-assets`, `/fixed-assets/:id`, `/fixed-assets/categories`, `/fixed-assets/depreciation`, `/fixed-assets/report` | 1 (925 lines) |
-| `payroll` | `payroll` | `/payroll/components`, `/payroll/employees`, `/payroll/employees/:id`, `/payroll/runs`, `/payroll/runs/:id` | 1 (1039 lines) |
+| `payroll` | `payroll` | `/payroll/components`, `/payroll/employees`, `/payroll/employees/:id`, `/payroll/runs`, `/payroll/runs/:id` | 1 (1177 lines) |
 | `cheques` | `cheques` | `/cheques/:id`, `/cheques/issued`, `/cheques/new`, `/cheques/portfolio`, `/cheques/received` | 1 (582 lines) |
 | `recurring` | `recurring` | `/recurring`, `/recurring/:id` | 1 (641 lines) |
 | `imports` | `imports` | `/import` | 1 (233 lines) |
 | `einvoice` | `einvoice` | `/einvoice`, `/einvoice/settings` | 1 (540 lines) |
+| `advisor` | `advisor` | `/advisor` | 1 (251 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

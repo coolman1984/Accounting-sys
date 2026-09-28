@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Banknote, CheckCircle2, Layers, Pencil, Plus, Printer, RefreshCw, Save, Trash2, Undo2, UserPlus, Users, Wallet } from 'lucide-react';
+import { Banknote, CheckCircle2, Landmark, Layers, Pencil, Plus, Printer, RefreshCw, Save, Trash2, Undo2, UserPlus, Users, Wallet } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
@@ -19,7 +19,7 @@ import { useToast } from '../../ui/Toast';
 import { DataGrid, type Column } from '../../ui/DataGrid';
 
 type Kind = 'earning' | 'deduction' | 'employer';
-type Calc = 'fixed' | 'percent_basic' | 'percent_gross' | 'tax';
+type Calc = 'fixed' | 'percent_basic' | 'percent_gross' | 'percent_insurable' | 'tax';
 interface Component {
   id: number;
   name_en: string;
@@ -31,6 +31,8 @@ interface Component {
   prorate: number;
   applies_to_all: number;
   cap: number;
+  floor: number;
+  tax_rule: 'eg_2024' | null;
   exemption: number;
   brackets: { upTo: number | null; rateBp: number }[];
   expense_account_id: number | null;
@@ -49,6 +51,7 @@ interface Employee {
   hire_date: string;
   end_date: string | null;
   basic_salary: number;
+  insurable_wage: number | null;
   cost_center_id: number | null;
   bank_account: string | null;
   payment_method: 'bank' | 'cash';
@@ -155,7 +158,16 @@ function EmployeesPage() {
           )
         }
       />
-      <DataGrid id="pay-employees" rows={data} loading={isLoading} columns={columns} rowKey={(e) => e.id} onRowClick={(e) => navigate(`/payroll/employees/${e.id}`)} exportName={t('pay.employees')} empty={<EmptyState icon={<Users size={22} />} title={t('pay.noEmployees')} text={t('pay.noEmployeesText')} />} />
+      <DataGrid
+        id="pay-employees"
+        rows={data}
+        loading={isLoading}
+        columns={columns}
+        rowKey={(e) => e.id}
+        onRowClick={(e) => navigate(`/payroll/employees/${e.id}`)}
+        exportName={t('pay.employees')}
+        empty={<EmptyState icon={<Users size={22} />} title={t('pay.noEmployees')} text={t('pay.noEmployeesText')} />}
+      />
     </div>
   );
 }
@@ -171,15 +183,51 @@ function EmployeePage() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const cc = useCostCenters();
-  const { data: e, isLoading } = useApi<Employee & { components: { component_id: number; value: number | null; excluded: number }[]; preview: { gross: number; deductions: number; net: number; employer: number; lines: SlipLine[] }; history: { run_id: number; month: string; status: string; gross: number; net: number }[] }>(isNew ? null : `/payroll/employees/${id}`);
+  const { data: e, isLoading } = useApi<
+    Employee & {
+      components: { component_id: number; value: number | null; excluded: number }[];
+      preview: { gross: number; deductions: number; net: number; employer: number; lines: SlipLine[] };
+      history: { run_id: number; month: string; status: string; gross: number; net: number }[];
+    }
+  >(isNew ? null : `/payroll/employees/${id}`);
   const { data: comps } = useApi<Component[]>('/payroll/components');
   const slipName = useSlipName(comps ?? []);
-  const blank = { name: '', nameAlt: '', nationalId: '', jobTitle: '', department: '', hireDate: todayIso(), endDate: '', basicSalary: null as number | null, costCenterId: null as number | null, bankAccount: '', paymentMethod: 'bank' as 'bank' | 'cash', isActive: true, notes: '' };
+  const blank = {
+    name: '',
+    nameAlt: '',
+    nationalId: '',
+    jobTitle: '',
+    department: '',
+    hireDate: todayIso(),
+    endDate: '',
+    basicSalary: null as number | null,
+    insurableWage: null as number | null,
+    costCenterId: null as number | null,
+    bankAccount: '',
+    paymentMethod: 'bank' as 'bank' | 'cash',
+    isActive: true,
+    notes: '',
+  };
   const [f, setF] = useState(blank);
   const [own, setOwn] = useState<Record<number, { value: number | null; excluded: boolean; on: boolean }>>({});
   useEffect(() => {
     if (!e) return;
-    setF({ name: e.name, nameAlt: e.name_alt ?? '', nationalId: e.national_id ?? '', jobTitle: e.job_title ?? '', department: e.department ?? '', hireDate: e.hire_date, endDate: e.end_date ?? '', basicSalary: e.basic_salary, costCenterId: e.cost_center_id, bankAccount: e.bank_account ?? '', paymentMethod: e.payment_method, isActive: !!e.is_active, notes: e.notes ?? '' });
+    setF({
+      name: e.name,
+      nameAlt: e.name_alt ?? '',
+      nationalId: e.national_id ?? '',
+      jobTitle: e.job_title ?? '',
+      department: e.department ?? '',
+      hireDate: e.hire_date,
+      endDate: e.end_date ?? '',
+      basicSalary: e.basic_salary,
+      insurableWage: e.insurable_wage,
+      costCenterId: e.cost_center_id,
+      bankAccount: e.bank_account ?? '',
+      paymentMethod: e.payment_method,
+      isActive: !!e.is_active,
+      notes: e.notes ?? '',
+    });
     setOwn(Object.fromEntries(e.components.map((c) => [c.component_id, { value: c.value, excluded: !!c.excluded, on: true }])));
   }, [e]);
   const writable = can('payroll.employees.write');
@@ -193,6 +241,7 @@ function EmployeePage() {
     hireDate: f.hireDate,
     endDate: f.endDate || null,
     basicSalary: f.basicSalary ?? 0,
+    insurableWage: f.insurableWage,
     costCenterId: f.costCenterId,
     bankAccount: f.bankAccount || null,
     paymentMethod: f.paymentMethod,
@@ -274,6 +323,11 @@ function EmployeePage() {
               </Field>
               <Field label={t('pay.basicSalary')}>
                 <DecimalInput scale={scale} value={f.basicSalary} onChange={(v) => setF({ ...f, basicSalary: v })} />
+              </Field>
+            </div>
+            <div className="grid-3">
+              <Field label={t('pay.insurableWage')} hint={t('pay.insurableWageHint')}>
+                <DecimalInput scale={scale} value={f.insurableWage} placeholder={t('pay.insurableWageNone')} onChange={(v) => setF({ ...f, insurableWage: v })} />
               </Field>
             </div>
             <div className="grid-3">
@@ -396,22 +450,58 @@ function ComponentDialog({ open, onClose, comp }: { open: boolean; onClose(): vo
   const { scale } = useMoney();
   const toast = useToast();
   const errText = useErrorText();
-  const empty = { nameEn: '', nameAr: '', kind: 'earning' as Kind, calc: 'fixed' as Calc, value: 0 as number | null, preTax: false, prorate: true, appliesToAll: true, cap: 0 as number | null, exemption: 0 as number | null, brackets: [] as { upTo: number | null; rateBp: number | null }[], expenseAccountId: null as number | null, liabilityAccountId: null as number | null, isActive: true, sort: 0 };
+  const empty = {
+    nameEn: '',
+    nameAr: '',
+    kind: 'earning' as Kind,
+    calc: 'fixed' as Calc,
+    value: 0 as number | null,
+    preTax: false,
+    prorate: true,
+    appliesToAll: true,
+    cap: 0 as number | null,
+    floor: 0 as number | null,
+    taxRule: null as 'eg_2024' | null,
+    exemption: 0 as number | null,
+    brackets: [] as { upTo: number | null; rateBp: number | null }[],
+    expenseAccountId: null as number | null,
+    liabilityAccountId: null as number | null,
+    isActive: true,
+    sort: 0,
+  };
   const [f, setF] = useState(empty);
   useEffect(() => {
     if (!open) return;
     setF(
       comp
-        ? { nameEn: comp.name_en, nameAr: comp.name_ar, kind: comp.kind, calc: comp.calc, value: comp.value, preTax: !!comp.pre_tax, prorate: !!comp.prorate, appliesToAll: !!comp.applies_to_all, cap: comp.cap, exemption: comp.exemption, brackets: comp.brackets, expenseAccountId: comp.expense_account_id, liabilityAccountId: comp.liability_account_id, isActive: !!comp.is_active, sort: comp.sort }
+        ? {
+            nameEn: comp.name_en,
+            nameAr: comp.name_ar,
+            kind: comp.kind,
+            calc: comp.calc,
+            value: comp.value,
+            preTax: !!comp.pre_tax,
+            prorate: !!comp.prorate,
+            appliesToAll: !!comp.applies_to_all,
+            cap: comp.cap,
+            floor: comp.floor,
+            taxRule: comp.tax_rule,
+            exemption: comp.exemption,
+            brackets: comp.brackets,
+            expenseAccountId: comp.expense_account_id,
+            liabilityAccountId: comp.liability_account_id,
+            isActive: !!comp.is_active,
+            sort: comp.sort,
+          }
         : empty,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, comp]);
   const save = useApiMutation(() => {
-    const body = { ...f, value: f.value ?? 0, cap: f.cap ?? 0, exemption: f.exemption ?? 0, brackets: f.brackets.map((b) => ({ upTo: b.upTo, rateBp: b.rateBp ?? 0 })) };
+    const body = { ...f, value: f.value ?? 0, cap: f.cap ?? 0, floor: f.floor ?? 0, exemption: f.exemption ?? 0, brackets: f.brackets.map((b) => ({ upTo: b.upTo, rateBp: b.rateBp ?? 0 })) };
     return comp ? api.put(`/payroll/components/${comp.id}`, body) : api.post('/payroll/components', body);
   });
-  const pct = f.calc === 'percent_basic' || f.calc === 'percent_gross';
+  const pct = f.calc === 'percent_basic' || f.calc === 'percent_gross' || f.calc === 'percent_insurable';
   return (
     <Dialog
       open={open}
@@ -451,6 +541,7 @@ function ComponentDialog({ open, onClose, comp }: { open: boolean; onClose(): vo
               <option value="fixed">{t('pay.calcs.fixed')}</option>
               <option value="percent_basic">{t('pay.calcs.percent_basic')}</option>
               {f.kind !== 'earning' && <option value="percent_gross">{t('pay.calcs.percent_gross')}</option>}
+              {f.kind !== 'earning' && <option value="percent_insurable">{t('pay.calcs.percent_insurable')}</option>}
               {f.kind === 'deduction' && <option value="tax">{t('pay.calcs.tax')}</option>}
             </Select>
           </Field>
@@ -461,27 +552,44 @@ function ComponentDialog({ open, onClose, comp }: { open: boolean; onClose(): vo
           )}
         </div>
         {pct && (
-          <Field label={t('pay.cap')} hint={t('pay.capHint')}>
-            <DecimalInput scale={scale} value={f.cap} onChange={(v) => setF({ ...f, cap: v })} />
-          </Field>
+          <div className="grid-2">
+            <Field label={t('pay.floor')} hint={t('pay.floorHint')}>
+              <DecimalInput scale={scale} value={f.floor} onChange={(v) => setF({ ...f, floor: v })} />
+            </Field>
+            <Field label={t('pay.cap')} hint={t('pay.capHint')}>
+              <DecimalInput scale={scale} value={f.cap} onChange={(v) => setF({ ...f, cap: v })} />
+            </Field>
+          </div>
         )}
         {f.calc === 'tax' && (
           <div className="stack" style={{ gap: 8 }}>
+            <Field label={t('pay.taxRule')} hint={f.taxRule ? t('pay.taxRuleEgHint') : undefined}>
+              <Select value={f.taxRule ?? ''} onChange={(e) => setF({ ...f, taxRule: (e.target.value || null) as 'eg_2024' | null })}>
+                <option value="">{t('pay.taxRuleOwn')}</option>
+                <option value="eg_2024">{t('pay.taxRuleEg')}</option>
+              </Select>
+            </Field>
             <Field label={t('pay.exemption')} hint={t('pay.exemptionHint')}>
               <DecimalInput scale={scale} value={f.exemption} onChange={(v) => setF({ ...f, exemption: v })} />
             </Field>
-            <strong style={{ fontSize: 13 }}>{t('pay.brackets')}</strong>
-            <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>{t('pay.bracketsHint')}</p>
-            {f.brackets.map((b, i) => (
-              <div key={i} className="row" style={{ gap: 8 }}>
-                <DecimalInput sm scale={scale} value={b.upTo} placeholder={t('pay.noLimit')} onChange={(v) => setF({ ...f, brackets: f.brackets.map((x, j) => (j === i ? { ...x, upTo: v } : x)) })} />
-                <DecimalInput sm scale={2} trim value={b.rateBp} placeholder="%" onChange={(v) => setF({ ...f, brackets: f.brackets.map((x, j) => (j === i ? { ...x, rateBp: v } : x)) })} />
-                <Button size="sm" variant="ghost" iconOnly icon={<Trash2 />} onClick={() => setF({ ...f, brackets: f.brackets.filter((_, j) => j !== i) })} />
-              </div>
-            ))}
-            <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setF({ ...f, brackets: [...f.brackets, { upTo: null, rateBp: null }] })}>
-              {t('pay.addBracket')}
-            </Button>
+            {!f.taxRule && (
+              <>
+                <strong style={{ fontSize: 13 }}>{t('pay.brackets')}</strong>
+                <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
+                  {t('pay.bracketsHint')}
+                </p>
+                {f.brackets.map((b, i) => (
+                  <div key={i} className="row" style={{ gap: 8 }}>
+                    <DecimalInput sm scale={scale} value={b.upTo} placeholder={t('pay.noLimit')} onChange={(v) => setF({ ...f, brackets: f.brackets.map((x, j) => (j === i ? { ...x, upTo: v } : x)) })} />
+                    <DecimalInput sm scale={2} trim value={b.rateBp} placeholder="%" onChange={(v) => setF({ ...f, brackets: f.brackets.map((x, j) => (j === i ? { ...x, rateBp: v } : x)) })} />
+                    <Button size="sm" variant="ghost" iconOnly icon={<Trash2 />} onClick={() => setF({ ...f, brackets: f.brackets.filter((_, j) => j !== i) })} />
+                  </div>
+                ))}
+                <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setF({ ...f, brackets: [...f.brackets, { upTo: null, rateBp: null }] })}>
+                  {t('pay.addBracket')}
+                </Button>
+              </>
+            )}
           </div>
         )}
         <div className="grid-2">
@@ -513,7 +621,10 @@ function ComponentsPage() {
   const { can } = useSession();
   const { data, isLoading } = useApi<Component[]>('/payroll/components');
   const [editing, setEditing] = useState<{ comp: Component | null } | null>(null);
-  const valueText = (c: Component) => (c.calc === 'fixed' ? fmt(c.value) : c.calc === 'tax' ? t('pay.bracketsCount', { n: c.brackets.length }) : `${c.value / 100}%`);
+  const valueText = (c: Component) => (c.calc === 'fixed' ? fmt(c.value) : c.calc === 'tax' ? (c.tax_rule ? t('pay.taxRuleEg') : t('pay.bracketsCount', { n: c.brackets.length })) : `${c.value / 100}%`);
+  const toast = useToast();
+  const errText = useErrorText();
+  const egypt = useApiMutation(() => api.post('/payroll/components/egypt', {}));
   return (
     <div className="page">
       <PageHeader
@@ -522,9 +633,16 @@ function ComponentsPage() {
         subtitle={t('pay.componentsSub')}
         actions={
           can('payroll.settings.manage') && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setEditing({ comp: null })}>
-              {t('pay.newComponent')}
-            </Button>
+            <>
+              {!data?.some((c) => c.tax_rule || c.calc === 'percent_insurable') && (
+                <Button icon={<Landmark />} loading={egypt.isPending} onClick={() => egypt.mutate(undefined, { onSuccess: () => toast.success(t('pay.egyptDone')), onError: (e) => toast.error(errText(e)) })}>
+                  {t('pay.egyptSetup')}
+                </Button>
+              )}
+              <Button variant="primary" icon={<Plus />} onClick={() => setEditing({ comp: null })}>
+                {t('pay.newComponent')}
+              </Button>
+            </>
           )
         }
       />
@@ -550,7 +668,11 @@ function ComponentsPage() {
                 <tr key={c.id} className="clickable" onClick={() => can('payroll.settings.manage') && setEditing({ comp: c })}>
                   <td>
                     <strong>{pick(c.name_en, c.name_ar)}</strong>
-                    {!!c.pre_tax && <Badge plain tone="cyan">{t('pay.preTaxShort')}</Badge>}
+                    {!!c.pre_tax && (
+                      <Badge plain tone="cyan">
+                        {t('pay.preTaxShort')}
+                      </Badge>
+                    )}
                   </td>
                   <td>
                     <Badge tone={c.kind === 'earning' ? 'green' : c.kind === 'deduction' ? 'red' : 'blue'}>{t('pay.kinds.' + c.kind)}</Badge>
@@ -616,7 +738,9 @@ function NewRunDialog({ open, onClose, last }: { open: boolean; onClose(): void;
             <Input type="date" value={f.payDate} onChange={(e) => setF({ ...f, payDate: e.target.value })} />
           </Field>
         </div>
-        <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>{t('pay.newRunHint')}</p>
+        <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
+          {t('pay.newRunHint')}
+        </p>
         {err && <p className="danger-text">{err}</p>}
       </div>
     </Dialog>
@@ -660,7 +784,16 @@ function RunsPage() {
           </>
         }
       />
-      <DataGrid id="pay-runs" rows={data} loading={isLoading} columns={columns} rowKey={(r) => r.id} onRowClick={(r) => navigate(`/payroll/runs/${r.id}`)} exportName={t('pay.runs')} empty={<EmptyState icon={<Wallet size={22} />} title={t('pay.noRuns')} text={t('pay.noRunsText')} />} />
+      <DataGrid
+        id="pay-runs"
+        rows={data}
+        loading={isLoading}
+        columns={columns}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => navigate(`/payroll/runs/${r.id}`)}
+        exportName={t('pay.runs')}
+        empty={<EmptyState icon={<Wallet size={22} />} title={t('pay.noRuns')} text={t('pay.noRunsText')} />}
+      />
       <NewRunDialog open={creating} onClose={() => setCreating(false)} last={data?.[0]?.month ?? null} />
     </div>
   );
@@ -858,7 +991,12 @@ function RunPage() {
                   variant="ghost"
                   icon={<Trash2 />}
                   onClick={async () => {
-                    if ((await confirm({ title: t('pay.deleteRun'), danger: true, confirmLabel: t('common.delete') })).ok) run(() => api.del(`/payroll/runs/${r.id}`), t('common.deleted'), () => navigate('/payroll/runs'));
+                    if ((await confirm({ title: t('pay.deleteRun'), danger: true, confirmLabel: t('common.delete') })).ok)
+                      run(
+                        () => api.del(`/payroll/runs/${r.id}`),
+                        t('common.deleted'),
+                        () => navigate('/payroll/runs'),
+                      );
                   }}
                 />
                 <Button icon={<RefreshCw />} onClick={() => run(() => api.post(`/payroll/runs/${r.id}/recalculate`), t('pay.recalculated'))}>

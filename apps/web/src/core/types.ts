@@ -58,6 +58,7 @@ export interface Party {
   payable_account_id: number | null;
   payment_terms_days: number;
   credit_limit: number | null;
+  wht_type: string | null;
   notes: string | null;
   is_active: number;
   receivable: number;

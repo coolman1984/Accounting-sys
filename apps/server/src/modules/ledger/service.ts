@@ -317,9 +317,10 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
     const cur = defaultAccounts()[key];
     if (cur) return cur;
     return db.tx(() => {
-      const existing = db.get<{ id: number; subtype: string; is_group: number }>('SELECT id, subtype, is_group FROM accounts WHERE code = ?', [t.code]);
+      const existing = db.get<{ id: number; subtype: string; is_group: number; name_en: string; name_ar: string }>('SELECT id, subtype, is_group, name_en, name_ar FROM accounts WHERE code = ?', [t.code]);
       let id: number;
-      if (existing && !existing.is_group && existing.subtype === t.subtype) id = existing.id;
+      // Only the template's own account (same name), never another account that happens to hold the code.
+      if (existing && !existing.is_group && existing.subtype === t.subtype && (existing.name_en === t.en || existing.name_ar === t.ar)) id = existing.id;
       else {
         // Free code: the template's, or the next one after it.
         let code = t.code;

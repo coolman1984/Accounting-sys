@@ -17,6 +17,8 @@ export interface Party {
   payable_account_id: number | null;
   payment_terms_days: number;
   credit_limit: number | null;
+  /** Egypt: withholding type used for this party's payments (supplies, services…), null = none. */
+  wht_type: string | null;
   notes: string | null;
   is_active: number;
   created_at: string;
