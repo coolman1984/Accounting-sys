@@ -154,7 +154,8 @@ export async function render() {
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
   const text = await render();
   if (process.argv.includes('--check')) {
-    const cur = existsSync(OUT) ? read(OUT) : '';
+    // A Windows checkout (core.autocrlf) turns LF into CRLF; that is not a stale map.
+    const cur = existsSync(OUT) ? read(OUT).replace(/\r\n/g, '\n') : '';
     if (cur !== text) {
       console.error('docs/MAP.md is out of date — run: npm run docs:map');
       process.exit(1);

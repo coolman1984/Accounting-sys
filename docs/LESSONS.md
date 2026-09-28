@@ -106,3 +106,10 @@ non-obvious cause or a tool behaved unexpectedly.
 - GitHub merge API needs the full 40-character SHA.
 - `node:sqlite` prints an ExperimentalWarning — run with `--disable-warning=ExperimentalWarning`.
 - In e2e scripts, find buttons by their real label ("Continue", "Create my books"), not a guess.
+- **Build demo data through the real API and then run the health checks** — the first demo run found a
+  health-check bug (withholding counted as over-allocation) that no unit test had hit. Also: a sale
+  dated before the production that makes the goods is refused (`stock.insufficient` checks *as of the
+  date*), and accounts created on demand (payroll 2141/2142) are missing from a chart read earlier.
+- **Windows**: `await import(absolutePath)` fails (`ERR_UNSUPPORTED_ESM_URL_SCHEME`, protocol `d:`) — always
+  `import(pathToFileURL(p).href)`. Git's `core.autocrlf` checks text out with CRLF, so any "generated file is
+  current" check must normalise `\r\n` before comparing.

@@ -227,3 +227,13 @@ the payment. The `advisor` module only reads the books and returns findings the 
 languages with the rule behind them.
 **Consequences:** Law changes are one-line updates plus a test; the advisor can never corrupt data.
 
+
+## ADR-023 · Demo data is built through the HTTP API, into its own data folder
+**Status:** Accepted · 2026-09-28
+**Decision:** The demo company (`apps/server/src/demo/`) is a script that calls the app's own routes with
+`app.http.inject`, never SQL, so every figure is produced by the real engine and a test can rebuild it in
+memory and check that it ties. `npm run demo` writes only into an empty `data-demo/` (it refuses an
+existing database) and `start-demo.bat` serves it on another port, so a real company is never touched.
+Its sign-in for development is admin / 123, set after the build (shorter than the app allows).
+**Consequences:** A change that breaks a posting rule also breaks the demo test. Seeding takes about
+10 seconds; the numbers are illustrative and documented in `docs/research/DEMO-SAMSUNG-EGYPT.md`.

@@ -41,7 +41,7 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 8 | shared types and constants modules use to talk to each other |
 | `apps/server/src/modules/` | 52 | one folder per module (below) |
-| `apps/server/src/test/` | 24 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/test/` | 25 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -210,7 +210,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Tables / views:** `payment_allocations`, `payments`
 - **Provides services:** `payments`
 - **Events:** emits `payment.posted`, `payment.voided` · listens `system.setup`
-- **Files:** `index.ts` (636)
+- **Files:** `index.ts` (637)
 
 <details><summary>10 routes</summary>
 

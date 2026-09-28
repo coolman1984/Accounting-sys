@@ -386,7 +386,8 @@ export const paymentsModule: AppModule = {
   ],
   health({ db }) {
     const over = db.get<{ n: number }>(
-      'SELECT COUNT(*) n FROM payments p WHERE (SELECT COALESCE(SUM(amount), 0) FROM payment_allocations a WHERE a.payment_id = p.id) > p.amount',
+      // Withholding settles documents too: a payment of 11,100 with 300 withheld may allocate 11,400.
+      'SELECT COUNT(*) n FROM payments p WHERE (SELECT COALESCE(SUM(amount), 0) FROM payment_allocations a WHERE a.payment_id = p.id) > p.amount + COALESCE(p.wht_amount, 0)',
     )!.n;
     return [{ id: 'allocated', ok: over === 0, details: { count: over } }];
   },
