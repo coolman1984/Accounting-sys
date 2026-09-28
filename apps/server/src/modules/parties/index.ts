@@ -20,6 +20,7 @@ const zParty = z.object({
   payableAccountId: zOptId.transform((v) => v ?? null),
   paymentTermsDays: z.number().int().min(0).max(3650).default(0),
   creditLimit: z.number().int().min(0).nullish().transform((v) => v ?? null),
+  whtType: z.enum(['supplies', 'contracting', 'services', 'commissions']).nullish().transform((v) => v ?? null),
   notes: zOptText(2000),
   isActive: z.boolean().default(true),
 });
@@ -48,6 +49,7 @@ const row = (input: z.infer<typeof zParty>) => ({
   payable_account_id: input.payableAccountId,
   payment_terms_days: input.paymentTermsDays,
   credit_limit: input.creditLimit,
+  wht_type: input.whtType,
   notes: input.notes,
   is_active: input.isActive,
 });
@@ -127,6 +129,11 @@ export const partiesModule: AppModule = {
         CREATE INDEX parties_kind ON parties(kind, is_active);
         CREATE INDEX parties_name ON parties(name);
       `,
+    },
+    {
+      // Egypt: the withholding type this party's payments fall under (1% supplies, 3% services …).
+      id: '002_withholding',
+      up: `ALTER TABLE parties ADD COLUMN wht_type TEXT CHECK (wht_type IS NULL OR wht_type IN ('supplies', 'contracting', 'services', 'commissions'));`,
     },
   ],
 

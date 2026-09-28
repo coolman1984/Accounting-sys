@@ -4,6 +4,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { AlertTriangle, Wand2 } from 'lucide-react';
 import { useApi, useApiMutation, useDate, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
+import { useSession } from '../../core/session';
+import { Switch } from '../../ui/Switch';
 import { api } from '../../core/api';
 import { todayIso } from '../../core/format';
 import type { Direction } from '../../core/types';
@@ -37,6 +39,9 @@ interface PaymentFull {
   amount: number;
   currency: string | null;
   exchange_rate: number;
+  wht_type: WhtType | null;
+  wht_base: number;
+  wht_amount: number;
   method: string | null;
   reference: string | null;
   memo: string | null;
@@ -44,6 +49,16 @@ interface PaymentFull {
 }
 
 const METHODS = ['cash', 'bank_transfer', 'cheque', 'card', 'other'];
+type WhtType = 'supplies' | 'contracting' | 'services' | 'commissions';
+const WHT_TYPES: WhtType[] = ['supplies', 'contracting', 'services', 'commissions'];
+interface WhtSuggestion {
+  type: WhtType;
+  rateBp: number;
+  base: number;
+  amount: number;
+  belowMinimum: boolean;
+  minBase: number;
+}
 
 export function PaymentEditor({ direction }: { direction: Direction }) {
   const { id } = useParams();
@@ -77,6 +92,13 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
   const currency = fx.currency || baseCur;
   const foreign = !!currency && currency !== baseCur;
   const preDoc = params.get('doc') ? Number(params.get('doc')) : null;
+  // Egypt withholding (خصم وإضافة): suggested from the party's type and the invoices' value before VAT.
+  const { hasApp } = useSession();
+  const whtOn = hasApp('tax') && mode === 'party' && !foreign;
+  const { data: whtSettings } = useApi<{ agent: boolean; minBase: number; rates: Record<WhtType, number> }>(hasApp('tax') ? '/tax/withholding' : null);
+  const [wht, setWht] = useState<{ on: boolean; type: WhtType; base: number | null; touched: boolean }>({ on: false, type: 'supplies', base: null, touched: false });
+  const [suggestion, setSuggestion] = useState<WhtSuggestion | null>(null);
+  const whtAmount = whtOn && wht.on && wht.base && whtSettings ? Math.round((wht.base * whtSettings.rates[wht.type]) / 10000) : 0;
 
   useEffect(() => {
     if (!existing) return;
@@ -92,6 +114,7 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
     setMemo(existing.memo ?? '');
     setAlloc(Object.fromEntries(existing.allocations.map((a) => [a.document_id, a.amount])));
     setFx({ currency: existing.currency ?? '', rate: existing.exchange_rate });
+    if (existing.wht_amount > 0) setWht({ on: true, type: existing.wht_type ?? 'supplies', base: existing.wht_base, touched: true });
   }, [existing]);
 
   const { data: cashAccounts } = useApi<{ id: number; subtype: string; currency: string | null }[]>('/payments/accounts');
@@ -132,10 +155,38 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
   }, [openDocs, preDoc, editing]);
 
   const allocated = useMemo(() => Object.values(alloc).reduce<number>((s, v) => s + (v ?? 0), 0), [alloc]);
-  const unallocated = (amount ?? 0) - allocated;
+  // The party is settled by the cash plus the tax withheld.
+  const unallocated = (amount ?? 0) + whtAmount - allocated;
+  const allocList = useMemo(
+    () =>
+      Object.entries(alloc)
+        .filter(([, v]) => v && v > 0)
+        .map(([documentId, v]) => ({ documentId: Number(documentId), amount: v as number })),
+    [alloc],
+  );
+  const allocKey = JSON.stringify(allocList);
+  useEffect(() => {
+    if (!whtOn || !partyId) return setSuggestion(null);
+    let live = true;
+    api
+      .post<WhtSuggestion | null>('/payments/withholding', { partyId, direction, allocations: allocList })
+      .then((s) => live && setSuggestion(s))
+      .catch(() => live && setSuggestion(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whtOn, partyId, direction, allocKey]);
+  // Until the user changes it, the withholding follows the suggestion, and the cash is what is left to pay.
+  useEffect(() => {
+    if (!suggestion || wht.touched) return;
+    setWht({ on: suggestion.amount > 0, type: suggestion.type, base: suggestion.base, touched: false });
+    if (suggestion.amount > 0 && allocated > 0 && (amount == null || amount === allocated)) setAmount(allocated - suggestion.amount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion]);
 
   const autoAllocate = () => {
-    let left = amount ?? docs.reduce((s, d) => s + d.outstanding, 0);
+    let left = amount != null ? amount + whtAmount : docs.reduce((s, d) => s + d.outstanding, 0);
     if (amount == null) setAmount(left);
     const next: Record<number, number | null> = {};
     for (const d of [...docs].sort((a, b) => a.due_date.localeCompare(b.due_date))) {
@@ -160,6 +211,7 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
       memo: memo || null,
       currency,
       exchangeRate: foreign ? fx.rate : null,
+      withholding: whtAmount > 0 ? { type: wht.type, base: wht.base } : null,
       allocations:
         mode === 'party'
           ? Object.entries(alloc)
@@ -356,6 +408,51 @@ export function PaymentEditor({ direction }: { direction: Direction }) {
               <span className={unallocated < 0 ? 'danger-text' : 'muted'}>
                 {t('payments.unallocated')} <span className="amount">{fmt(unallocated)}</span>
               </span>
+            </div>
+          </Card>
+        )}
+
+        {whtOn && partyId && (
+          <Card>
+            <CardHeader
+              title={direction === 'in' ? t('wht.byCustomerTitle') : t('wht.fromSupplierTitle')}
+              sub={direction === 'in' ? t('wht.byCustomerHint') : t('wht.fromSupplierHint')}
+              actions={<Switch checked={wht.on} onChange={(v) => setWht({ ...wht, on: v, touched: true })} label={t('wht.apply')} />}
+            />
+            <div className="card-body stack">
+              {suggestion && !suggestion.belowMinimum && suggestion.amount > 0 && (
+                <div className="faint" style={{ fontSize: 13 }}>
+                  {t('wht.suggested', { type: t('wht.types.' + suggestion.type), rate: suggestion.rateBp / 100, base: fmt(suggestion.base), amount: fmt(suggestion.amount) })}
+                </div>
+              )}
+              {suggestion?.belowMinimum && <div className="faint" style={{ fontSize: 13 }}>{t('wht.belowMinimum', { min: fmt(suggestion.minBase) })}</div>}
+              {!suggestion && partyId && <div className="faint" style={{ fontSize: 13 }}>{t('wht.noType')}</div>}
+              {wht.on && (
+                <div className="grid-3">
+                  <Field label={t('wht.type')}>
+                    <Select value={wht.type} onChange={(e) => setWht({ ...wht, type: e.target.value as WhtType, touched: true })}>
+                      {WHT_TYPES.map((k) => (
+                        <option key={k} value={k}>
+                          {t('wht.types.' + k)} — {(whtSettings?.rates[k] ?? 0) / 100}%
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={t('wht.base')} hint={t('wht.baseHint')}>
+                    <DecimalInput scale={scale} value={wht.base} onChange={(v) => setWht({ ...wht, base: v, touched: true })} />
+                  </Field>
+                  <Field label={t('wht.amount')} hint={allocated > 0 ? t('wht.cashHint', { cash: fmt(Math.max(0, allocated - whtAmount)) }) : undefined}>
+                    <div className="row" style={{ gap: 8 }}>
+                      <strong className="num" style={{ fontSize: 16 }}>{fmt(whtAmount)}</strong>
+                      {allocated > 0 && amount !== allocated - whtAmount && (
+                        <Button size="sm" onClick={() => setAmount(allocated - whtAmount)}>
+                          {t('wht.payRest')}
+                        </Button>
+                      )}
+                    </div>
+                  </Field>
+                </div>
+              )}
             </div>
           </Card>
         )}

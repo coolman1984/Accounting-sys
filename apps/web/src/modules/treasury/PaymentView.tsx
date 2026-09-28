@@ -21,6 +21,10 @@ interface PaymentDetail {
   date: string;
   status: 'draft' | 'posted' | 'void';
   amount: number;
+  wht_type: string | null;
+  wht_base: number;
+  wht_rate_bp: number;
+  wht_amount: number;
   method: string | null;
   reference: string | null;
   memo: string | null;
@@ -127,6 +131,19 @@ export function PaymentView({ direction }: { direction: Direction }) {
               <dd>
                 {p.account.code} · {pick(p.account.name_en, p.account.name_ar)}
               </dd>
+              {p.wht_amount > 0 && (
+                <>
+                  <dt>{direction === 'in' ? t('wht.byCustomer') : t('wht.fromSupplier')}</dt>
+                  <dd>
+                    <Money v={p.wht_amount} /> <span className="muted">· {t('wht.types.' + p.wht_type)} {p.wht_rate_bp / 100}% × </span>
+                    <Money v={p.wht_base} />
+                  </dd>
+                  <dt>{t('wht.settledTotal')}</dt>
+                  <dd>
+                    <Money v={p.amount + p.wht_amount} />
+                  </dd>
+                </>
+              )}
               <dt>{t('payments.method')}</dt>
               <dd>{p.method ? t('payments.methods.' + p.method) : '—'}</dd>
               <dt>{t('common.reference')}</dt>
@@ -155,7 +172,7 @@ export function PaymentView({ direction }: { direction: Direction }) {
                     <tr className="total-row">
                       <td colSpan={2}>{t('payments.unallocated')}</td>
                       <td className="end">
-                        <Money v={p.amount - allocated} />
+                        <Money v={p.amount + p.wht_amount - allocated} />
                       </td>
                     </tr>
                   </tbody>

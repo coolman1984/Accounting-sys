@@ -21,6 +21,7 @@ import { chequesModule } from './cheques/index.js';
 import { recurringModule } from './recurring/index.js';
 import { importsModule } from './imports/index.js';
 import { einvoiceModule } from './einvoice/index.js';
+import { advisorModule } from './advisor/index.js';
 import { inventoryModule } from './inventory/index.js';
 import { purchasingModule } from './purchasing/index.js';
 import { pricingModule } from './pricing/index.js';
@@ -56,4 +57,5 @@ export const modules: AppModule[] = [
   recurringModule,
   importsModule,
   einvoiceModule,
+  advisorModule,
 ];

@@ -42,14 +42,15 @@ export const APPS = {
   recurring: { server: ['recurring'], web: ['recurring'], requires: [] },
   imports: { server: ['imports'], web: ['imports'], requires: [] },
   einvoice: { server: ['einvoice'], web: ['einvoice'], requires: ['ar'] },
+  advisor: { server: ['advisor'], web: ['advisor'], requires: [] },
   inventory: { server: ['inventory'], web: ['inventory', 'catalog'], requires: [] },
   purchasing: { server: ['purchasing'], web: ['purchasing'], requires: ['ap'] },
   pricing: { server: ['pricing'], web: ['pricing'], requires: ['ar'] },
 };
 export const PRESETS = {
   ledger: ['gl'],
-  finance: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx'],
-  trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'inventory', 'purchasing', 'pricing', 'analysis', 'budget', 'cashflow'],
+  finance: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'advisor'],
+  trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'inventory', 'purchasing', 'pricing', 'analysis', 'budget', 'cashflow', 'advisor'],
   full: Object.keys(APPS),
 };
 /** Tests that only use the always-present parts. */

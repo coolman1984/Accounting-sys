@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { FileSpreadsheet, Pencil, Percent, Plus } from 'lucide-react';
+import { FileSpreadsheet, HandCoins, Pencil, Percent, Plus } from 'lucide-react';
+import { WithholdingPage } from './withholding';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useErrorText } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
@@ -251,10 +252,12 @@ export const taxModule: WebModule = {
   nav: [
     { to: '/taxes', label: 'nav.taxes', icon: Percent, section: 'tax', order: 10, perm: 'tax.codes.read', app: 'tax' },
     { to: '/reports/tax', label: 'reports.taxSummary', icon: FileSpreadsheet, section: 'tax', order: 20, perm: 'tax.reports.read', app: 'tax' },
+    { to: '/reports/withholding', label: 'wht.reportTitle', icon: HandCoins, section: 'tax', order: 25, perm: 'tax.reports.read', app: 'tax' },
   ],
   routes: [
     { path: '/taxes', element: <TaxesPage /> },
     { path: '/reports/tax', element: <TaxSummaryPage /> },
+    { path: '/reports/withholding', element: <WithholdingPage /> },
   ],
   commands: [
     { id: 'go-taxes', label: 'nav.taxes', icon: Percent, group: 'navigate', to: '/taxes', perm: 'tax.codes.read', app: 'tax', keywords: 'vat ضريبة' },
@@ -262,5 +265,6 @@ export const taxModule: WebModule = {
   ],
   reports: [
     { to: '/reports/tax', group: 'reports.groups.tax', title: 'reports.taxSummary', desc: 'reports.taxSummaryDesc', icon: Percent, color: 'var(--line-purple)', perm: 'tax.reports.read', app: 'tax' },
+    { to: '/reports/withholding', group: 'reports.groups.tax', title: 'wht.reportTitle', desc: 'wht.reportDesc', icon: HandCoins, color: 'var(--line-purple)', perm: 'tax.reports.read', app: 'tax' },
   ],
 };

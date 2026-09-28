@@ -34,22 +34,22 @@ describe('import from Excel', () => {
   test('accounts: parents after their children, Arabic headers, a bad row stops the whole file', async () => {
     const rows = [
       ['الكود', 'الاسم بالإنجليزي', 'الاسم بالعربي', 'النوع', 'النوع الفرعي', 'كود الحساب الأب', 'تجميعي (نعم/لا)'],
-      ['1125', 'Bank Misr', 'بنك مصر', 'asset', 'bank', '1180', 'لا'],
-      ['1180', 'Banks', 'البنوك', 'asset', 'bank', '11', 'نعم'],
+      ['1125', 'Bank Misr', 'بنك مصر', 'asset', 'bank', '1186', 'لا'],
+      ['1186', 'Banks', 'البنوك', 'asset', 'bank', '11', 'نعم'],
       ['1110', 'Cash', 'النقدية', 'asset', 'cash', '11', 'no'],
       ['9999', 'Odd', 'غريب', 'planet', 'bank', '', ''],
     ];
     const preview = await c.post('/api/imports/preview', { dataset: 'accounts', file: file(rows) });
     assert.deepEqual(preview.counts, { new: 2, exists: 1, errors: 1 });
     assert.equal(preview.rows[3].error.code, 'import.not_enum');
-    assert.equal(count("SELECT COUNT(*) n FROM accounts WHERE code IN ('1125', '1180')"), 0, 'the preview leaves nothing behind');
+    assert.equal(count("SELECT COUNT(*) n FROM accounts WHERE code IN ('1125', '1186')"), 0, 'the preview leaves nothing behind');
     const refused = await c.raw('POST', '/api/imports/commit', { dataset: 'accounts', file: file(rows) });
     assert.equal(refused.body.error.code, 'import.has_errors');
-    assert.equal(count("SELECT COUNT(*) n FROM accounts WHERE code IN ('1125', '1180')"), 0);
+    assert.equal(count("SELECT COUNT(*) n FROM accounts WHERE code IN ('1125', '1186')"), 0);
     const done = await c.post('/api/imports/commit', { dataset: 'accounts', file: file(rows.slice(0, 4)) });
     assert.equal(done.committed, true);
     const child = c.app.kernel.db.get<{ parent: string }>("SELECT p.code parent FROM accounts a JOIN accounts p ON p.id = a.parent_id WHERE a.code = '1125'");
-    assert.equal(child!.parent, '1180');
+    assert.equal(child!.parent, '1186');
   });
 
   test('parties and items: money in pounds, Arabic digits, duplicates skipped', async () => {
