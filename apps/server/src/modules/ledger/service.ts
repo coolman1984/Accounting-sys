@@ -339,8 +339,13 @@ export function createLedger({ db, services, events, apps }: ModuleContext) {
    */
   function ensureAccount(t: TemplateAccount & { parentCode: string }): number {
     return db.tx(() => {
-      const existing = db.get<{ id: number; subtype: string; is_group: number; is_active: number }>('SELECT id, subtype, is_group, is_active FROM accounts WHERE code = ?', [t.code]);
-      if (existing && !existing.is_group && existing.subtype === t.subtype && existing.is_active) return existing.id;
+      const existing = db.get<{ id: number; subtype: string; is_group: number; is_active: number; name_en: string; name_ar: string }>(
+        'SELECT id, subtype, is_group, is_active, name_en, name_ar FROM accounts WHERE code = ?',
+        [t.code],
+      );
+      // The same code, kind and name: the account this template made (or the standard chart's own). A code that
+      // holds something else (1150 is VAT input in the standard chart) is never borrowed.
+      if (existing && !existing.is_group && existing.subtype === t.subtype && existing.is_active && (existing.name_en === t.en || existing.name_ar === t.ar)) return existing.id;
       let code = t.code;
       for (let n = Number(t.code) + 1; db.get('SELECT 1 FROM accounts WHERE code = ?', [code]); n++) code = String(n);
       const parent = db.get<{ id: number }>('SELECT id FROM accounts WHERE code = ? AND is_group = 1 AND type = ?', [t.parentCode, t.type]);

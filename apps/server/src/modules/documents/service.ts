@@ -11,44 +11,8 @@ import { KIND_INFO, type DocKind } from './schema.js';
 
 export type { Document } from '../../contracts/documents.js';
 
-export interface DocLineInput {
-  itemId?: number | null;
-  description?: string | null;
-  /** x1000 */
-  quantity: number;
-  unitPrice: number;
-  discountBp?: number;
-  accountId?: number | null;
-  taxId?: number | null;
-  /** Overrides the document's warehouse for this line. */
-  warehouseId?: number | null;
-  /** Alternative unit of measure (null = the item's base unit); quantity and price are in this unit. */
-  unitId?: number | null;
-  /** Controlling dimension (CO module). */
-  costCenterId?: number | null;
-  /**
-   * Extension data other modules attach to a line (lots/serials, links to goods
-   * receipts or purchase orders). Stored as-is; the owning module validates it.
-   */
-  ext?: Record<string, unknown> | null;
-}
-
-export interface DocInput {
-  kind: DocKind;
-  partyId: number;
-  date: string;
-  dueDate?: string | null;
-  reference?: string | null;
-  notes?: string | null;
-  taxInclusive?: boolean;
-  againstDocumentId?: number | null;
-  /** Default warehouse for stock lines. */
-  warehouseId?: number | null;
-  /** Document currency (default: the company's) and its rate (default: the day's rate). */
-  currency?: string | null;
-  exchangeRate?: number | null;
-  lines: DocLineInput[];
-}
+export type { DocInput, DocLineInput } from '../../contracts/documents.js';
+import type { DocInput } from '../../contracts/documents.js';
 
 export interface ComputedLine {
   item_id: number | null;
@@ -478,6 +442,8 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     registerKind: (kind, info) => void kinds.set(kind, info),
     registerSide: (side, info) => void sides.set(side, info),
     kind: (kind) => kinds.get(kind) ?? null,
+    create,
+    post,
   };
-  return { ...contract, side: (side: DocSide) => sides.get(side) ?? null, create, update, post, void: voidDoc, remove, journalLines };
+  return { ...contract, side: (side: DocSide) => sides.get(side) ?? null, update, void: voidDoc, remove, journalLines };
 }

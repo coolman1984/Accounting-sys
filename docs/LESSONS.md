@@ -83,6 +83,18 @@ non-obvious cause or a tool behaved unexpectedly.
 - **Payroll amounts are kept to the piaster** — hand calculations rounded to whole pounds disagree by
   cents; derive test expectations in minor units.
 
+- **"Find or create" by code alone borrows the wrong account**: the standard chart already uses 1150 for VAT
+  input, so "Cheques receivable" with code 1150 and the same type became the VAT account. Reuse only when
+  the name matches too, and choose codes away from the template's.
+- **Excel's "CSV" on Arabic Windows is Windows-1256, not UTF-8** — decode strictly as UTF-8 first and fall
+  back to `windows-1256`.
+- **A trial run is the cheapest validation**: making the document inside a transaction and throwing a
+  sentinel to roll back catches every rule the owner module has (party required, inactive accounts)
+  without copying any of them.
+- **Keep the network out of posting**: e-invoices are queued by the event listener and sent later; a slow
+  or down Tax Authority must never block or roll back an invoice.
+- **Health checks need words too** — a new check without `health.<module>.<id>` / `…Bad` shows a raw key.
+
 ## Tools
 
 - `@fastify/static` pre-indexes files at start; after a rebuild use `wildcard: true`, and `res.header`

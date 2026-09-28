@@ -70,7 +70,7 @@ away.
 - [x] **Cash forecast**: 13 weeks / 12 months from open invoices and bills (customer payment habits), purchase orders, planned items and post-dated entries; minimum-cash alert
 - [x] **Manufacturing**: recipes (BOM) with standard costs, production orders through stock, material / labour / overhead variances
 - [ ] Projects as a second dimension next to cost centers; budgets per cost center
-- [ ] Recurring invoices and journal templates
+- [x] Recurring invoices, bills and journal templates
 - [ ] Quotations → sales orders → invoices; purchase orders → bills
 
 ## Phase 3 — Business modules
@@ -78,12 +78,14 @@ away.
 - [x] **Fixed assets**: register, depreciation schedules, automatic postings
 - [x] **Payroll** (basic): employees, salary components, monthly posting
 - [x] **Cheques** (post-dated cheques receivable / payable — common in the region)
-- [ ] E-invoicing adapters (e.g. Egyptian ETA / Saudi ZATCA) as separate modules
+- [x] E-invoicing adapter: Egyptian ETA (invoices and credit notes, external signer)
+- [ ] E-invoicing: Egyptian e-receipt (B2C) and Saudi ZATCA
 
 ## Phase 4 — Platform
 
 - [ ] Attachments on documents (scans of receipts)
-- [ ] Import from Excel (chart of accounts, parties, opening balances)
+- [x] Import from Excel (chart of accounts, parties, products, opening balances)
+- [ ] Import open invoices and update existing records from a file
 - [ ] Multi-company (one database file per company, switcher in the UI)
 - [ ] HTTPS on the LAN (self-signed certificate helper)
 - [ ] Desktop packaging (Windows service / tray app) for one-click install

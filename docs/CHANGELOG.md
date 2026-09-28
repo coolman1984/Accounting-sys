@@ -6,6 +6,27 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Recurring documents** (new `recurring` app, in General ledger): templates that make sales invoices,
+  supplier bills or journal entries every week, month, quarter or year (every N), from a first date to an
+  end date or a number of times; month ends kept (31 Jan → 28 Feb → 31 Mar); `{month}`, `{year}`, `{date}`
+  filled into notes and memos; posted automatically or left as drafts. Each template is checked by a trial
+  run when saved; missed dates are caught up in order, a failure stops that template without skipping a
+  date, and nothing is made twice. "Repeat this" on an invoice or bill starts a template from it; the
+  dashboard lists what is due with one button to make it.
+- **Import from Excel** (new `imports` app, in Administration): customers & suppliers, products & services,
+  the chart of accounts and opening balances from `.xlsx` or `.csv` (Arabic Windows CSV understood).
+  Downloadable templates in English or Arabic; columns matched by English or Arabic names; Arabic digits
+  and thousands separators accepted. Every file is first checked by a trial run that reports each row's
+  problem in the reader's language; nothing is imported until every row is right, then all in one
+  transaction. Existing codes are skipped, parents may come after their children, opening balances post
+  one balanced entry (once).
+- **E-invoicing for Egypt** (new `einvoice` app, in Tax, needs Receivables): posted sales invoices and
+  credit notes are queued, built as ETA documents (v1.0 signed or 0.9 for pre-production), signed by the
+  taxpayer's local signer (USB token), submitted, and their result read back (accepted, refused with the
+  ETA's reasons, cancelled). Readiness checks before sending (registration, addresses, product codes, tax
+  types, national ID above 50,000 EGP, credit note's original accepted, no future dates); product EGS/GS1
+  codes and tax types mapped once; cancel at the ETA from the invoice; status panel on every invoice.
+- Services for other modules: `catalog.createItem`, `parties.create`, `documents.create` / `documents.post`.
 - **Fixed assets** (new `assets` app, "Fixed assets (AA)" menu): categories from the chart (furniture,
   vehicles, computers) with their accounts; register with cost, residual value, useful life, straight
   line or declining balance, assets brought in part-depreciated; optional purchase entry; monthly
@@ -56,6 +77,13 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Research: `docs/research/FINANCIAL-ANALYSIS.md` (formulas, edge cases, built-in vs add-on decision).
 
 ### Fixed
+- **Cheques could be booked to the VAT input account**: "Cheques receivable" was created with code 1150,
+  which the standard chart already uses for VAT input, and `ensureAccount` took any account with the same
+  code and type. It now only reuses an account with the same name, cheques use 1155, a migration forgets
+  the wrong choice where no cheque was booked yet, and a new health check reports it otherwise.
+- System health showed raw keys for fixed assets, payroll, manufacturing and cheques checks (a test now
+  requires every check's words in both languages).
+- A recurring template whose draft invoice had been deleted could not be opened.
 - Invoices settled by a cheque link to the cheque (settlement source `cheque`).
 - Journal entries of bank transfers opened a stock operation; goods receipts, landed costs, bank
   statements and production orders now link to their own page.

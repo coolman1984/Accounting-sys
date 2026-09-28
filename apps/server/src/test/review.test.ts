@@ -92,4 +92,16 @@ describe('code review regressions', () => {
     const bad = walk(root).filter((f) => /path: '\/assets(\/|')/.test(readFileSync(f, 'utf8')));
     assert.deepEqual(bad, []);
   });
+
+  test('every health check has its words in English and Arabic (the page showed raw keys)', async () => {
+    const health = await c.get('/api/system/health');
+    for (const lang of ['en', 'ar']) {
+      const dict = (await import(`../../../web/src/core/locales/${lang}.ts`)).default;
+      const missing = health.flatMap((m: any) => [
+        ...(dict.health.modules[m.module] ? [] : [`${lang}: health.modules.${m.module}`]),
+        ...m.checks.flatMap((x: any) => ['', 'Bad'].filter((suffix) => !dict.health[m.module]?.[x.id + suffix]).map((suffix) => `${lang}: health.${m.module}.${x.id}${suffix}`)),
+      ]);
+      assert.deepEqual(missing, []);
+    }
+  });
 });

@@ -51,6 +51,8 @@ export interface CatalogService {
   units(itemId: number): ItemUnit[];
   /** Conversion factor (x1000) of a unit for an item; null unit = base unit (1000). */
   unitFactor(item: Item, unitId: number | null | undefined): number;
+  /** Create an item from the same input as POST /items (validated inside); returns its id. */
+  createItem(input: unknown, userId: number | null): number;
 }
 
 declare module '../kernel/services.js' {

@@ -183,3 +183,38 @@ reverses the party side and unsettles the documents. Issued cheques mirror this 
 payable". Cheques are in the company currency only and are never deleted (status history). The cash
 forecast reads open cheques at their due date.
 **Consequences:** Endorsing a customer's cheque to a supplier and foreign-currency cheques are left for later.
+
+## ADR-019 · Recurring documents: templates replay through the owners' services
+**Status:** Accepted · 2026-09-28
+**Decision:** A `recurring` module keeps templates (the document or entry as JSON, a schedule) and makes
+each occurrence through `documents.create/post` (new in the contract) or `ledger.createEntry`, so every
+rule of those modules applies. A template is saved only after a trial run inside a rolled-back
+transaction. Occurrences are counted (`done_count`), not dated, so a failure never skips a date; once
+anything was made, the type and schedule are frozen (end it and start a new one). Generation is manual
+(button, dashboard) — no background job on a LAN server that may be off.
+**Consequences:** A template stores its lines, not a link to a source document; editing it changes future
+occurrences only.
+
+## ADR-020 · Import from Excel: a dependency-free reader, trial run first, all or nothing
+**Status:** Accepted · 2026-09-28
+**Decision:** An `imports` module reads `.xlsx` with a small zip + XML reader on `node:zlib` (no new
+dependency) and `.csv` (UTF-8 or Windows-1256). Rows are written through the owners' services
+(`ledger.createAccount`, `parties.create`, `catalog.createItem`, `ledger.createEntry`) — so every rule and
+permission applies — each in its own savepoint inside one transaction: the preview rolls it back and
+reports every row, the import commits only when no row failed. Existing codes are skipped, not updated.
+**Consequences:** Updating existing records from a file, and importing documents (open invoices), are left
+for later; opening customer balances go through the opening entry with party codes.
+
+## ADR-021 · E-invoicing (Egypt ETA) as a separate module; signing by an external signer
+**Status:** Accepted · 2026-09-28
+**Decision:** An `einvoice` module/app listens to `document.posted` and only queues (no network inside the
+posting transaction). Sending builds the ETA JSON from the posted document, serializes it canonically,
+hashes it (SHA-256) and asks the taxpayer's signer (a local HTTP service holding the USB token — CAdES-BES
+needs the token's PKCS#11 driver, which does not belong in the server) for the signature; then OAuth
+client-credentials, `documentsubmissions`, and status reads by uuid. Addresses and credentials are
+settings of the module; product codes and tax types are mapped in its own tables. One send or refresh at a
+time. The server never edits a posted document: corrections go through credit notes, cancellations
+through the ETA.
+**Consequences:** Receipts (B2C e-receipt) and ZATCA are other modules on the same pattern. The client
+secret is stored in the company database and never sent back to the browser.
+

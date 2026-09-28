@@ -42,6 +42,11 @@ describe('cheques: received and issued, clearing, bouncing, forecast', () => {
     assert.equal(await settled(inv1), 10_000 * K);
     const holding = c.app.kernel.db.get<{ receivable_account_id: number }>('SELECT * FROM cheque_settings WHERE id = 1')!.receivable_account_id;
     assert.equal(await balance(holding), 10_000 * K);
+    const acc = c.app.kernel.db.get<{ code: string; name_en: string }>('SELECT code, name_en FROM accounts WHERE id = ?', [holding])!;
+    assert.deepEqual({ ...acc }, { code: '1155', name_en: 'Cheques Receivable' }, 'never the VAT input account (1150) of the standard chart');
+    const health = await c.get('/api/system/health');
+    const check = health.find((m: any) => m.module === 'cheques').checks.find((x: any) => x.id === 'holding');
+    assert.equal(check.ok, true);
     assert.equal(await balance(ar), 5_000 * K, 'only the second invoice is still owed');
     const dup = await c.raw('POST', '/api/cheques', { direction: 'received', chequeNo: '104455', partyId: nile, amount: 1, date: '2026-03-10', dueDate: '2026-04-15' });
     assert.equal(dup.body.error.code, 'cheque.duplicate');
