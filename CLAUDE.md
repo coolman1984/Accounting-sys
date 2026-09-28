@@ -5,6 +5,8 @@ small and lower-mid companies. **Simplicity and ease of use come first.**
 
 ## Before you start
 
+0. **If `docs/HANDOFF.md` exists, read it and finish it first** — it is unfinished work (and the user's
+   standing preferences) left by the previous session.
 1. Read `docs/MAP.md` — it says which module and file own what. Do not search the whole tree first.
 2. Read the last entries of `docs/CHANGELOG.md` and `docs/LESSONS.md`.
 3. Check `docs/DECISIONS.md` before changing anything structural.

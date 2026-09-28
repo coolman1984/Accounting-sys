@@ -6,6 +6,16 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Egyptian withholding tax (خصم وإضافة)** on receipts and payments: deducted from suppliers on the value
+  before VAT (1% supplies/contracting, 3% services, 5% commissions, 300 EGP minimum, editable) and due with
+  Form 41; tax withheld by customers kept as a credit against income tax; suggestion from the party's type;
+  Withholding report reconciled to the books.
+- **Egyptian payroll**: salary tax of Law 7/2024 (with the high-income rule and rounding to 10 pounds),
+  social insurance on the declared insurable wage between the year's minimum and maximum, one-click setup.
+- **Advisor** (new `advisor` app): daily checks against Egyptian VAT, withholding, payroll, income tax and
+  company law and the Egyptian Accounting Standards, each with the rule behind it and how to fix it;
+  shown on its page, on the dashboard and on invoices and bills.
+- Chart: withholding accounts (1180, 2190) and the legal reserve (3150).
 - **Recurring documents** (new `recurring` app, in General ledger): templates that make sales invoices,
   supplier bills or journal entries every week, month, quarter or year (every N), from a first date to an
   end date or a number of times; month ends kept (31 Jan → 28 Feb → 31 Mar); `{month}`, `{year}`, `{date}`
@@ -77,6 +87,7 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Research: `docs/research/FINANCIAL-ANALYSIS.md` (formulas, edge cases, built-in vs add-on decision).
 
 ### Fixed
+- `ensureDefaultAccount` could take another account that held the template's code; it now needs the same name.
 - **Cheques could be booked to the VAT input account**: "Cheques receivable" was created with code 1150,
   which the standard chart already uses for VAT input, and `ensureAccount` took any account with the same
   code and type. It now only reuses an account with the same name, cheques use 1155, a migration forgets
