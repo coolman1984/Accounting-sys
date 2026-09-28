@@ -53,7 +53,127 @@ const zCategory = z.object({
   nameAr: z.string().trim().min(1).max(100),
 });
 
-function createCatalog({ db }: ModuleContext): CatalogService {
+/** Validation and writes for items, shared by the routes and the catalog service (imports). */
+function createItemWriter({ db, services }: ModuleContext) {
+  const ledger = () => services.get('ledger');
+  const audit = () => services.get('audit');
+    const postable = (id: number | null, label: string) => {
+      if (id == null) return;
+      const a = ledger().account(id);
+      if (a.is_group) fail('account.group_not_allowed', `${label}: choose a posting account, not a group`);
+    };
+    const itemRow = (i: z.infer<typeof zItem>) => ({
+      sku: i.sku,
+      name_en: i.nameEn,
+      name_ar: i.nameAr,
+      kind: i.kind,
+      unit: i.unit,
+      sale_price: i.salePrice,
+      purchase_price: i.purchasePrice,
+      income_account_id: i.incomeAccountId,
+      expense_account_id: i.expenseAccountId,
+      sales_tax_id: i.salesTaxId,
+      purchase_tax_id: i.purchaseTaxId,
+      description: i.description,
+      is_active: i.isActive,
+      barcode: i.barcode,
+      category_id: i.categoryId,
+      track_stock: i.trackStock,
+      inventory_account_id: i.inventoryAccountId,
+      cogs_account_id: i.cogsAccountId,
+      reorder_level: i.reorderLevel,
+      reorder_qty: i.reorderQty,
+      tracking: i.kind === 'product' && i.trackStock ? i.tracking : 'none',
+      requires_expiry: i.kind === 'product' && i.trackStock && i.tracking === 'batch' && i.requiresExpiry,
+      min_sale_price: i.minSalePrice,
+    });
+
+    /** Upsert the item's units; units removed from the list are deactivated, never deleted (documents reference them). */
+    const writeUnits = (itemId: number, units: z.infer<typeof zItem>['units']) => {
+      const existing = db.all<ItemUnit>('SELECT * FROM item_units WHERE item_id = ?', [itemId]);
+      const keep = new Set<number>();
+      for (const u of units) {
+        const row = {
+          name_en: u.nameEn,
+          name_ar: u.nameAr,
+          factor: u.factor,
+          barcode: u.barcode,
+          sale_price: u.salePrice,
+          purchase_price: u.purchasePrice,
+          is_active: u.isActive,
+        };
+        const cur = u.id ? existing.find((e) => e.id === u.id) : undefined;
+        if (u.id && !cur) notFound('item_unit', u.id);
+        if (cur) {
+          if (cur.factor !== u.factor && unitUsed(cur.id)) fail('item.unit_locked', `Unit ${cur.name_en} is used on documents; its size cannot change`);
+          db.update('item_units', cur.id, row);
+          keep.add(cur.id);
+        } else keep.add(db.insert('item_units', { ...row, item_id: itemId, created_at: nowIso() }));
+      }
+      for (const e of existing) if (!keep.has(e.id)) db.run('UPDATE item_units SET is_active = 0 WHERE id = ?', [e.id]);
+    };
+
+    const unitUsed = (unitId: number) =>
+      !!db.get('SELECT 1 FROM document_lines WHERE unit_id = ? LIMIT 1', [unitId]) ||
+      (services.has('inventory') && services.get('inventory').unitUsed(unitId));
+
+    const checkItem = (i: z.infer<typeof zItem>, current?: Item) => {
+      postable(i.incomeAccountId, 'Income account');
+      postable(i.expenseAccountId, 'Expense account');
+      postable(i.cogsAccountId, 'Cost of sales account');
+      if (i.inventoryAccountId && ledger().account(i.inventoryAccountId).subtype !== 'inventory') {
+        fail('item.inventory_account', 'The inventory account must be an Inventory account');
+      }
+      if (i.categoryId && !db.get('SELECT 1 FROM item_categories WHERE id = ?', [i.categoryId])) notFound('item_category', i.categoryId);
+      // Barcodes are unique across items and their units, so a scan always finds exactly one thing.
+      const codes = [i.barcode, ...i.units.map((u) => u.barcode)].filter((b): b is string => !!b);
+      if (new Set(codes).size !== codes.length) conflict('item.duplicate_barcode', 'The same barcode is used twice');
+      for (const code of codes) {
+        const onItem = db.get<{ id: number }>('SELECT id FROM items WHERE barcode = ?', [code]);
+        const onUnit = db.get<{ item_id: number }>('SELECT item_id FROM item_units WHERE barcode = ?', [code]);
+        if ((onItem && onItem.id !== current?.id) || (onUnit && onUnit.item_id !== current?.id)) {
+          conflict('item.duplicate_barcode', `Barcode ${code} is already used by another item`, { barcode: code });
+        }
+      }
+      if (i.units.some((u) => u.factor === 1000)) fail('item.unit_factor', 'An extra unit cannot equal the base unit');
+      if (i.tracking === 'serial' && i.units.length) fail('item.serial_units', 'Serial-numbered items are counted one by one (no extra units)');
+      // Once stock has moved, an item cannot stop (or start) being a stock item: its history would no longer add up.
+      if (current && services.has('inventory') && services.get('inventory').hasMoves(current.id)) {
+        const wasStock = current.kind === 'product' && current.track_stock === 1;
+        const isStock = i.kind === 'product' && i.trackStock;
+        if (wasStock !== isStock) fail('item.stock_locked', 'This item has stock movements; its stock tracking cannot change');
+        if (current.tracking !== (isStock ? i.tracking : 'none')) fail('item.stock_locked', 'This item has stock movements; its lot/serial tracking cannot change');
+        if ((current.inventory_account_id ?? null) !== i.inventoryAccountId) {
+          fail('item.stock_locked', 'This item has stock movements; its inventory account cannot change');
+        }
+      }
+      // Default taxes come from the Tax module; without it an item simply carries none.
+      for (const taxId of [i.salesTaxId, i.purchaseTaxId]) {
+        if (!taxId) continue;
+        if (!services.has('tax')) fail('tax.unavailable', 'Taxes are not installed');
+        services.get('tax').get(taxId);
+      }
+    };
+
+
+  /** Create an item from API-shaped input (validated here). */
+  function createItem(raw: unknown, userId: number | null): number {
+    const input = parse(zItem, raw);
+    checkItem(input);
+    if (db.get('SELECT 1 FROM items WHERE sku = ?', [input.sku])) conflict('item.duplicate_sku', 'SKU already exists');
+    return db.tx(() => {
+      const id = db.insert('items', { ...itemRow(input), created_at: nowIso() });
+      writeUnits(id, input.units);
+      audit().log({ userId, action: 'create', entity: 'item', entityId: id, summary: input.sku });
+      return id;
+    });
+  }
+  return { itemRow, writeUnits, checkItem, createItem };
+}
+
+function createCatalog(ctx: ModuleContext): CatalogService {
+  const { db } = ctx;
+  const writer = createItemWriter(ctx);
   return {
     item: (id) => db.get<Item>('SELECT * FROM items WHERE id = ?', [id]) ?? notFound('item', id),
     isStockItem: (item) => item.kind === 'product' && item.track_stock === 1,
@@ -66,6 +186,7 @@ function createCatalog({ db }: ModuleContext): CatalogService {
       if (!u.is_active) fail('item.unit_inactive', `Unit ${u.name_en} of ${item.sku} is inactive`, { sku: item.sku });
       return u.factor;
     },
+    createItem: writer.createItem,
   };
 }
 
@@ -158,15 +279,11 @@ export const catalogModule: AppModule = {
     ctx.services.provide('catalog', createCatalog(ctx));
   },
 
-  routes(r, { db, services }) {
+  routes(r, ctx) {
+    const { db, services } = ctx;
     const audit = services.get('audit');
-    const ledger = services.get('ledger');
+    const { itemRow, writeUnits, checkItem } = createItemWriter(ctx);
 
-    const postable = (id: number | null, label: string) => {
-      if (id == null) return;
-      const a = ledger.account(id);
-      if (a.is_group) fail('account.group_not_allowed', `${label}: choose a posting account, not a group`);
-    };
 
     // -------------------------------------------------------------- items
     r.get('/items', 'catalog.items.read', ({ query }) => {
@@ -239,110 +356,7 @@ export const catalogModule: AppModule = {
       return { ok: true };
     });
 
-    const itemRow = (i: z.infer<typeof zItem>) => ({
-      sku: i.sku,
-      name_en: i.nameEn,
-      name_ar: i.nameAr,
-      kind: i.kind,
-      unit: i.unit,
-      sale_price: i.salePrice,
-      purchase_price: i.purchasePrice,
-      income_account_id: i.incomeAccountId,
-      expense_account_id: i.expenseAccountId,
-      sales_tax_id: i.salesTaxId,
-      purchase_tax_id: i.purchaseTaxId,
-      description: i.description,
-      is_active: i.isActive,
-      barcode: i.barcode,
-      category_id: i.categoryId,
-      track_stock: i.trackStock,
-      inventory_account_id: i.inventoryAccountId,
-      cogs_account_id: i.cogsAccountId,
-      reorder_level: i.reorderLevel,
-      reorder_qty: i.reorderQty,
-      tracking: i.kind === 'product' && i.trackStock ? i.tracking : 'none',
-      requires_expiry: i.kind === 'product' && i.trackStock && i.tracking === 'batch' && i.requiresExpiry,
-      min_sale_price: i.minSalePrice,
-    });
-
-    /** Upsert the item's units; units removed from the list are deactivated, never deleted (documents reference them). */
-    const writeUnits = (itemId: number, units: z.infer<typeof zItem>['units']) => {
-      const existing = db.all<ItemUnit>('SELECT * FROM item_units WHERE item_id = ?', [itemId]);
-      const keep = new Set<number>();
-      for (const u of units) {
-        const row = {
-          name_en: u.nameEn,
-          name_ar: u.nameAr,
-          factor: u.factor,
-          barcode: u.barcode,
-          sale_price: u.salePrice,
-          purchase_price: u.purchasePrice,
-          is_active: u.isActive,
-        };
-        const cur = u.id ? existing.find((e) => e.id === u.id) : undefined;
-        if (u.id && !cur) notFound('item_unit', u.id);
-        if (cur) {
-          if (cur.factor !== u.factor && unitUsed(cur.id)) fail('item.unit_locked', `Unit ${cur.name_en} is used on documents; its size cannot change`);
-          db.update('item_units', cur.id, row);
-          keep.add(cur.id);
-        } else keep.add(db.insert('item_units', { ...row, item_id: itemId, created_at: nowIso() }));
-      }
-      for (const e of existing) if (!keep.has(e.id)) db.run('UPDATE item_units SET is_active = 0 WHERE id = ?', [e.id]);
-    };
-
-    const unitUsed = (unitId: number) =>
-      !!db.get('SELECT 1 FROM document_lines WHERE unit_id = ? LIMIT 1', [unitId]) ||
-      (services.has('inventory') && services.get('inventory').unitUsed(unitId));
-
-    const checkItem = (i: z.infer<typeof zItem>, current?: Item) => {
-      postable(i.incomeAccountId, 'Income account');
-      postable(i.expenseAccountId, 'Expense account');
-      postable(i.cogsAccountId, 'Cost of sales account');
-      if (i.inventoryAccountId && ledger.account(i.inventoryAccountId).subtype !== 'inventory') {
-        fail('item.inventory_account', 'The inventory account must be an Inventory account');
-      }
-      if (i.categoryId && !db.get('SELECT 1 FROM item_categories WHERE id = ?', [i.categoryId])) notFound('item_category', i.categoryId);
-      // Barcodes are unique across items and their units, so a scan always finds exactly one thing.
-      const codes = [i.barcode, ...i.units.map((u) => u.barcode)].filter((b): b is string => !!b);
-      if (new Set(codes).size !== codes.length) conflict('item.duplicate_barcode', 'The same barcode is used twice');
-      for (const code of codes) {
-        const onItem = db.get<{ id: number }>('SELECT id FROM items WHERE barcode = ?', [code]);
-        const onUnit = db.get<{ item_id: number }>('SELECT item_id FROM item_units WHERE barcode = ?', [code]);
-        if ((onItem && onItem.id !== current?.id) || (onUnit && onUnit.item_id !== current?.id)) {
-          conflict('item.duplicate_barcode', `Barcode ${code} is already used by another item`, { barcode: code });
-        }
-      }
-      if (i.units.some((u) => u.factor === 1000)) fail('item.unit_factor', 'An extra unit cannot equal the base unit');
-      if (i.tracking === 'serial' && i.units.length) fail('item.serial_units', 'Serial-numbered items are counted one by one (no extra units)');
-      // Once stock has moved, an item cannot stop (or start) being a stock item: its history would no longer add up.
-      if (current && services.has('inventory') && services.get('inventory').hasMoves(current.id)) {
-        const wasStock = current.kind === 'product' && current.track_stock === 1;
-        const isStock = i.kind === 'product' && i.trackStock;
-        if (wasStock !== isStock) fail('item.stock_locked', 'This item has stock movements; its stock tracking cannot change');
-        if (current.tracking !== (isStock ? i.tracking : 'none')) fail('item.stock_locked', 'This item has stock movements; its lot/serial tracking cannot change');
-        if ((current.inventory_account_id ?? null) !== i.inventoryAccountId) {
-          fail('item.stock_locked', 'This item has stock movements; its inventory account cannot change');
-        }
-      }
-      // Default taxes come from the Tax module; without it an item simply carries none.
-      for (const taxId of [i.salesTaxId, i.purchaseTaxId]) {
-        if (!taxId) continue;
-        if (!services.has('tax')) fail('tax.unavailable', 'Taxes are not installed');
-        services.get('tax').get(taxId);
-      }
-    };
-
-    r.post('/items', 'catalog.items.write', ({ body, user }) => {
-      const input = parse(zItem, body);
-      checkItem(input);
-      if (db.get('SELECT 1 FROM items WHERE sku = ?', [input.sku])) conflict('item.duplicate_sku', 'SKU already exists');
-      return db.tx(() => {
-        const id = db.insert('items', { ...itemRow(input), created_at: nowIso() });
-        writeUnits(id, input.units);
-        audit.log({ userId: user.id, action: 'create', entity: 'item', entityId: id, summary: input.sku });
-        return { id };
-      });
-    });
+    r.post('/items', 'catalog.items.write', ({ body, user }) => ({ id: services.get('catalog').createItem(body, user.id) }));
 
     r.put('/items/:id', 'catalog.items.write', ({ params, body, user }) => {
       const id = Number(params.id);

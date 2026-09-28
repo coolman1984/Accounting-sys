@@ -95,6 +95,9 @@ Modules are how the code is built; **apps** are what a company switches on
 | Fixed assets | assets | register, monthly depreciation, disposals, movements report | — |
 | Payroll | payroll | employees, pay components, monthly runs, payslips, salary payment | — |
 | Cheques | cheques | post-dated cheques received / issued, clearing, bounces, portfolio | — |
+| Recurring documents | recurring | invoices, bills and journal entries on a schedule, catch-up, drafts or posted | — |
+| E-invoicing (Egypt) | einvoice | ETA documents from posted sales invoices / credit notes, signer, submission, status | Receivables |
+| Import from Excel | imports | customers, suppliers, products, accounts, opening balances from .xlsx / .csv | — |
 | Budgets | budget | monthly budgets, approval, budget vs actual, sales variances (read-only on the books) | — |
 
 ### Editions — deliver only what was bought

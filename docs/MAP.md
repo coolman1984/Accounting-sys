@@ -27,6 +27,9 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **assets** | `assets` | — | `assets` |
 | **payroll** | `payroll` | — | `payroll` |
 | **cheques** | `cheques` | — | `cheques` |
+| **recurring** | `recurring` | — | `recurring` |
+| **imports** | `imports` | — | `imports` |
+| **einvoice** | `einvoice` | `ar` | `einvoice` |
 
 Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `documents`
 
@@ -36,8 +39,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 7 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 44 | one folder per module (below) |
-| `apps/server/src/test/` | 20 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 50 | one folder per module (below) |
+| `apps/server/src/test/` | 23 | end-to-end tests, boundary and edition tests |
 
 Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
 
@@ -92,7 +95,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `accounts`, `fiscal_years`, `journal_entries`, `journal_lines`, `ledger`
 - **Provides services:** `ledger`
 - **Events:** emits `fiscalYear.closed`, `journal.posted`, `journal.reversed` · listens `system.setup`
-- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (749), `statements.ts` (268)
+- **Files:** `chart-template.ts` (183), `index.ts` (252), `reports.ts` (209), `schema.ts` (180), `service.ts` (754), `statements.ts` (268)
 
 <details><summary>25 routes</summary>
 
@@ -133,7 +136,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `parties`
 - **Provides services:** `parties`
 - **Events:** emits — · listens `system.setup`
-- **Files:** `index.ts` (275)
+- **Files:** `index.ts` (281)
 
 <details><summary>6 routes</summary>
 
@@ -154,7 +157,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Permissions:** `catalog.items.read`, `catalog.items.write`
 - **Tables / views:** `item_categories`, `item_units`, `items`, `taxes`
 - **Provides services:** `catalog`
-- **Files:** `index.ts` (377)
+- **Files:** `index.ts` (391)
 
 <details><summary>9 routes</summary>
 
@@ -179,7 +182,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Tables / views:** `document_lines`, `documents`, `settlements`, `settlements_new`
 - **Provides services:** `documents`
 - **Events:** emits `document.posted`, `document.voided` · listens `system.setup`
-- **Files:** `index.ts` (306), `schema.ts` (194), `service.ts` (484)
+- **Files:** `index.ts` (306), `schema.ts` (194), `service.ts` (450)
 
 <details><summary>9 routes</summary>
 
@@ -633,7 +636,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 - **Role templates:** `cheque_clerk`
 - **Tables / views:** `cheque_allocations`, `cheque_settings`, `cheques`
 - **Provides services:** —
-- **Files:** `index.ts` (397)
+- **Files:** `index.ts` (419)
 
 <details><summary>9 routes</summary>
 
@@ -648,6 +651,77 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | POST | `/api/cheques/:id/clear` | `auth` |
 | POST | `/api/cheques/:id/unclear` | `auth` |
 | POST | `/api/cheques/:id/cancel` | `auth` |
+
+</details>
+
+### `recurring` — apps/server/src/modules/recurring/
+
+- **Apps:** `recurring` · **Depends on:** `ledger` · **Health checks:** no
+- **Permissions:** `recurring.templates.read`, `recurring.templates.write`
+- **Tables / views:** `recurring_runs`, `recurring_templates`
+- **Provides services:** —
+- **Files:** `engine.ts` (45), `index.ts` (332)
+
+<details><summary>7 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/recurring` | `recurring.templates.read` |
+| GET | `/api/recurring/due` | `recurring.templates.read` |
+| GET | `/api/recurring/:id` | `recurring.templates.read` |
+| POST | `/api/recurring` | `recurring.templates.write` |
+| PUT | `/api/recurring/:id` | `recurring.templates.write` |
+| DELETE | `/api/recurring/:id` | `recurring.templates.write` |
+| POST | `/api/recurring/generate` | `recurring.templates.write` |
+
+</details>
+
+### `imports` — apps/server/src/modules/imports/
+
+- **Apps:** `imports` · **Depends on:** `ledger` · **Health checks:** no
+- **Permissions:** `imports.data.write`
+- **Tables / views:** —
+- **Provides services:** —
+- **Files:** `index.ts` (422), `xlsx.ts` (278)
+
+<details><summary>4 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/imports/datasets` | `imports.data.write` |
+| GET | `/api/imports/template/:dataset` | `imports.data.write` |
+| POST | `/api/imports/preview` | `imports.data.write` |
+| POST | `/api/imports/commit` | `imports.data.write` |
+
+</details>
+
+### `einvoice` — apps/server/src/modules/einvoice/
+
+- **Apps:** `einvoice` · **Depends on:** `ledger`, `parties`, `catalog`, `documents` · **Health checks:** yes
+- **Permissions:** `einvoice.documents.read`, `einvoice.documents.post`, `einvoice.settings.manage`
+- **Role templates:** `einvoice_clerk`
+- **Tables / views:** `einvoice_documents`, `einvoice_item_codes`, `einvoice_settings`, `einvoice_tax_codes`
+- **Provides services:** —
+- **Events:** emits — · listens `document.posted`, `document.voided`
+- **Files:** `eta.ts` (261), `index.ts` (518)
+
+<details><summary>13 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/einvoice/settings` | `einvoice.settings.manage` |
+| PUT | `/api/einvoice/settings` | `einvoice.settings.manage` |
+| POST | `/api/einvoice/test` | `einvoice.settings.manage` |
+| GET | `/api/einvoice/codes` | `einvoice.settings.manage` |
+| PUT | `/api/einvoice/codes/items/:id` | `einvoice.settings.manage` |
+| PUT | `/api/einvoice/codes/taxes/:id` | `einvoice.settings.manage` |
+| GET | `/api/einvoice/documents` | `einvoice.documents.read` |
+| GET | `/api/einvoice/documents/:id` | `einvoice.documents.read` |
+| POST | `/api/einvoice/queue` | `einvoice.documents.post` |
+| POST | `/api/einvoice/submit` | `einvoice.documents.post` |
+| POST | `/api/einvoice/refresh` | `einvoice.documents.post` |
+| POST | `/api/einvoice/documents/:id/cancel` | `einvoice.documents.post` |
+| POST | `/api/einvoice/documents/:id/skip` | `einvoice.documents.post` |
 
 </details>
 
@@ -679,6 +753,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `fx.ts`, `inventory.ts`, `part
 | `assets` | `assets` | `/fixed-assets`, `/fixed-assets/:id`, `/fixed-assets/categories`, `/fixed-assets/depreciation`, `/fixed-assets/report` | 1 (925 lines) |
 | `payroll` | `payroll` | `/payroll/components`, `/payroll/employees`, `/payroll/employees/:id`, `/payroll/runs`, `/payroll/runs/:id` | 1 (1039 lines) |
 | `cheques` | `cheques` | `/cheques/:id`, `/cheques/issued`, `/cheques/new`, `/cheques/portfolio`, `/cheques/received` | 1 (582 lines) |
+| `recurring` | `recurring` | `/recurring`, `/recurring/:id` | 1 (641 lines) |
+| `imports` | `imports` | `/import` | 1 (233 lines) |
+| `einvoice` | `einvoice` | `/einvoice`, `/einvoice/settings` | 1 (540 lines) |
 | `catalog` | — | `/items` | 1 (501 lines) |
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3248 lines) |
 | `purchasing` | `purchasing` | `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new` | 2 (565 lines) |

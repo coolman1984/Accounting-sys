@@ -56,7 +56,7 @@ function createCheques({ db, services }: ModuleContext) {
     if (cur) return cur;
     const id =
       direction === 'received'
-        ? ledger().ensureAccount({ code: '1150', en: 'Cheques Receivable', ar: 'أوراق القبض', type: 'asset', subtype: 'current_asset', parentCode: '11' })
+        ? ledger().ensureAccount({ code: '1155', en: 'Cheques Receivable', ar: 'أوراق القبض', type: 'asset', subtype: 'current_asset', parentCode: '11' })
         : ledger().ensureAccount({ code: '2155', en: 'Cheques Payable', ar: 'أوراق الدفع', type: 'liability', subtype: 'current_liability', parentCode: '21' });
     db.run(`UPDATE cheque_settings SET ${key} = ? WHERE id = 1`, [id]);
     return id;
@@ -273,10 +273,18 @@ export const chequesModule: AppModule = {
   apps: [{ id: 'cheques', order: 35, permissions: ['cheques'] }],
   roles: [{ id: 'cheque_clerk', permissions: ['cheques.*', 'ar.customers.read', 'ap.suppliers.read', 'ar.invoices.read', 'ap.bills.read'] }],
   health({ db }) {
+    // The holding accounts must be their own (not VAT, not a bank): cheques in hand are not tax.
+    const shared = db.get<{ n: number }>(
+      `SELECT COUNT(*) n FROM cheque_settings s JOIN taxes t
+         ON t.sales_account_id IN (s.receivable_account_id, s.payable_account_id) OR t.purchase_account_id IN (s.receivable_account_id, s.payable_account_id)`,
+    )!.n;
     const over = db.get<{ n: number }>(
       'SELECT COUNT(*) n FROM cheques c WHERE (SELECT COALESCE(SUM(amount), 0) FROM cheque_allocations a WHERE a.cheque_id = c.id) > c.amount',
     )!.n;
-    return [{ id: 'allocated', ok: over === 0, details: { count: over } }];
+    return [
+      { id: 'allocated', ok: over === 0, details: { count: over } },
+      { id: 'holding', ok: shared === 0 },
+    ];
   },
   migrations: [
     {
@@ -322,6 +330,20 @@ export const chequesModule: AppModule = {
         INSERT INTO cheque_settings (id) VALUES (1);
         CREATE TRIGGER cheques_no_delete BEFORE DELETE ON cheques
         BEGIN SELECT RAISE(ABORT, 'cheques: cheques are cancelled, never deleted'); END;
+      `,
+    },
+    {
+      // Early versions could take the standard chart's 1150 (VAT input) as "Cheques receivable". Where no cheque
+      // was booked yet, forget that choice so the right account is made on the next cheque; otherwise the health
+      // check reports it.
+      id: '002_holding_accounts',
+      up: `
+        UPDATE cheque_settings SET receivable_account_id = NULL
+         WHERE receivable_account_id IN (SELECT sales_account_id FROM taxes UNION SELECT purchase_account_id FROM taxes)
+           AND NOT EXISTS (SELECT 1 FROM cheques WHERE direction = 'received');
+        UPDATE cheque_settings SET payable_account_id = NULL
+         WHERE payable_account_id IN (SELECT sales_account_id FROM taxes UNION SELECT purchase_account_id FROM taxes)
+           AND NOT EXISTS (SELECT 1 FROM cheques WHERE direction = 'issued');
       `,
     },
   ],

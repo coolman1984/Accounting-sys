@@ -14,6 +14,9 @@ import { manufacturingModule } from './manufacturing';
 import { assetsModule } from './assets';
 import { payrollModule } from './payroll';
 import { chequesModule } from './cheques';
+import { recurringModule } from './recurring';
+import { importsModule } from './imports';
+import { einvoiceModule } from './einvoice';
 import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
 import { purchasingModule } from './purchasing';
@@ -42,9 +45,12 @@ export const webModules: WebModule[] = [
   assetsModule,
   payrollModule,
   chequesModule,
+  recurringModule,
+  einvoiceModule,
   catalogModule,
   inventoryModule,
   purchasingModule,
   pricingModule,
+  importsModule,
   adminModule,
 ];

@@ -24,6 +24,35 @@ const zParty = z.object({
   isActive: z.boolean().default(true),
 });
 
+const checkControlAccounts = (services: ModuleContext['services'], input: z.infer<typeof zParty>) => {
+  const ledger = services.get('ledger');
+  if (input.receivableAccountId && ledger.account(input.receivableAccountId).subtype !== 'receivable') {
+    fail('party.bad_account', 'The receivable account must be an Accounts Receivable account');
+  }
+  if (input.payableAccountId && ledger.account(input.payableAccountId).subtype !== 'payable') {
+    fail('party.bad_account', 'The payable account must be an Accounts Payable account');
+  }
+};
+
+const row = (input: z.infer<typeof zParty>) => ({
+  kind: input.kind,
+  name: input.name,
+  name_alt: input.nameAlt,
+  tax_number: input.taxNumber,
+  email: input.email,
+  phone: input.phone,
+  address: input.address,
+  city: input.city,
+  country: input.country,
+  receivable_account_id: input.receivableAccountId,
+  payable_account_id: input.payableAccountId,
+  payment_terms_days: input.paymentTermsDays,
+  credit_limit: input.creditLimit,
+  notes: input.notes,
+  is_active: input.isActive,
+});
+
+
 function createParties({ db, services }: ModuleContext): PartiesService {
   // Customers and suppliers exist only when AR / AP plug their role in.
   const roles = new Map<'customer' | 'supplier', PartyRoleInfo>();
@@ -46,6 +75,18 @@ function createParties({ db, services }: ModuleContext): PartiesService {
     },
     receivableAccount: (p) => p.receivable_account_id ?? services.get('ledger').defaultAccount('receivable'),
     payableAccount: (p) => p.payable_account_id ?? services.get('ledger').defaultAccount('payable'),
+    /** Create a customer or supplier from the same input as POST /parties (validated here); the caller checks rights. */
+    create(raw, userId) {
+      const input = parse(zParty, raw);
+      checkControlAccounts(services, input);
+      return db.tx(() => {
+        const code = input.code || services.get('sequences').next(input.kind === 'supplier' ? 'supplier' : 'customer');
+        if (db.get('SELECT 1 FROM parties WHERE code = ?', [code])) conflict('party.duplicate_code', `Code ${code} already exists`);
+        const id = db.insert('parties', { ...row(input), code, created_at: nowIso() });
+        services.get('audit').log({ userId, action: 'create', entity: 'party', entityId: id, summary: input.name });
+        return { id, code };
+      });
+    },
     assertKind(p, kind) {
       if (p.kind !== 'both' && p.kind !== kind) {
         fail(kind === 'customer' ? 'party.not_customer' : 'party.not_supplier', `${p.name} is not a ${kind}`);
@@ -167,45 +208,10 @@ export const partiesModule: AppModule = {
       return { ...p, receivable: b?.receivable ?? 0, payable: b?.payable ?? 0 };
     });
 
-    const checkControlAccounts = (input: z.infer<typeof zParty>) => {
-      const ledger = services.get('ledger');
-      if (input.receivableAccountId && ledger.account(input.receivableAccountId).subtype !== 'receivable') {
-        fail('party.bad_account', 'The receivable account must be an Accounts Receivable account');
-      }
-      if (input.payableAccountId && ledger.account(input.payableAccountId).subtype !== 'payable') {
-        fail('party.bad_account', 'The payable account must be an Accounts Payable account');
-      }
-    };
-
-    const row = (input: z.infer<typeof zParty>) => ({
-      kind: input.kind,
-      name: input.name,
-      name_alt: input.nameAlt,
-      tax_number: input.taxNumber,
-      email: input.email,
-      phone: input.phone,
-      address: input.address,
-      city: input.city,
-      country: input.country,
-      receivable_account_id: input.receivableAccountId,
-      payable_account_id: input.payableAccountId,
-      payment_terms_days: input.paymentTermsDays,
-      credit_limit: input.creditLimit,
-      notes: input.notes,
-      is_active: input.isActive,
-    });
-
     r.post('/parties', 'auth', ({ body, user }) => {
       const input = parse(zParty, body);
       need(user, input.kind, 'write');
-      checkControlAccounts(input);
-      return db.tx(() => {
-        const code = input.code || services.get('sequences').next(input.kind === 'supplier' ? 'supplier' : 'customer');
-        if (db.get('SELECT 1 FROM parties WHERE code = ?', [code])) conflict('party.duplicate_code', `Code ${code} already exists`);
-        const id = db.insert('parties', { ...row(input), code, created_at: nowIso() });
-        audit.log({ userId: user.id, action: 'create', entity: 'party', entityId: id, summary: input.name });
-        return { id, code };
-      });
+      return parties.create(input, user.id);
     });
 
     r.put('/parties/:id', 'auth', ({ params, body, user }) => {
@@ -214,7 +220,7 @@ export const partiesModule: AppModule = {
       const input = parse(zParty, body);
       need(user, cur.kind, 'write');
       need(user, input.kind, 'write');
-      checkControlAccounts(input);
+      checkControlAccounts(services, input);
       const code = input.code || cur.code;
       const dup = db.get<{ id: number }>('SELECT id FROM parties WHERE code = ?', [code]);
       if (dup && dup.id !== id) conflict('party.duplicate_code', `Code ${code} already exists`);

@@ -79,6 +79,46 @@ export interface DocSideInfo {
   reportPerm: string;
 }
 
+/** Input of an invoice, bill or note (the same as POST /documents). */
+export interface DocLineInput {
+  itemId?: number | null;
+  description?: string | null;
+  /** x1000 */
+  quantity: number;
+  unitPrice: number;
+  discountBp?: number;
+  accountId?: number | null;
+  taxId?: number | null;
+  /** Overrides the document's warehouse for this line. */
+  warehouseId?: number | null;
+  /** Alternative unit of measure (null = the item's base unit); quantity and price are in this unit. */
+  unitId?: number | null;
+  /** Controlling dimension (CO module). */
+  costCenterId?: number | null;
+  /**
+   * Extension data other modules attach to a line (lots/serials, links to goods
+   * receipts or purchase orders). Stored as-is; the owning module validates it.
+   */
+  ext?: Record<string, unknown> | null;
+}
+
+export interface DocInput {
+  kind: DocKind;
+  partyId: number;
+  date: string;
+  dueDate?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+  taxInclusive?: boolean;
+  againstDocumentId?: number | null;
+  /** Default warehouse for stock lines. */
+  warehouseId?: number | null;
+  /** Document currency (default: the company's) and its rate (default: the day's rate). */
+  currency?: string | null;
+  exchangeRate?: number | null;
+  lines: DocLineInput[];
+}
+
 /** What settled part of an invoice or bill: a receipt/payment, a credit note, or a cheque. */
 export type SettlementSource = 'payment' | 'credit' | 'cheque';
 
@@ -96,6 +136,10 @@ export interface DocumentsService {
   registerKind(kind: DocKind, info: DocKindInfo): void;
   registerSide(side: DocSide, info: DocSideInfo): void;
   kind(kind: DocKind): DocKindInfo | null;
+  /** Create a draft document (validated like POST /documents; the caller checks rights). */
+  create(input: DocInput, userId: number | null): number;
+  /** Post a draft document. */
+  post(id: number, userId: number | null): void;
 }
 
 declare module '../kernel/services.js' {
