@@ -15,7 +15,7 @@ Requires **Node.js 22.13+**.
 ./start.sh
 ```
 
-That installs dependencies, builds once, and starts the server. The console prints:
+That installs dependencies (first run), builds, and starts the server. The console prints:
 
 ```
   This computer:   http://localhost:4800
@@ -31,6 +31,12 @@ the rest of the office. The first visit runs the setup wizard.
 2. على ويندوز: شغّل `start.bat`.
 3. افتح `http://localhost:4800` على نفس الجهاز، أو العنوان المكتوب بجوار «Other computers» من أي جهاز على نفس الشبكة.
 4. أول مرة سيظهر معالج الإعداد: اسم الشركة، العملة، بداية السنة المالية، ثم حساب المدير.
+
+### Demo company
+
+`start-demo.bat` (or `npm run demo`, then start with `MIZAN_DATA_DIR=data-demo MIZAN_PORT=4810`) builds and
+opens a sample electronics factory — nine months of 2026 — at `http://localhost:4810`, sign in `admin` / `123`
+(development only). Its data lives in `data-demo/`; your own company in `data/` is never touched.
 
 ## Development
 

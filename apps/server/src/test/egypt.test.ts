@@ -80,6 +80,8 @@ describe('Egypt: salary tax, social insurance, withholding', () => {
       withholding: { type: 'services', base: 10_000 * K }, allocations: [{ documentId: bill.id, amount: 11_400 * K }],
     });
     assert.equal((await c.get(`/api/documents/${bill.id}`)).amount_settled, 11_400 * K, 'the bill is fully settled');
+    const health = (await c.get('/api/system/health')).find((m: any) => m.module === 'payments');
+    assert.equal(health.checks.find((x: any) => x.id === 'allocated').ok, true, 'the withheld tax counts towards the allocation');
     assert.equal(await balance(await acc(c, '2190')), -300 * K);
     const report = await c.get('/api/reports/withholding?from=2026-01-01&to=2026-03-31&side=deducted');
     assert.deepEqual([report.total, report.base, report.ledger.balance, report.rows[0].tax_number], [300 * K, 10_000 * K, 300 * K, '100-200-300']);

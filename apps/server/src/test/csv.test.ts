@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Loaded by path so the server's type-check does not pull in the web app's sources.
-const WEB_CSV = resolve(import.meta.dirname, '../../../web/src/modules/treasury/csv.ts');
+// A file:// URL, because a Windows path ("D:\…") is not a valid import specifier.
+const WEB_CSV = pathToFileURL(resolve(import.meta.dirname, '../../../web/src/modules/treasury/csv.ts')).href;
 const { guessMapping, parseCsv, parseDate, toLines } = await import(WEB_CSV);
 
 /** The bank-statement reader lives in the web app; it is plain TypeScript, so it is tested here. */

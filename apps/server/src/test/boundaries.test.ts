@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Architecture fitness test — the "mechano" rule:
@@ -78,7 +79,7 @@ test('web modules only use core, ui and engines', { skip: !existsSync(WEB) }, ()
 });
 
 test('every module folder belongs to an app in the edition map', { skip: !existsSync(join(SRC, '../../../scripts/edition.mjs')) }, async () => {
-  const { APPS } = await import(join(SRC, '../../../scripts/edition.mjs'));
+  const { APPS } = await import(pathToFileURL(join(SRC, '../../../scripts/edition.mjs')).href);
   const engines = new Set(['parties', 'catalog', 'documents']); // pulled in through dependsOn
   const mapped = { server: new Set<string>(engines), web: new Set<string>() };
   for (const a of Object.values(APPS) as { server: string[]; web: string[] }[]) {

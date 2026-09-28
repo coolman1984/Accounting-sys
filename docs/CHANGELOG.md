@@ -6,6 +6,12 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Demo company** — a Samsung Electronics Egypt–style TV / phone / tablet factory, 1 Jan – 25 Sep 2026:
+  ~300 documents, ~250 receipts/payments/cheques, 90 production orders, 135 employees, imports in USD
+  with customs and import VAT, zero-rated exports, withholding, cheques, payroll, depreciation, FX
+  revaluation, budget and a reconciled bank statement. Built through the HTTP API by `npm run demo`
+  into `data-demo/` (never over an existing company); `start-demo.bat` runs it on port 4810; a test
+  checks that it ties. Facts and limits: `docs/research/DEMO-SAMSUNG-EGYPT.md`.
 - **Egyptian withholding tax (خصم وإضافة)** on receipts and payments: deducted from suppliers on the value
   before VAT (1% supplies/contracting, 3% services, 5% commissions, 300 EGP minimum, editable) and due with
   Form 41; tax withheld by customers kept as a credit against income tax; suggestion from the party's type;
@@ -87,6 +93,11 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - Research: `docs/research/FINANCIAL-ANALYSIS.md` (formulas, edge cases, built-in vs add-on decision).
 
 ### Fixed
+- The payments health check flagged every payment with withholding as over-allocated (it compared the
+  allocations with the amount paid, not paid + withheld).
+- **Windows**: `start.bat` / `start.sh` now build on every start, so pulled code never runs from an old build;
+  the tests import files by `file://` URL (a `D:\…` path is not a valid ESM specifier); the `docs/MAP.md`
+  check ignores CRLF line endings from a Windows checkout.
 - `ensureDefaultAccount` could take another account that held the template's code; it now needs the same name.
 - **Cheques could be booked to the VAT input account**: "Cheques receivable" was created with code 1150,
   which the standard chart already uses for VAT input, and `ensureAccount` took any account with the same

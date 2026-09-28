@@ -193,7 +193,12 @@ advisor reads and never writes"; LESSONS: "`find or create` by code alone borrow
   confirms/corrects every field (show the image beside the form, highlight low-confidence fields) → save.
   Never post automatically. Arabic-Indic digits normalised.
 
-### 3.8 Demo company
+### 3.8 Demo company — **MOSTLY DONE (2026-09-28)**
+
+Built: `apps/server/src/demo/` (Samsung Electronics Egypt–style factory), `npm run demo`, `start-demo.bat`
+(port 4810, `data-demo/`), `src/test/demo.test.ts`. **Still open:** offer it in the setup wizard
+("Start with a demo company") and the browser screenshots EN/AR. The original plan follows.
+
 
 - A seeder that uses the app's own HTTP API (`app.http.inject`, like `test/helpers.ts`), so every number
   comes from the real engine: offered in the setup wizard ("Start with a demo company") and as
