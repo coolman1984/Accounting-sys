@@ -39,6 +39,22 @@ test('a confirmed sales order and an approved demand plan reach the feed as vali
   assert.equal(dp[0].data.lines.find((l: any) => l.period === '2026-12').qty, '35');
 });
 
+test('a posted goods receipt reaches manufacturing with its purchase order line; a void publishes it voided', async () => {
+  const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Chips Co' })).id;
+  const chip = (await c.post('/api/items', { sku: 'CHIP-GR', nameEn: 'Chip', nameAr: 'شريحة', kind: 'product', unit: 'PCS', purchasePrice: 5000 })).id;
+  const main = (await c.get('/api/inventory/warehouses')).find((w: any) => w.is_default).id;
+  const po = (await c.post('/api/purchase-orders', { supplierId: supplier, date: '2026-09-01', approve: true, lines: [{ itemId: chip, quantity: 10 * U, unitPrice: 5000 }] })).id;
+  const poLine = (await c.get(`/api/purchase-orders/${po}`)).lines[0].id;
+  const gr = (await c.post('/api/inventory/receipts', { supplierId: supplier, poId: po, date: '2026-09-05', warehouseId: main, post: true, lines: [{ itemId: chip, quantity: 10 * U, unitCost: 5000, poLineId: poLine }] })).id;
+  const ev = (await feed()).filter((e) => e.type === 'acc.goods_receipt.v1');
+  assert.equal(ev.length, 1);
+  assert.ok(validateEvent(ev[0]).ok, JSON.stringify(validateEvent(ev[0])));
+  assert.deepEqual([ev[0].data.status, ev[0].data.lines[0].qty, ev[0].data.lines[0].po_line_no, ev[0].data.purchase_order.code], ['posted', '10', 1, 'PO-00001']);
+  await c.post(`/api/inventory/receipts/${gr}/void`, {});
+  const after = (await feed()).filter((e) => e.type === 'acc.goods_receipt.v1');
+  assert.equal(after.at(-1).data.status, 'voided');
+});
+
 test('a shipment dispatched by manufacturing becomes a posted delivery and a draft invoice, once', async () => {
   const company = (await c.get('/api/eco/company')).companyId as string;
   const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes', scopes: ['eco.inbox.write'] })).key;

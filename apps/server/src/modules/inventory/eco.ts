@@ -64,6 +64,50 @@ export function publishInventory({ db, services }: ModuleContext): void {
   });
 }
 
+export const GOODS_RECEIPT_V1 = 'acc.goods_receipt.v1';
+
+/**
+ * acc.goods_receipt.v1 (flow F5): a posted (or later voided) goods receipt with its lots, so manufacturing can
+ * inspect them before use. One contract line per lot; a line without lots is one line. No values travel.
+ */
+export function publishReceipts({ db, services, events }: ModuleContext): void {
+  if (!services.has('eco')) return;
+  const eco = services.get('eco');
+  eco.registerSnapshot({
+    type: GOODS_RECEIPT_V1,
+    entity: 'goods_receipt',
+    all: () => db.all<{ id: number }>("SELECT id FROM goods_receipts WHERE status IN ('posted', 'void') AND number IS NOT NULL ORDER BY id").map((r) => String(r.id)),
+    build(localId, h) {
+      const g = db.get<{ id: number; number: string | null; supplier_id: number; po_id: number | null; date: string; warehouse_id: number; status: string }>(
+        'SELECT id, number, supplier_id, po_id, date, warehouse_id, status FROM goods_receipts WHERE id = ?', [Number(localId)]);
+      if (!g || !g.number || (g.status !== 'posted' && g.status !== 'void')) return null;
+      const supplier = db.get<{ id: number; code: string }>('SELECT id, code FROM parties WHERE id = ?', [g.supplier_id]);
+      const w = db.get<{ id: number; code: string }>('SELECT id, code FROM warehouses WHERE id = ?', [g.warehouse_id]);
+      if (!supplier || !w) return null;
+      const po = g.po_id && db.get<{ id: number; number: string | null }>("SELECT id, number FROM purchase_orders WHERE id = ?", [g.po_id]);
+      const poLineNo = (id: number | null) => (id ? db.get<{ line_no: number }>('SELECT line_no FROM purchase_order_lines WHERE id = ?', [id])?.line_no : undefined);
+      const rows = db.all<{ item_id: number; sku: string; unit: string | null; base_quantity: number; po_line_id: number | null; lots: string | null }>(
+        'SELECT l.item_id, i.sku, i.unit, l.base_quantity, l.po_line_id, l.lots FROM goods_receipt_lines l JOIN items i ON i.id = l.item_id WHERE l.receipt_id = ? ORDER BY l.line_no', [g.id]);
+      const lines: Record<string, unknown>[] = [];
+      for (const r of rows) {
+        const lots = r.lots ? (JSON.parse(r.lots) as { lotNo: string; qty: number; expiry?: string | null }[]) : [];
+        const base = { item: h.ref('item', r.item_id, r.sku), uom: uomCode(r.unit), ...(poLineNo(r.po_line_id) ? { po_line_no: poLineNo(r.po_line_id) } : {}) };
+        if (!lots.length) lines.push({ line_no: lines.length + 1, ...base, qty: formatQty(r.base_quantity) });
+        else for (const lot of lots) lines.push({ line_no: lines.length + 1, ...base, qty: formatQty(lot.qty), lot_no: lot.lotNo.slice(0, 64), ...(lot.expiry ? { expiry: lot.expiry } : {}) });
+      }
+      if (!lines.length) return null;
+      return {
+        id: h.id('goods_receipt', g.id), code: g.number, origin: h.origin('goods_receipt', g.id),
+        ...(po && po.number ? { purchase_order: h.ref('purchase_order', po.id, po.number) } : {}),
+        supplier: h.ref('party', supplier.id, supplier.code), receipt_date: g.date, warehouse: h.ref('warehouse', w.id, w.code),
+        status: g.status === 'void' ? 'voided' : 'posted', lines,
+      };
+    },
+  });
+  events.on('stock.receipt.posted', (e) => eco.changed(GOODS_RECEIPT_V1, e.receiptId));
+  events.on('stock.receipt.voided', (e) => eco.changed(GOODS_RECEIPT_V1, e.receiptId));
+}
+
 /** Tell the feed a warehouse changed (every warehouse when `id` is omitted, e.g. a new default). */
 export function warehouseChanged(services: ModuleContext['services'], db: ModuleContext['db'], id?: number): void {
   if (!services.has('eco')) return;

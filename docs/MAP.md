@@ -277,8 +277,8 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Duties to split:** `inventory.operations.write × inventory.operations.post`
 - **Tables / views:** `goods_receipt_lines`, `goods_receipts`, `landed_cost_allocations`, `landed_cost_targets`, `landed_costs`, `lot_levels`, `receipt_matches`, `stock_doc_lines`, `stock_docs`, `stock_levels`, `stock_lots`, `stock_moves`, `stock_moves_v2`, `stock_values`, `warehouses`
 - **Provides services:** `inventory`
-- **Events:** emits `stock.receipt.posted`, `stock.receipt.voided` · listens `document.posted`, `document.voided`
-- **Files:** `eco.ts` (73), `engine.ts` (558), `index.ts` (885), `schema.ts` (320), `service.ts` (1094)
+- **Events:** emits `stock.receipt.posted`, `stock.receipt.voided` · listens `document.posted`, `document.voided`, `stock.receipt.posted`, `stock.receipt.voided`
+- **Files:** `eco.ts` (117), `engine.ts` (558), `index.ts` (886), `schema.ts` (320), `service.ts` (1094)
 
 <details><summary>39 routes</summary>
 
