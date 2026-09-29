@@ -19,6 +19,7 @@ export class Database {
   readonly raw: DatabaseSync;
   private readonly cache = new Map<string, StatementSync>();
   private depth = 0;
+  private pending: (() => void)[] = [];
 
   constructor(readonly file: string) {
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -86,11 +87,14 @@ export class Database {
     try {
       const result = fn();
       if (result instanceof Promise) throw new Error('Database.tx callbacks must be synchronous');
+      // Work queued with beforeCommit runs last, still inside the transaction (it may queue more).
+      if (outer) while (this.pending.length) for (const f of this.pending.splice(0)) f();
       this.depth--;
       this.raw.exec(outer ? 'COMMIT' : `RELEASE ${sp}`);
       return result;
     } catch (err) {
       this.depth--;
+      if (outer) this.pending = [];
       this.raw.exec(outer ? 'ROLLBACK' : `ROLLBACK TO ${sp}; RELEASE ${sp}`);
       throw err;
     }
@@ -98,6 +102,16 @@ export class Database {
 
   get inTransaction(): boolean {
     return this.depth > 0;
+  }
+
+  /**
+   * Run `fn` at the end of the current transaction, just before COMMIT and inside it (so a failure
+   * still rolls everything back). Outside a transaction it runs at once. Used to write one derived
+   * record per change, e.g. the integration outbox after several stock moves of one operation.
+   */
+  beforeCommit(fn: () => void): void {
+    if (this.depth === 0) fn();
+    else if (!this.pending.includes(fn)) this.pending.push(fn);
   }
 
   /** Consistent point-in-time copy of the whole database. */

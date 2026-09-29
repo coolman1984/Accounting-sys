@@ -1,0 +1,22 @@
+{
+  "source": {
+    "repo": "coolman1984/GMES",
+    "path": "packages/eco-contracts/src",
+    "baseCommit": "3c09b3df27ac068e3222f23484af7896632edbde",
+    "copiedAt": "2026-09-29",
+    "note": "Byte-identical copy of the owner working tree: plan.ts and the ids.ts/index.ts/mes.ts changes were not committed in GMES yet. Never edit these files here: copy them again from GMES and update this pin."
+  },
+  "files": {
+    "ack.ts": "1fb0ec52fabaed3bcadb342ca0294781b99c6739f68c7c198e17833167128fdc",
+    "canonical.ts": "3edb2c050f5ff02f0100d7b83e291f3acbc56c81eb180f37bccfb33bc16af913",
+    "common.ts": "4481f8efb68311c022112ca41ce2c7b65627612fc2e7e8fb2097758f09b77b60",
+    "envelope.ts": "aaca5a66352878c820c57ae5e1752ff508ff16bf6a91539609d7af5d890bb764",
+    "ids.ts": "b2cd1df2c4a2034f50f5ac6e34e893e3d9eb39810fbac6319500fb9e129a8752",
+    "index.ts": "b4825ebe79dfe379107a2a37d0c20df06e39398131a7660ea74bd5c20df9bb10",
+    "master.ts": "15d92e9961e570943c50ea3b86f9262c7f7d31d0f4dc56de86f448336d753571",
+    "mes.ts": "15163e6e33711fb8eec737dae5689dc9ac09de97b083870fc055493d4761c15a",
+    "plan.ts": "a8c4e89084709374e33d11af10bc55dddd963b188b053390e7f8afb07166823e",
+    "quantity.ts": "88ee2c589771a06b3f3b262643f609e42baffe02c11d7f6bcdaeb795ad671571",
+    "schemas.ts": "b201a00b692a8b2df03ca0b07af0fc31e2619b470a9a7908b6472d787bd3d076"
+  }
+}

@@ -11,6 +11,8 @@ export interface AppConfig {
   /** Session lifetime in hours. */
   sessionHours: number;
   logLevel: string;
+  /** Name of this server in the ecosystem (the <node> of eco://<company>/mizan/<node>). */
+  ecoNode: string;
 }
 
 /** Environment variables win over code defaults, so an installation can always be reconfigured. */
@@ -26,6 +28,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     webDir: process.env.MIZAN_WEB_DIR ?? null,
     sessionHours: Number(process.env.MIZAN_SESSION_HOURS ?? 12),
     logLevel: process.env.MIZAN_LOG_LEVEL ?? 'info',
+    ecoNode: process.env.MIZAN_ECO_NODE ?? 'main',
     ...rest,
   };
 }

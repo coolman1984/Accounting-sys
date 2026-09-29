@@ -83,7 +83,29 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
     });
   };
 
-  const router: Router = { get: mount('GET'), post: mount('POST'), put: mount('PUT'), delete: mount('DELETE') };
+  // Machine endpoints (other applications): outside /api, never a session; the module checks the key.
+  const machine: Router['machine'] = (method, path, _scope, handler) => {
+    if (!path.startsWith('/eco/')) throw new Error(`Machine routes live under /eco/ (got ${path})`);
+    http.route({
+      method,
+      url: path,
+      handler: async (req: FastifyRequest, reply: FastifyReply) => {
+        if (!settings.isSetupComplete()) throw new AppError('setup.required', 'Setup is not complete', 409);
+        const result = await handler({
+          params: req.params as Record<string, string>,
+          query: req.query as Record<string, string | undefined>,
+          body: req.body,
+          headers: req.headers,
+          req,
+          reply,
+        });
+        if (result === reply) return reply;
+        return result ?? { ok: true };
+      },
+    });
+  };
+
+  const router: Router = { get: mount('GET'), post: mount('POST'), put: mount('PUT'), delete: mount('DELETE'), machine };
   for (const m of kernel.modules) m.routes?.(router, kernel);
 
   // ---- Apps: which features this installation uses (switchable, like Odoo apps).
@@ -114,7 +136,7 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
 
   http.get('/api/health', async () => ({ ok: true }));
   http.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith('/api/')) {
+    if (req.url.startsWith('/api/') || req.url.startsWith('/eco/')) {
       return reply.status(404).send({ error: { code: 'not_found', message: 'Unknown endpoint', details: null } });
     }
     // A missing asset is a 404 — never the HTML shell, which browsers reject as a script.

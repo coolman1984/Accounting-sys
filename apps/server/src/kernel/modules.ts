@@ -17,6 +17,12 @@ export interface AppModule {
   id: string;
   /** Other module ids that must be set up first. */
   dependsOn?: string[];
+  /**
+   * Optional modules to set up first WHEN they are installed (no dependency: an edition without
+   * them still works). Lets a module plug into an optional one's registry in its own setup,
+   * e.g. `after: ['eco']` to publish its entities to the integration feed.
+   */
+  after?: string[];
   migrations?: Migration[];
   /** Permission keys this module introduces (e.g. `sales.write`). */
   permissions?: string[];
@@ -108,6 +114,18 @@ export interface RequestCtx {
 
 export type Handler = (c: RequestCtx) => unknown | Promise<unknown>;
 
+/** A request from another application (no session: the module authenticates it itself). */
+export interface MachineCtx {
+  params: Record<string, string>;
+  query: Record<string, string | undefined>;
+  body: unknown;
+  headers: Record<string, string | string[] | undefined>;
+  req: FastifyRequest;
+  reply: FastifyReply;
+}
+
+export type MachineHandler = (c: MachineCtx) => unknown | Promise<unknown>;
+
 /**
  * `perm` is a permission key, `'auth'` for "any logged-in user", or `'public'`.
  */
@@ -116,6 +134,11 @@ export interface Router {
   post(path: string, perm: string, handler: Handler): void;
   put(path: string, perm: string, handler: Handler): void;
   delete(path: string, perm: string, handler: Handler): void;
+  /**
+   * Machine-to-machine endpoint, mounted as given (outside `/api`, which stays cookie-only).
+   * Only paths under `/eco/` are allowed; the module checks the caller's key and scope.
+   */
+  machine(method: 'GET' | 'POST', path: string, scope: string, handler: MachineHandler): void;
 }
 
 /** Order modules so that each comes after its dependencies. */
@@ -132,6 +155,10 @@ export function sortModules(modules: AppModule[]): AppModule[] {
       const d = byId.get(dep);
       if (!d) throw new Error(`Module "${m.id}" depends on missing module "${dep}"`);
       visit(d, [...trail, m.id]);
+    }
+    for (const opt of m.after ?? []) {
+      const d = byId.get(opt);
+      if (d) visit(d, [...trail, m.id]);
     }
     state.set(m.id, 'done');
     out.push(m);

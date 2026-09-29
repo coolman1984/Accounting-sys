@@ -1,0 +1,2 @@
+# Vendored ecosystem contracts are pinned by SHA-256 of their bytes: keep them LF on every machine.
+apps/server/src/eco-contracts/** text eol=lf

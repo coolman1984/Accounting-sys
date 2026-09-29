@@ -32,7 +32,8 @@ test('modules only talk to each other through kernel and contracts', () => {
       const inside = relative(modulesDir, target);
       if (inside.startsWith('..')) {
         const top = relative(SRC, target).split(sep)[0];
-        if (top !== 'kernel' && top !== 'contracts') offences.push(`${rel} → ${m[1]}`);
+        // eco-contracts: the ecosystem's shared contracts, vendored unchanged (pinned) — a contract like contracts/.
+        if (top !== 'kernel' && top !== 'contracts' && top !== 'eco-contracts') offences.push(`${rel} → ${m[1]}`);
         continue;
       }
       const other = inside.split(sep)[0];
@@ -46,6 +47,12 @@ test('contracts are types and constants only — no module code', () => {
   for (const file of files(join(SRC, 'contracts'))) {
     const text = readFileSync(file, 'utf8');
     assert.ok(!/from\s+['"]\.\.\/modules/.test(text), `${relative(SRC, file)} imports a module`);
+  }
+  // The vendored ecosystem contracts only import each other (and zod / node built-ins).
+  for (const file of files(join(SRC, 'eco-contracts'))) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/(?:import|export)[^'"]*from\s+['"](\.[^'"]+)['"]/g)) {
+      assert.ok(m[1].startsWith('./'), `${relative(SRC, file)} imports ${m[1]} outside eco-contracts/`);
+    }
   }
 });
 
