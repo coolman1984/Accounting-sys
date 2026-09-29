@@ -289,11 +289,7 @@ export function createDocuments({ db, services, events, apps }: ModuleContext) {
     parties().assertKind(party, info.side === 'sales' ? 'customer' : 'supplier');
 
     if (doc.kind === 'sales_invoice' && party.credit_limit != null) {
-      const bal = db.get<{ b: number }>(
-        `SELECT COALESCE(SUM(l.debit - l.credit), 0) b FROM ledger l JOIN accounts a ON a.id = l.account_id
-         WHERE l.party_id = ? AND a.subtype = 'receivable'`,
-        [party.id],
-      )!.b;
+      const bal = parties().receivableBalance(party.id);
       if (bal + doc.base_total > party.credit_limit) {
         fail('party.credit_limit', `${party.name} would exceed the credit limit`, { balance: bal, limit: party.credit_limit, total: doc.base_total });
       }

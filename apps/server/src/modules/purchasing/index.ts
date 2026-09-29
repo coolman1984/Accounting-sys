@@ -4,6 +4,7 @@ import { conflict, fail, forbidden, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { computeLine, divRound, sum } from '../../kernel/money.js';
 import { paging, parse, zBp, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
+import type { OpenPoSupply, PurchaseSupplyService } from '../../contracts/purchasing.js';
 
 export interface PurchaseOrder {
   id: number;
@@ -285,6 +286,18 @@ export const purchasingModule: AppModule = {
   setup(ctx) {
     const svc = createPurchasing(ctx);
     ctx.services.provide('purchasing', svc);
+    const supply: PurchaseSupplyService = {
+      openSupply: (itemId) =>
+        ctx.db.all<OpenPoSupply>(
+          `SELECT o.id AS poId, o.number AS poNumber, l.id AS lineId, l.item_id AS itemId, o.warehouse_id AS warehouseId,
+                  COALESCE(o.expected_date, o.date) AS date, l.base_quantity - l.received_base AS qty
+           FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.po_id
+           WHERE o.status = 'open' AND l.item_id IS NOT NULL AND l.base_quantity > l.received_base ${itemId ? 'AND l.item_id = ?' : ''}
+           ORDER BY date, o.id, l.line_no`,
+          itemId ? [itemId] : [],
+        ),
+    };
+    ctx.services.provide('purchaseSupply', supply);
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('purchase_order', 'PO-', 1, 5)");
     const { db, events } = ctx;
 

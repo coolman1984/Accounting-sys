@@ -46,11 +46,13 @@ export const APPS = {
   inventory: { server: ['inventory'], web: ['inventory', 'catalog'], requires: [] },
   purchasing: { server: ['purchasing'], web: ['purchasing'], requires: ['ap'] },
   pricing: { server: ['pricing'], web: ['pricing'], requires: ['ar'] },
+  sd: { server: ['sales'], web: ['sales'], requires: ['ar'] },
+  sop: { server: ['sop'], web: ['sop'], requires: ['sd'] },
 };
 export const PRESETS = {
   ledger: ['gl'],
   finance: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'advisor'],
-  trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'inventory', 'purchasing', 'pricing', 'analysis', 'budget', 'cashflow', 'advisor'],
+  trade: ['gl', 'ar', 'ap', 'treasury', 'tax', 'fx', 'inventory', 'purchasing', 'pricing', 'sd', 'analysis', 'budget', 'cashflow', 'advisor'],
   full: Object.keys(APPS),
 };
 /** Tests that only use the always-present parts. */

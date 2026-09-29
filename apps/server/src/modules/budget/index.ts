@@ -4,6 +4,7 @@ import { assertApp, conflict, fail, notFound } from '../../kernel/errors.js';
 import { addDays, addMonths, nowIso, today } from '../../kernel/dates.js';
 import { parse, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import { flexibleVariances, salesVariances, seedMonths, type SalesItemInput } from './engine.js';
+import type { BudgetSalesRow, BudgetSalesService } from '../../contracts/budget.js';
 
 interface Budget {
   id: number;
@@ -272,6 +273,37 @@ export const budgetModule: AppModule = {
       `,
     },
   ],
+
+  setup({ db, services }) {
+    // The sales budget for other modules (S&OP compares its demand plan with it).
+    const svc: BudgetSalesService = {
+      salesPlan(fromMonth, months) {
+        const wanted = new Set(Array.from({ length: months }, (_, i) => addMonths(fromMonth + '-01', i).slice(0, 7)));
+        const budgets = db.all<Budget & { approved_at: string | null }>(
+          `SELECT * FROM budgets WHERE EXISTS (SELECT 1 FROM budget_sales s WHERE s.budget_id = budgets.id)
+           ORDER BY (status = 'approved') DESC, approved_at DESC, id DESC`,
+        );
+        const taken = new Set<string>();
+        const out: BudgetSalesRow[] = [];
+        for (const b of budgets) {
+          const monthsOf = Array.from({ length: b.months }, (_, i) => addMonths(b.start_date, i).slice(0, 7));
+          const mine = monthsOf.map((m, i) => ({ m, i })).filter((x) => wanted.has(x.m) && !taken.has(x.m));
+          if (!mine.length) continue;
+          for (const s of db.all<SalesRow>('SELECT * FROM budget_sales WHERE budget_id = ?', [b.id])) {
+            const q = JSON.parse(s.quantities) as number[];
+            for (const { m, i } of mine) {
+              const qty = q[i] ?? 0;
+              if (!qty) continue;
+              out.push({ budgetId: b.id, budgetName: b.name, status: b.status, itemId: s.item_id, month: m, qty, unitPrice: s.unit_price, amount: Math.round((qty * s.unit_price) / 1000) });
+            }
+          }
+          mine.forEach((x) => taken.add(x.m));
+        }
+        return out;
+      },
+    };
+    services.provide('budgetSales', svc);
+  },
 
   routes(r, ctx) {
     const { db, services, apps } = ctx;
