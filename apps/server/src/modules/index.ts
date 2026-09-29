@@ -26,6 +26,8 @@ import { inventoryModule } from './inventory/index.js';
 import { purchasingModule } from './purchasing/index.js';
 import { pricingModule } from './pricing/index.js';
 import { ecoModule } from './eco/index.js';
+import { salesModule } from './sales/index.js';
+import { sopModule } from './sop/index.js';
 
 /**
  * The installed modules. Order does not matter — the kernel sorts them by
@@ -42,6 +44,9 @@ export const modules: AppModule[] = [
   inventoryModule,
   purchasingModule,
   pricingModule,
+  // After inventory, pricing and purchasing: sales plugs into their services at setup.
+  salesModule,
+  sopModule,
   taxModule,
   arModule,
   apModule,

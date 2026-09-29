@@ -538,7 +538,7 @@ export const inventoryModule: AppModule = {
       const rows = db.all<any>(
         `SELECT i.id, i.sku, i.name_en, i.name_ar, i.unit, i.reorder_level, i.reorder_qty, i.purchase_price,
                 ${wh ? 'COALESCE((SELECT qty FROM stock_levels l WHERE l.item_id = i.id AND l.warehouse_id = :wh), 0)' : 'COALESCE(v.qty, 0)'} AS qty,
-                (SELECT -COALESCE(SUM(m.qty), 0) FROM stock_moves m WHERE m.item_id = i.id AND m.source_type = 'sales_invoice'
+                (SELECT -COALESCE(SUM(m.qty), 0) FROM stock_moves m WHERE m.item_id = i.id AND m.source_type IN ('sales_invoice', 'sales_delivery')
                    AND m.date >= :since ${wh ? 'AND m.warehouse_id = :wh' : ''}) AS sold_90d
          FROM items i LEFT JOIN stock_values v ON v.item_id = i.id
          WHERE i.kind = 'product' AND i.track_stock = 1 AND i.is_active = 1 AND i.reorder_level > 0 ORDER BY i.sku`,
@@ -575,6 +575,19 @@ export const inventoryModule: AppModule = {
           )
           .map((x) => [x.item_id, x.cost]),
       );
+      // Invoices made from deliveries: their goods left with the delivery — take its cost for the invoiced share.
+      for (const x of db.all<{ item_id: number; cost: number }>(
+        `SELECT x.item_id, SUM(x.base_quantity * 1.0 * (SELECT -SUM(m.value) FROM stock_moves m WHERE m.source_type = 'sales_delivery' AND m.source_line_id = x.dl)
+                              / NULLIF((SELECT -SUM(m.qty) FROM stock_moves m WHERE m.source_type = 'sales_delivery' AND m.source_line_id = x.dl), 0)) cost
+         FROM (SELECT l.item_id, l.base_quantity, CAST(json_extract(l.ext, '$.deliveryLineId') AS INTEGER) dl
+               FROM document_lines l JOIN documents d ON d.id = l.document_id
+               WHERE d.kind = 'sales_invoice' AND d.status = 'posted' AND l.ext IS NOT NULL AND json_extract(l.ext, '$.deliveryLineId') IS NOT NULL
+                 AND d.date BETWEEN ? AND ?) x
+         GROUP BY x.item_id`,
+        [q.from, q.to],
+      )) {
+        cost.set(x.item_id, (cost.get(x.item_id) ?? 0) + Math.round(x.cost ?? 0));
+      }
       const items = new Map(
         db.all<{ id: number; sku: string; name_en: string; name_ar: string; kind: string }>('SELECT id, sku, name_en, name_ar, kind FROM items').map((x) => [x.id, x]),
       );

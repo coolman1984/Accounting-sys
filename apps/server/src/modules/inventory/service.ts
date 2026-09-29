@@ -4,7 +4,7 @@ import { nowIso } from '../../kernel/dates.js';
 import { lineAmount } from '../../kernel/money.js';
 import type { Item } from '../../contracts/catalog.js';
 import type {} from '../../contracts/fx.js';
-import type { ProductionInput, ProductionResult } from '../../contracts/inventory.js';
+import type { IssueInput, IssueResult, LineCost, ProductionInput, ProductionResult } from '../../contracts/inventory.js';
 import { KIND_INFO, type DocKind, type DocumentLine } from '../../contracts/documents.js';
 import { STOCK_SEQ, type StockDocKind } from './schema.js';
 import { createEngine, mulDiv, split, type Diff, type PostMeta, type StockMove } from './engine.js';
@@ -194,6 +194,13 @@ export function createInventory(ctx: ModuleContext) {
 
   type DocLineRow = DocumentLine;
 
+  /** Stock promised to customers (sales reservations), registered by the sales module. */
+  let reservedBy: ((itemId: number, warehouseId: number) => number) | null = null;
+
+  /** Quantity (base) a delivery line took out of stock, net of any reversal. */
+  const issuedByDelivery = (deliveryLineId: number, itemId: number) =>
+    db.get<{ q: number }>("SELECT -COALESCE(SUM(qty), 0) q FROM stock_moves WHERE source_type = 'sales_delivery' AND source_line_id = ? AND item_id = ?", [deliveryLineId, itemId])!.q;
+
   function onDocumentPosted(documentId: number, userId: number | null): void {
     const docs = services.get('documents');
     const doc = docs.get(documentId);
@@ -217,6 +224,27 @@ export function createInventory(ctx: ModuleContext) {
         const invAcc = inventoryAccount(item);
         const base = { date: doc.date, itemId: item.id, warehouseId: wh, sourceType: doc.kind, sourceId: doc.id, sourceLineId: l.id, userId };
 
+        // Billing of a posted delivery: the goods (and their cost) already left with the delivery.
+        if (doc.kind === 'sales_invoice' && ext.deliveryLineId != null) {
+          const issued = issuedByDelivery(Number(ext.deliveryLineId), item.id);
+          if (issued <= 0 || l.base_quantity > issued) {
+            fail('stock.delivery_not_issued', `Line ${l.line_no}: the delivery of ${item.sku} is not posted (or covers less)`, { line: l.line_no, sku: item.sku });
+          }
+          continue;
+        }
+        if (doc.kind === 'sales_invoice' && reservedBy) {
+          const reserved = reservedBy(item.id, wh);
+          const free = engine.level(item.id, wh) - reserved;
+          if (reserved > 0 && l.base_quantity > free) {
+            fail('stock.reserved', `Line ${l.line_no}: ${item.sku} is reserved for sales orders — only ${Math.max(0, free) / 1000} is free`, {
+              line: l.line_no,
+              sku: item.sku,
+              free: Math.max(0, free) / 1000,
+              reserved: reserved / 1000,
+            });
+          }
+        }
+
         if (info.side === 'purchases') {
           if (item.tracking === 'serial' && l.unit_factor !== 1000) fail('stock.serial_units', `Line ${l.line_no}: serial items are counted one by one`, { line: l.line_no });
           if (ext.receiptLineId) {
@@ -236,11 +264,21 @@ export function createInventory(ctx: ModuleContext) {
           moves = moveIn(engine.allocateIn(item, l.base_quantity, lotsReq, l.line_no), l.base_net, base);
         } else if (doc.kind === 'sales_credit') {
           // Returns against an invoice come back at the cost they left at (and, for tracked items, into the lots they left from).
+          // An invoice made from deliveries did not move stock itself: the goods left with the deliveries.
+          const deliveryLines = doc.against_document_id
+            ? docs
+                .lines(doc.against_document_id)
+                .filter((x) => x.item_id === item.id && x.ext)
+                .map((x) => Number((parseJson(x.ext) as Record<string, unknown>)?.deliveryLineId ?? 0))
+                .filter((x) => x > 0)
+            : [];
           const sold = doc.against_document_id
             ? db.all<{ lot_id: number | null; qty: number; value: number }>(
                 `SELECT lot_id, -SUM(qty) qty, -SUM(value) value FROM stock_moves
-                 WHERE source_type = 'sales_invoice' AND source_id = ? AND item_id = ? GROUP BY lot_id HAVING SUM(qty) < 0`,
-                [doc.against_document_id, item.id],
+                 WHERE item_id = ? AND ((source_type = 'sales_invoice' AND source_id = ?)
+                    OR (source_type = 'sales_delivery' AND source_line_id IN (${deliveryLines.map(() => '?').join(',') || 'NULL'})))
+                 GROUP BY lot_id HAVING SUM(qty) < 0`,
+                [item.id, doc.against_document_id, ...deliveryLines],
               )
             : [];
           const soldQty = sold.reduce((s, x) => s + x.qty, 0);
@@ -911,11 +949,92 @@ export function createInventory(ctx: ModuleContext) {
     return engine.averageValue(catalog().item(itemId), 1000);
   }
 
+  // ------------------------------------------------------------ goods issues
+  /**
+   * A goods issue for another module (a sales delivery): every line leaves its warehouse at the
+   * moving-average cost, one entry Dr cost of sales / Cr inventory.
+   */
+  function issue(input: IssueInput): IssueResult {
+    ledger().assertPostingDate(input.date);
+    const meta: PostMeta = { date: input.date, memo: input.memo, reference: input.reference, sourceType: input.sourceType, sourceId: input.sourceId, userId: input.userId };
+    return engine.operation(meta, () => {
+      const diffs: Diff[] = [];
+      const moveIds: number[] = [];
+      const values: number[] = [];
+      input.lines.forEach((l, i) => {
+        const item = catalog().item(l.itemId);
+        if (!catalog().isStockItem(item)) return values.push(0);
+        if (!Number.isSafeInteger(l.qty) || l.qty <= 0) fail('stock.invalid_qty', 'Invalid quantity');
+        const wh = activeWarehouse(l.warehouseId).id;
+        const lots = engine.parseLots(l.lots ?? null, 1000, i + 1);
+        const parts = engine.allocateOut(item, wh, l.qty, lots, { date: input.date, allowExpired: false, line: i + 1 });
+        const moves = moveOut(parts, { date: input.date, itemId: item.id, warehouseId: wh, sourceType: input.sourceType, sourceId: input.sourceId, sourceLineId: l.lineId, userId: input.userId });
+        let value = 0;
+        for (const m of moves) {
+          moveIds.push(m.id);
+          value += -m.value;
+          diffs.push({ invAccount: inventoryAccount(item), counterAccount: cogsAccount(item), amount: m.value });
+        }
+        values.push(value);
+      });
+      const entryId = postDifference(diffs, meta);
+      linkEntry(moveIds, entryId);
+      return { entryId, values };
+    });
+  }
+
+  function reverseIssue(sourceType: string, sourceId: number, date: string, memo: string, reference: string | null, userId: number | null): number | null {
+    ledger().assertPostingDate(date);
+    const meta: PostMeta = { date, memo, reference, sourceType, sourceId, userId };
+    return engine.operation(meta, () => {
+      const moves = db.all<StockMove>('SELECT * FROM stock_moves WHERE source_type = ? AND source_id = ? AND is_reversal = 0 ORDER BY id DESC', [sourceType, sourceId]);
+      const diffs: Diff[] = [];
+      const moveIds: number[] = [];
+      for (const m of moves) {
+        const item = catalog().item(m.item_id);
+        const rev = reverseMove(m, date, userId)!;
+        moveIds.push(rev.id);
+        diffs.push({ invAccount: inventoryAccount(item), counterAccount: cogsAccount(item), amount: rev.value });
+      }
+      const entry = postDifference(diffs, meta);
+      linkEntry(moveIds, entry);
+      return entry;
+    });
+  }
+
+  function lineCosts(sourceType: string, sourceIds: number[]): LineCost[] {
+    if (!sourceIds.length) return [];
+    const out: LineCost[] = [];
+    // Chunks keep the statement under SQLite's parameter limit.
+    for (let i = 0; i < sourceIds.length; i += 500) {
+      const chunk = sourceIds.slice(i, i + 500);
+      out.push(
+        ...db.all<LineCost>(
+          `SELECT source_id AS sourceId, source_line_id AS sourceLineId, SUM(qty) AS qty, SUM(value) AS value FROM stock_moves
+           WHERE source_type = ? AND source_id IN (${chunk.map(() => '?').join(',')}) AND source_line_id IS NOT NULL
+           GROUP BY source_id, source_line_id`,
+          [sourceType, ...chunk],
+        ),
+      );
+    }
+    return out;
+  }
+
+  const onHand = (itemId: number, warehouseId?: number | null) =>
+    warehouseId ? engine.level(itemId, warehouseId) : db.get<{ q: number }>('SELECT COALESCE(SUM(qty), 0) q FROM stock_levels WHERE item_id = ?', [itemId])!.q;
+
   return {
     engine,
     produce,
     reverseProduction,
     unitCost,
+    issue,
+    reverseIssue,
+    lineCosts,
+    onHand,
+    registerReservations(fn: (itemId: number, warehouseId: number) => number) {
+      reservedBy = fn;
+    },
     warehouse,
     defaultWarehouse: engine.defaultWarehouse,
     level: engine.level,

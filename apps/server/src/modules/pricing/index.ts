@@ -4,6 +4,7 @@ import { fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { divRound } from '../../kernel/money.js';
 import { parse, zId, zOptId } from '../../kernel/validate.js';
+import type { PricingService } from '../../contracts/pricing.js';
 
 const zList = z.object({
   nameEn: z.string().trim().min(1).max(100),
@@ -53,27 +54,45 @@ export const pricingModule: AppModule = {
   ],
 
   setup({ db, services, events, apps }) {
-    // Minimum price guard: net price per base unit (after discount, before tax) must not go below the item's minimum.
+    const svc: PricingService = {
+      listFor(partyId) {
+        if (!apps.isEnabled('pricing')) return null;
+        const link = db.get<{ id: number; name_en: string; name_ar: string }>(
+          `SELECT pl.id, pl.name_en, pl.name_ar FROM party_price_lists pp JOIN price_lists pl ON pl.id = pp.price_list_id
+           WHERE pp.party_id = ? AND pl.is_active = 1`,
+          [partyId],
+        );
+        return link ?? null;
+      },
+      price(listId, itemId, unitId) {
+        return db.get<{ price: number }>('SELECT price FROM price_list_prices WHERE price_list_id = ? AND item_id = ? AND unit_key = ?', [listId, itemId, unitId ?? 0])?.price ?? null;
+      },
+      // Minimum price guard: net price per base unit (after discount, before tax) must not go below the item's minimum.
+      assertMinimum(lines, userId) {
+        if (!apps.isEnabled('pricing')) return;
+        if (services.get('access').userCan(userId, 'pricing.minprice.override')) return;
+        for (const l of lines) {
+          if (!l.itemId || l.baseQty <= 0) continue;
+          const item = services.get('catalog').item(l.itemId);
+          if (item.min_sale_price <= 0) continue;
+          const perUnit = Number(divRound(BigInt(l.baseNet) * 1000n, BigInt(l.baseQty)));
+          if (perUnit < item.min_sale_price) {
+            fail('price.below_minimum', `Line ${l.lineNo}: ${item.sku} is below its minimum price`, { line: l.lineNo, sku: item.sku, price: perUnit, minimum: item.min_sale_price });
+          }
+        }
+      },
+    };
+    services.provide('pricing', svc);
     events.on('document.posted', (e) => {
-      if (e.kind !== 'sales_invoice' || !apps.isEnabled('pricing')) return;
-      if (services.get('access').userCan(e.userId, 'pricing.minprice.override')) return;
-      const lines = db.all<{ line_no: number; item_id: number; net: number; base_quantity: number; min_sale_price: number; sku: string }>(
-        `SELECT l.line_no, l.item_id, l.base_net AS net, l.base_quantity, i.min_sale_price, i.sku
-         FROM document_lines l JOIN items i ON i.id = l.item_id WHERE l.document_id = ? AND i.min_sale_price > 0`,
+      if (e.kind !== 'sales_invoice') return;
+      const lines = db.all<{ line_no: number; item_id: number | null; net: number; base_quantity: number }>(
+        'SELECT line_no, item_id, base_net AS net, base_quantity FROM document_lines WHERE document_id = ? AND item_id IS NOT NULL',
         [e.documentId],
       );
-      for (const l of lines) {
-        if (l.base_quantity <= 0) continue;
-        const perUnit = Number(divRound(BigInt(l.net) * 1000n, BigInt(l.base_quantity)));
-        if (perUnit < l.min_sale_price) {
-          fail('price.below_minimum', `Line ${l.line_no}: ${l.sku} is below its minimum price`, {
-            line: l.line_no,
-            sku: l.sku,
-            price: perUnit,
-            minimum: l.min_sale_price,
-          });
-        }
-      }
+      svc.assertMinimum(
+        lines.map((l) => ({ lineNo: l.line_no, itemId: l.item_id, baseNet: l.net, baseQty: l.base_quantity })),
+        e.userId,
+      );
     });
   },
 

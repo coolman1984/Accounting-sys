@@ -2,6 +2,7 @@ import type { AppModule } from '../../kernel/modules.js';
 import { conflict, forbidden } from '../../kernel/errors.js';
 import { paging, parse } from '../../kernel/validate.js';
 import type {} from '../../contracts/fx.js';
+import type { OpenPoSupply, PurchaseSupplyService } from '../../contracts/purchasing.js';
 import { migrations } from './schema.js';
 import { createPurchasing, zPo } from './orders.js';
 import { createRequisitions, requisitionRoutes, type RequisitionService } from './requisitions.js';
@@ -68,6 +69,20 @@ export const purchasingModule: AppModule = {
   setup(ctx) {
     const svc = createPurchasing(ctx);
     ctx.services.provide('purchasing', svc);
+    // What open purchase orders still bring, per item and date (the sales module's availability-to-promise reads it).
+    // A line's own expected date wins over the order's; an order without any date counts on its order date.
+    const supply: PurchaseSupplyService = {
+      openSupply: (itemId) =>
+        ctx.db.all<OpenPoSupply>(
+          `SELECT o.id AS poId, o.number AS poNumber, l.id AS lineId, l.item_id AS itemId, o.warehouse_id AS warehouseId,
+                  COALESCE(l.expected_date, o.expected_date, o.date) AS date, l.base_quantity - l.received_base AS qty
+           FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.po_id
+           WHERE o.status = 'open' AND l.item_id IS NOT NULL AND l.base_quantity > l.received_base ${itemId ? 'AND l.item_id = ?' : ''}
+           ORDER BY date, o.id, l.line_no`,
+          itemId ? [itemId] : [],
+        ),
+    };
+    ctx.services.provide('purchaseSupply', supply);
     const requisitions = createRequisitions(ctx, () => svc);
     requisitionsOf.set(ctx.services, requisitions);
     for (const [key, prefix] of [['purchase_order', 'PO-'], ['purchase_requisition', 'PR-'], ['letter_of_credit', 'LOC-']]) {

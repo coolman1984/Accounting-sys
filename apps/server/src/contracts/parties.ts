@@ -38,6 +38,8 @@ export interface PartiesService {
   /** The AP control account for a supplier (its own or the default). */
   payableAccount(p: Party): number;
   assertKind(p: Party, kind: 'customer' | 'supplier'): void;
+  /** What the customer owes now: posted receivable lines of this party (base currency). Used by credit-limit checks. */
+  receivableBalance(partyId: number): number;
   /** Create a party from the same input as POST /parties (validated inside; the caller checks rights). */
   create(input: unknown, userId: number | null): { id: number; code: string };
   /** AR and AP plug their partner role in; a role nobody registered cannot be used. */

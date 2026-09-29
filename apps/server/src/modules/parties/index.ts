@@ -78,6 +78,12 @@ function createParties({ db, services }: ModuleContext): PartiesService {
     },
     receivableAccount: (p) => p.receivable_account_id ?? services.get('ledger').defaultAccount('receivable'),
     payableAccount: (p) => p.payable_account_id ?? services.get('ledger').defaultAccount('payable'),
+    receivableBalance: (partyId) =>
+      db.get<{ b: number }>(
+        `SELECT COALESCE(SUM(l.debit - l.credit), 0) b FROM ledger l JOIN accounts a ON a.id = l.account_id
+         WHERE l.party_id = ? AND a.subtype = 'receivable'`,
+        [partyId],
+      )!.b,
     /** Create a customer or supplier from the same input as POST /parties (validated here); the caller checks rights. */
     create(raw, userId) {
       const input = parse(zParty, raw);

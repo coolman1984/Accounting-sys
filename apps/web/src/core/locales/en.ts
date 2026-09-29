@@ -1009,6 +1009,7 @@ const en = {
       payments: 'Receipts & payments',
       inventory: 'Inventory',
       purchasing: 'Purchase orders',
+      sales: 'Sales orders & deliveries',
       tax: 'Tax',
       co: 'Cost centers',
       fx: 'Currencies',
@@ -1073,6 +1074,12 @@ const en = {
       requisitionsBad: '{count} converted requisitions are not on any order line',
       letters_of_credit: 'Letters of credit stay within their amounts',
       letters_of_creditBad: '{count} letters of credit are used beyond their amounts',
+    },
+    sales: {
+      progress: 'Delivered and invoiced quantities stay within the sales orders',
+      progressBad: '{count} sales order lines go beyond the ordered quantity',
+      reservations: 'Reserved stock never exceeds what is on hand',
+      reservationsBad: '{count} reservations are larger than the stock on hand',
     },
     co: {
       references: 'Every tagged line points to a real cost center',
