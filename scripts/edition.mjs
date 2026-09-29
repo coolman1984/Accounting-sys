@@ -46,6 +46,7 @@ export const APPS = {
   inventory: { server: ['inventory'], web: ['inventory', 'catalog'], requires: [] },
   purchasing: { server: ['purchasing'], web: ['purchasing'], requires: ['ap'] },
   pricing: { server: ['pricing'], web: ['pricing'], requires: ['ar'] },
+  eco: { server: ['eco'], web: ['eco'], requires: [] },
 };
 export const PRESETS = {
   ledger: ['gl'],

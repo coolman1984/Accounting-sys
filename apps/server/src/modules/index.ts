@@ -25,6 +25,7 @@ import { advisorModule } from './advisor/index.js';
 import { inventoryModule } from './inventory/index.js';
 import { purchasingModule } from './purchasing/index.js';
 import { pricingModule } from './pricing/index.js';
+import { ecoModule } from './eco/index.js';
 
 /**
  * The installed modules. Order does not matter — the kernel sorts them by
@@ -58,4 +59,5 @@ export const modules: AppModule[] = [
   importsModule,
   einvoiceModule,
   advisorModule,
+  ecoModule,
 ];

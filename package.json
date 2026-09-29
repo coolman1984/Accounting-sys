@@ -15,7 +15,8 @@
     "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/web",
     "edition": "node scripts/edition.mjs",
     "docs:map": "node --disable-warning=ExperimentalWarning --import tsx scripts/docs-map.mjs",
-    "demo": "node --disable-warning=ExperimentalWarning --import tsx apps/server/src/demo/cli.ts"
+    "demo": "node --disable-warning=ExperimentalWarning --import tsx apps/server/src/demo/cli.ts",
+    "eco": "node --disable-warning=ExperimentalWarning --import tsx apps/server/src/eco-cli.ts"
   },
   "engines": {
     "node": ">=22.13"

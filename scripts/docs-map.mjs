@@ -41,7 +41,11 @@ async function serverModules() {
     const files = walk(dir).filter((f) => !f.endsWith('.test.ts'));
     const src = files.map(read).join('\n');
     const sql = (m.migrations ?? []).map((x) => x.up).join('\n');
-    const routes = [...src.matchAll(/\br\.(get|post|put|delete)\(\s*[`']([^`']+)[`'],\s*'([^']+)'/g)].map((x) => ({ method: x[1].toUpperCase(), path: '/api' + x[2], perm: x[3] }));
+    const routes = [
+      ...[...src.matchAll(/\br\.(get|post|put|delete)\(\s*[`']([^`']+)[`'],\s*'([^']+)'/g)].map((x) => ({ method: x[1].toUpperCase(), path: '/api' + x[2], perm: x[3] })),
+      // Machine endpoints (another application with an x-eco-key): the permission column shows the key scope.
+      ...[...src.matchAll(/\br\.machine\(\s*'(\w+)',\s*'([^']+)',\s*'([^']+)'/g)].map((x) => ({ method: x[1], path: x[2], perm: 'key: ' + x[3] })),
+    ];
     return {
       id: m.id,
       dir: rel(dir),
@@ -112,6 +116,7 @@ export async function render() {
   o.push('| Folder | Files | What lives there |', '|---|---|---|');
   o.push(folder(join(SERVER, 'kernel'), 'the chassis: db adapter, module loader, services, events, apps, money, dates, validation'));
   o.push(folder(join(SERVER, 'contracts'), 'shared types and constants modules use to talk to each other'));
+  o.push(folder(join(SERVER, 'eco-contracts'), 'ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here)'));
   o.push(folder(join(SERVER, 'modules'), 'one folder per module (below)'));
   o.push(folder(join(SERVER, 'test'), 'end-to-end tests, boundary and edition tests'));
   o.push('');
