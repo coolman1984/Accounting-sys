@@ -15,6 +15,8 @@ Where to find things: pick the module, then the file. Modules talk only through
 | **inventory** | `inventory` | — | `inventory`, `catalog` |
 | **purchasing** | `purchasing` | `ap` | `purchasing` |
 | **pricing** | `pricing` | `ar` | `pricing` |
+| **sd** | `sales` | `ar` | `sales` |
+| **sop** | `sop` | `sd` | `sop` |
 | **tax** | `tax` | — | `tax` |
 | **ar** | `ar` | — | `ar`, `catalog` |
 | **ap** | `ap` | — | `ap`, `catalog` |
@@ -39,11 +41,11 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | Folder | Files | What lives there |
 |---|---|---|
 | `apps/server/src/kernel/` | 11 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
-| `apps/server/src/contracts/` | 8 | shared types and constants modules use to talk to each other |
-| `apps/server/src/modules/` | 52 | one folder per module (below) |
-| `apps/server/src/test/` | 25 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/contracts/` | 13 | shared types and constants modules use to talk to each other |
+| `apps/server/src/modules/` | 59 | one folder per module (below) |
+| `apps/server/src/test/` | 27 | end-to-end tests, boundary and edition tests |
 
-Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `tax.ts`
+Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
 
 ## Server modules (in load order)
 
@@ -137,7 +139,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Tables / views:** `parties`
 - **Provides services:** `parties`
 - **Events:** emits — · listens `system.setup`
-- **Files:** `index.ts` (288)
+- **Files:** `index.ts` (294)
 
 <details><summary>6 routes</summary>
 
@@ -183,7 +185,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Tables / views:** `document_lines`, `documents`, `settlements`, `settlements_new`
 - **Provides services:** `documents`
 - **Events:** emits `document.posted`, `document.voided` · listens `system.setup`
-- **Files:** `index.ts` (306), `schema.ts` (194), `service.ts` (450)
+- **Files:** `index.ts` (306), `schema.ts` (194), `service.ts` (446)
 
 <details><summary>9 routes</summary>
 
@@ -238,7 +240,7 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Tables / views:** `goods_receipt_lines`, `goods_receipts`, `landed_cost_allocations`, `landed_cost_targets`, `landed_costs`, `lot_levels`, `receipt_matches`, `stock_doc_lines`, `stock_docs`, `stock_levels`, `stock_lots`, `stock_moves`, `stock_moves_v2`, `stock_values`, `warehouses`
 - **Provides services:** `inventory`
 - **Events:** emits `stock.receipt.posted`, `stock.receipt.voided` · listens `document.posted`, `document.voided`
-- **Files:** `engine.ts` (555), `index.ts` (865), `schema.ts` (308), `service.ts` (952)
+- **Files:** `engine.ts` (555), `index.ts` (878), `schema.ts` (308), `service.ts` (1071)
 
 <details><summary>39 routes</summary>
 
@@ -293,9 +295,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Role templates:** `purchasing_officer`
 - **Duties to split:** `purchasing.orders.write × purchasing.orders.approve`
 - **Tables / views:** `purchase_order_lines`, `purchase_orders`
-- **Provides services:** `purchasing`
+- **Provides services:** `purchaseSupply`, `purchasing`
 - **Events:** emits — · listens `document.posted`, `document.voided`, `stock.receipt.posted`, `stock.receipt.voided`
-- **Files:** `index.ts` (409)
+- **Files:** `index.ts` (422)
 
 <details><summary>9 routes</summary>
 
@@ -318,9 +320,9 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Apps:** `pricing` · **Depends on:** `catalog`, `parties`, `documents` · **Health checks:** no
 - **Permissions:** `pricing.lists.read`, `pricing.lists.write`, `pricing.minprice.override`
 - **Tables / views:** `party_price_lists`, `price_list_prices`, `price_lists`
-- **Provides services:** —
+- **Provides services:** `pricing`
 - **Events:** emits — · listens `document.posted`
-- **Files:** `index.ts` (179)
+- **Files:** `index.ts` (198)
 
 <details><summary>6 routes</summary>
 
@@ -332,6 +334,83 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 | PUT | `/api/pricing/lists/:id` | `pricing.lists.write` |
 | DELETE | `/api/pricing/lists/:id` | `pricing.lists.write` |
 | GET | `/api/pricing/for-party/:id` | `auth` |
+
+</details>
+
+### `sales` — apps/server/src/modules/sales/
+
+- **Apps:** `sd` · **Depends on:** `documents`, `parties`, `catalog` · **Health checks:** yes
+- **Permissions:** `sales.orders.read`, `sales.orders.write`, `sales.orders.approve`, `sales.orders.override`, `sales.deliveries.read`, `sales.deliveries.write`, `sales.deliveries.post`, `sales.reports.read`, `sales.supply.write`
+- **Role templates:** `sales_order_clerk`, `shipping_clerk`, `sales_manager`
+- **Duties to split:** `sales.orders.write × sales.orders.override`
+- **Tables / views:** `sales_deliveries`, `sales_delivery_lines`, `sales_order_lines`, `sales_orders`, `sales_reservations`, `sales_supply_plan`
+- **Provides services:** `sales`
+- **Events:** emits `sales.delivery.posted`, `sales.delivery.voided`, `sales.order.confirmed` · listens `document.posted`, `document.voided`
+- **Files:** `index.ts` (394), `reports.ts` (263), `schema.ts` (146), `service.ts` (881)
+
+<details><summary>28 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/sales/orders` | `sales.orders.read` |
+| GET | `/api/sales/orders/:id` | `sales.orders.read` |
+| POST | `/api/sales/orders` | `sales.orders.write` |
+| PUT | `/api/sales/orders/:id` | `sales.orders.write` |
+| POST | `/api/sales/orders/:id/confirm` | `sales.orders.approve` |
+| POST | `/api/sales/orders/:id/cancel` | `sales.orders.write` |
+| POST | `/api/sales/orders/:id/close` | `sales.orders.write` |
+| POST | `/api/sales/orders/:id/reschedule` | `sales.orders.approve` |
+| PUT | `/api/sales/orders/:id/lines/:lineId/promise` | `sales.orders.approve` |
+| DELETE | `/api/sales/orders/:id` | `sales.orders.write` |
+| GET | `/api/sales/price` | `sales.orders.read` |
+| GET | `/api/sales/atp` | `sales.orders.read` |
+| GET | `/api/sales/reservations` | `sales.orders.read` |
+| GET | `/api/sales/supply-plan` | `sales.orders.read` |
+| PUT | `/api/sales/supply-plan` | `sales.supply.write` |
+| GET | `/api/sales/deliveries` | `sales.deliveries.read` |
+| GET | `/api/sales/deliveries/:id` | `sales.deliveries.read` |
+| POST | `/api/sales/deliveries` | `sales.deliveries.write` |
+| PUT | `/api/sales/deliveries/:id` | `sales.deliveries.write` |
+| POST | `/api/sales/deliveries/:id/post` | `sales.deliveries.post` |
+| POST | `/api/sales/deliveries/:id/void` | `sales.deliveries.post` |
+| DELETE | `/api/sales/deliveries/:id` | `sales.deliveries.write` |
+| POST | `/api/sales/deliveries/deliver-line` | `sales.deliveries.post` |
+| POST | `/api/sales/invoices/from-deliveries` | `sales.deliveries.read` |
+| GET | `/api/sales/reports/otif` | `sales.reports.read` |
+| GET | `/api/sales/reports/backlog` | `sales.reports.read` |
+| GET | `/api/sales/reports/aging` | `sales.reports.read` |
+| GET | `/api/sales/reports/sales` | `sales.reports.read` |
+
+</details>
+
+### `sop` — apps/server/src/modules/sop/
+
+- **Apps:** `sop` · **Depends on:** `sales`, `catalog` · **Health checks:** no
+- **Permissions:** `sop.plans.read`, `sop.plans.write`, `sop.plans.approve`, `sop.supply.write`
+- **Role templates:** `demand_planner`, `sop_approver`
+- **Duties to split:** `sop.plans.write × sop.plans.approve`
+- **Tables / views:** `sop_cycles`, `sop_demand`, `sop_supply_plan`, `sop_versions`
+- **Provides services:** `sop`
+- **Events:** emits `sop.plan.approved` · listens —
+- **Files:** `index.ts` (125), `schema.ts` (87), `service.ts` (324)
+
+<details><summary>13 routes</summary>
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/sop/cycles` | `sop.plans.read` |
+| POST | `/api/sop/cycles` | `sop.plans.write` |
+| GET | `/api/sop/cycles/:id` | `sop.plans.read` |
+| POST | `/api/sop/cycles/:id/versions` | `sop.plans.write` |
+| GET | `/api/sop/versions/:id` | `sop.plans.read` |
+| PUT | `/api/sop/versions/:id/lines` | `sop.plans.write` |
+| POST | `/api/sop/versions/:id/refresh` | `sop.plans.write` |
+| POST | `/api/sop/versions/:id/approve` | `sop.plans.approve` |
+| DELETE | `/api/sop/versions/:id` | `sop.plans.write` |
+| GET | `/api/sop/versions/:id/comparison` | `sop.plans.read` |
+| GET | `/api/sop/approved` | `sop.plans.read` |
+| GET | `/api/sop/supply` | `sop.plans.read` |
+| PUT | `/api/sop/supply` | `sop.supply.write` |
 
 </details>
 
@@ -490,8 +569,8 @@ Contracts: `catalog.ts`, `co.ts`, `documents.ts`, `egypt.ts`, `fx.ts`, `inventor
 - **Role templates:** `budget_controller`
 - **Duties to split:** `budget.budgets.write × budget.budgets.approve`
 - **Tables / views:** `budget_lines`, `budget_sales`, `budgets`
-- **Provides services:** —
-- **Files:** `engine.ts` (163), `index.ts` (389)
+- **Provides services:** `budgetSales`
+- **Files:** `engine.ts` (163), `index.ts` (421)
 
 <details><summary>11 routes</summary>
 
