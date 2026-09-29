@@ -5,6 +5,7 @@ import { parse, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import type { SopService } from '../../contracts/sop.js';
 import { CONSTRAINTS, migrations } from './schema.js';
 import { createSop, MONTH, monthPlus, type SopInternal } from './service.js';
+import { wireSopEco } from './eco.js';
 
 const zMonth = z.string().regex(MONTH, 'Invalid month (YYYY-MM)');
 
@@ -12,6 +13,7 @@ export const sopModule: AppModule = {
   id: 'sop',
   // Firm orders and invoiced history come from the sales service; the budget and prices are optional services.
   dependsOn: ['sales', 'catalog'],
+  after: ['eco'],
   migrations,
   permissions: ['sop.plans.read', 'sop.plans.write', 'sop.plans.approve', 'sop.supply.write'],
   apps: [{ id: 'sop', order: 16, requires: ['sd'], permissions: ['sop'] }],
@@ -24,6 +26,7 @@ export const sopModule: AppModule = {
 
   setup(ctx) {
     ctx.services.provide('sop', createSop(ctx) as SopService);
+    wireSopEco(ctx);
   },
 
   routes(r, { db, services }) {

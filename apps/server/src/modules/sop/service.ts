@@ -2,6 +2,7 @@ import type { ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { addMonths, nowIso } from '../../kernel/dates.js';
 import { divRound } from '../../kernel/money.js';
+import { DEMAND_PLAN_V1 } from './eco.js';
 import type {} from '../../contracts/sales.js';
 import type {} from '../../contracts/pricing.js';
 import type {} from '../../contracts/budget.js';
@@ -209,6 +210,10 @@ export function createSop(ctx: ModuleContext) {
       db.run(`UPDATE sop_versions SET status = 'approved', approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ?`, [userId, nowIso(), nowIso(), v.id]);
       audit().log({ userId, action: 'approve', entity: 'sop_version', entityId: v.id, summary: `v${v.version_no}` });
       events.emit('sop.plan.approved', { versionId: v.id, cycleId: v.cycle_id, userId });
+      if (services.has('eco')) {
+        const eco = services.get('eco');
+        for (const s of db.all<{ id: number }>("SELECT id FROM sop_versions WHERE cycle_id = ? AND status IN ('approved', 'superseded')", [v.cycle_id])) eco.changed(DEMAND_PLAN_V1, s.id);
+      }
     });
   }
 

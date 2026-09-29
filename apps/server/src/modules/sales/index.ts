@@ -8,6 +8,7 @@ import type {} from '../../contracts/inventory.js';
 import { migrations } from './schema.js';
 import { createSales, type SalesInternal } from './service.js';
 import { createReports } from './reports.js';
+import { wireSalesEco } from './eco.js';
 
 const zLots = z
   .array(z.object({ lotNo: z.string().trim().min(1).max(64), qty: z.number().int().positive() }))
@@ -68,6 +69,7 @@ export const salesModule: AppModule = {
   id: 'sales',
   // Inventory, pricing, purchasing and fx are optional and reached through their services.
   dependsOn: ['documents', 'parties', 'catalog'],
+  after: ['eco'],
   migrations,
   permissions: [
     'sales.orders.read',
@@ -115,6 +117,7 @@ export const salesModule: AppModule = {
   setup(ctx) {
     const svc = createSales(ctx);
     ctx.services.provide('sales', svc as SalesService);
+    wireSalesEco(ctx);
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('sales_order', 'SO-', 1, 5)");
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('sales_delivery', 'DLV-', 1, 5)");
     // Reserved stock is not for direct sales invoices (inventory asks through its registry).

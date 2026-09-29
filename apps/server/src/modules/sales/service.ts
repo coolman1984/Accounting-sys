@@ -7,6 +7,7 @@ import type {} from '../../contracts/pricing.js';
 import type {} from '../../contracts/purchasing.js';
 import type { Item } from '../../contracts/catalog.js';
 import type { DeliverLineInput, OpenDemand, ReservedQty, SalesOrderSnapshot, SalesOrderStatus, SalesService } from '../../contracts/sales.js';
+import { SO_V1 } from './eco.js';
 
 export interface SalesOrder {
   id: number;
@@ -181,6 +182,8 @@ export function createSales(ctx: ModuleContext) {
   const fxOn = () => services.has('fx') && apps.isEnabled('fx');
   const taxOn = () => services.has('tax') && apps.isEnabled('tax');
 
+  // a confirmed order's snapshot is rebuilt before the transaction commits (eco coalesces, publishes only real changes)
+  const ecoChanged = (id: number) => services.has('eco') && services.get('eco').changed(SO_V1, id);
   const order = (id: number) => db.get<SalesOrder>('SELECT * FROM sales_orders WHERE id = ?', [id]) ?? notFound('sales_order', id);
   const lines = (soId: number) => db.all<SoLine>('SELECT * FROM sales_order_lines WHERE so_id = ? ORDER BY line_no', [soId]);
   const line = (id: number) => db.get<SoLine>('SELECT * FROM sales_order_lines WHERE id = ?', [id]) ?? notFound('sales_order_line', id);
@@ -485,6 +488,7 @@ export function createSales(ctx: ModuleContext) {
       ]);
       const fresh = order(id);
       for (const l of ls) reserveAndPromise(l, fresh, o.order_date);
+      ecoChanged(id);
       audit().log({ userId: user.id, action: 'confirm', entity: 'sales_order', entityId: id, summary: number, data: overrideBy ? { creditOverride: true } : undefined });
       events.emit('sales.order.confirmed', { orderId: id, userId: user.id });
     });
@@ -500,6 +504,7 @@ export function createSales(ctx: ModuleContext) {
     const next: SalesOrderStatus = done || o.short_closed ? 'closed' : any ? 'partially_delivered' : 'confirmed';
     if (next !== o.status) db.run('UPDATE sales_orders SET status = ?, closed_at = ?, updated_at = ? WHERE id = ?', [next, next === 'closed' ? nowIso() : null, nowIso(), soId]);
     if (next === 'closed') db.run('DELETE FROM sales_reservations WHERE so_line_id IN (SELECT id FROM sales_order_lines WHERE so_id = ?)', [soId]);
+    ecoChanged(soId);
   }
 
   function cancel(id: number, userId: number | null) {
@@ -511,6 +516,7 @@ export function createSales(ctx: ModuleContext) {
     db.tx(() => {
       db.run('DELETE FROM sales_reservations WHERE so_line_id IN (SELECT id FROM sales_order_lines WHERE so_id = ?)', [id]);
       db.run(`UPDATE sales_orders SET status = 'cancelled', closed_at = ?, updated_at = ? WHERE id = ?`, [nowIso(), nowIso(), id]);
+      ecoChanged(id);
       audit().log({ userId, action: 'cancel', entity: 'sales_order', entityId: id, summary: o.number });
     });
   }
@@ -524,6 +530,7 @@ export function createSales(ctx: ModuleContext) {
       db.run('UPDATE sales_order_lines SET cancelled_qty = quantity - delivered_qty WHERE so_id = ?', [id]);
       db.run('UPDATE sales_orders SET short_closed = 1 WHERE id = ?', [id]);
       refreshStatus(id);
+      ecoChanged(id);
       audit().log({ userId, action: 'close', entity: 'sales_order', entityId: id, summary: o.number });
     });
   }
@@ -534,6 +541,7 @@ export function createSales(ctx: ModuleContext) {
     if (o.status !== 'confirmed' && o.status !== 'partially_delivered') conflict('sales.not_open', 'Only open orders can be rescheduled');
     db.tx(() => {
       for (const l of lines(id)) if (openOf(l) > 0) reserveAndPromise(l, o, asOf);
+      ecoChanged(id);
       audit().log({ userId, action: 'reschedule', entity: 'sales_order', entityId: id, summary: o.number });
     });
   }
@@ -545,6 +553,7 @@ export function createSales(ctx: ModuleContext) {
     if (date && date < o.order_date) fail('sales.promised_before_order', 'The promised date is before the order date');
     db.tx(() => {
       db.run('UPDATE sales_order_lines SET promised_date = ? WHERE id = ?', [date, lineId]);
+      ecoChanged(o.id);
       audit().log({ userId, action: 'promise', entity: 'sales_order', entityId: o.id, summary: `${o.number} line ${l.line_no} → ${date ?? '—'}` });
     });
   }
@@ -554,6 +563,7 @@ export function createSales(ctx: ModuleContext) {
     if (o.status !== 'draft') conflict('sales.not_draft', 'Only drafts can be deleted');
     db.tx(() => {
       db.run('DELETE FROM sales_orders WHERE id = ?', [id]);
+      ecoChanged(id);
       audit().log({ userId, action: 'delete', entity: 'sales_order', entityId: id });
     });
   }
