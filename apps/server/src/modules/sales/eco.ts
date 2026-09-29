@@ -1,6 +1,13 @@
-import { formatQty } from '../../eco-contracts/index.js';
+import { formatQty, parseQty, type ShipmentDispatchedV1 } from '../../eco-contracts/index.js';
 import type { ModuleContext } from '../../kernel/modules.js';
+import { AppError } from '../../kernel/errors.js';
 import type {} from '../../contracts/eco.js';
+import type { DeliverLineInput } from '../../contracts/sales.js';
+
+export interface SalesDelivering {
+  deliverLine(input: DeliverLineInput): { deliveryId: number; created: boolean };
+  invoiceFromDeliveries(input: { deliveryIds: number[]; date: string; post: boolean }, userId: number | null): number;
+}
 
 export const SO_V1 = 'acc.sales_order.v1';
 
@@ -11,9 +18,39 @@ const STATUS: Record<string, 'open' | 'closed' | 'cancelled' | undefined> = { co
  * Sales orders in the ecosystem: a confirmed order is published as acc.sales_order.v1 (full state, quantities only,
  * no prices) so manufacturing plans against its open quantity. Drafts are not demand yet and are not published.
  */
-export function wireSalesEco({ db, services }: ModuleContext): void {
+export function wireSalesEco({ db, services }: ModuleContext, sales: SalesDelivering): void {
   if (!services.has('eco')) return;
-  services.get('eco').registerSnapshot({
+  const eco = services.get('eco');
+
+  /**
+   * mes.shipment.dispatched.v1 (flow F7): each line that names a sales order line is posted as a delivery (goods issue)
+   * dated the plant's production day, reference `eco:<event id>:<line>` so a redelivery never issues twice; then one
+   * DRAFT invoice bills what was delivered — the billing clerk checks and posts it. A shipment line without an order,
+   * an order that is not open, or more than is left to deliver is refused whole (parked, visible on both sides).
+   */
+  eco.registerConsumer<ShipmentDispatchedV1>({
+    type: 'mes.shipment.dispatched.v1',
+    apply(d, env) {
+      const deliveries: number[] = [];
+      d.lines.forEach((l, i) => {
+        if (!l.sales_order) throw new AppError('sales.no_order', `shipment ${d.shipment.code}: ${l.item.code} names no sales order`, 409);
+        const soId = eco.localId('sales_order', l.sales_order.id);
+        const so = soId == null ? undefined : db.get<{ id: number; status: string; number: string }>('SELECT id, status, number FROM sales_orders WHERE id = ?', [Number(soId)]);
+        if (!so) throw new AppError('sales.no_order', `sales order ${l.sales_order.code} is not known here`, 409);
+        if (so.status !== 'confirmed' && so.status !== 'partially_delivered') throw new AppError('sales.order_closed', `sales order ${so.number} is ${so.status}`, 409);
+        const soLine = db.get<{ id: number }>('SELECT id FROM sales_order_lines WHERE so_id = ? AND line_no = ?', [so.id, l.sales_order.line_no]);
+        if (!soLine) throw new AppError('sales.no_order', `sales order ${so.number} has no line ${l.sales_order.line_no}`, 409);
+        const wh = eco.localId('warehouse', l.warehouse.id);
+        const r = sales.deliverLine({ soLineId: soLine.id, qty: parseQty(l.qty), date: d.production_date, warehouseId: wh == null ? null : Number(wh), reference: `eco:${env.id}:${i + 1}`, userId: null });
+        if (r.created) deliveries.push(r.deliveryId);
+      });
+      if (!deliveries.length) return 'unchanged';
+      sales.invoiceFromDeliveries({ deliveryIds: deliveries, date: d.production_date, post: false }, null);
+      return 'applied';
+    },
+  });
+
+  eco.registerSnapshot({
     type: SO_V1,
     entity: 'sales_order',
     all: () => db.all<{ id: number }>("SELECT id FROM sales_orders WHERE status <> 'draft' AND number IS NOT NULL ORDER BY id").map((r) => String(r.id)),

@@ -117,7 +117,7 @@ export const salesModule: AppModule = {
   setup(ctx) {
     const svc = createSales(ctx);
     ctx.services.provide('sales', svc as SalesService);
-    wireSalesEco(ctx);
+    wireSalesEco(ctx, svc as unknown as SalesInternal);
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('sales_order', 'SO-', 1, 5)");
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('sales_delivery', 'DLV-', 1, 5)");
     // Reserved stock is not for direct sales invoices (inventory asks through its registry).

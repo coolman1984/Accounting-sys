@@ -402,7 +402,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `sales_deliveries`, `sales_delivery_lines`, `sales_order_lines`, `sales_orders`, `sales_reservations`, `sales_supply_plan`
 - **Provides services:** `sales`
 - **Events:** emits `sales.delivery.posted`, `sales.delivery.voided`, `sales.order.confirmed` · listens `document.posted`, `document.voided`
-- **Files:** `eco.ts` (54), `index.ts` (397), `reports.ts` (263), `schema.ts` (146), `service.ts` (891)
+- **Files:** `eco.ts` (91), `index.ts` (397), `reports.ts` (263), `schema.ts` (146), `service.ts` (891)
 
 <details><summary>28 routes</summary>
 

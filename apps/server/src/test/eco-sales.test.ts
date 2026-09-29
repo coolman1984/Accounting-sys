@@ -38,3 +38,38 @@ test('a confirmed sales order and an approved demand plan reach the feed as vali
   assert.equal(dp[0].data.status, 'approved');
   assert.equal(dp[0].data.lines.find((l: any) => l.period === '2026-12').qty, '35');
 });
+
+test('a shipment dispatched by manufacturing becomes a posted delivery and a draft invoice, once', async () => {
+  const company = (await c.get('/api/eco/company')).companyId as string;
+  const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes', scopes: ['eco.inbox.write'] })).key;
+  const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Panels' })).id;
+  const customer = (await c.post('/api/parties', { kind: 'customer', name: 'Carrefour' })).id;
+  const tv = (await c.post('/api/items', { sku: 'TV65', nameEn: 'TV 65"', nameAr: 'تلفزيون 65', kind: 'product', salePrice: 2000000, purchasePrice: 1500000 })).id;
+  const wh = (await c.get('/api/inventory/warehouses')).find((w: any) => w.is_default);
+  await c.post('/api/documents', { kind: 'purchase_bill', partyId: supplier, date: '2026-09-01', post: true, lines: [{ itemId: tv, quantity: 20 * U, unitPrice: 1500000 }] });
+  const so = await c.post('/api/sales/orders', { customerId: customer, orderDate: '2026-09-20', confirm: true, lines: [{ itemId: tv, quantity: 8 * U, requestedDate: '2026-10-05' }] });
+  const order = await c.get(`/api/sales/orders/${so.id}`);
+  const { mizanId, newUuidv7 } = await import('../eco-contracts/index.js');
+  const eventId = newUuidv7();
+  const ship = {
+    specversion: '1.0', id: eventId, source: `eco://${company}/gmes/plant-1`, type: 'mes.shipment.dispatched.v1', subject: 'shipment/x', time: '2026-10-04T18:00:00Z',
+    datacontenttype: 'application/json', ecoseq: 1, ecocorrelation: 'shipment/x',
+    data: {
+      shipment: { id: newUuidv7(), code: 'SO-000001', customer: 'Carrefour', customer_party: { id: mizanId(company, 'party', customer), code: 'C' } },
+      container: { id: newUuidv7(), number: 'MSCU1234565', seal: 'S1', type: '40HC' },
+      lines: [{ sales_order: { id: mizanId(company, 'sales_order', so.id), code: order.number, line_no: 1 }, item: { id: mizanId(company, 'item', tv), code: 'TV65' }, qty: '5', uom: 'PCS', warehouse: { id: mizanId(company, 'warehouse', wh.id), code: wh.code }, pallets: 1 }],
+      dispatched_at: '2026-10-04T18:00:00Z', production_date: '2026-10-04', performed_by: { user: 'loader' }, shipping_seq: 1,
+    },
+  };
+  const send = async () => (await c.app.http.inject({ method: 'POST', url: '/eco/v1/inbox', headers: { 'x-eco-key': inboxKey }, payload: { events: [ship] } }).then((r) => JSON.parse(r.body))).results[0];
+  const first = await send();
+  assert.equal(first.result, 'applied', JSON.stringify(first));
+  assert.equal((await send()).result, 'duplicate');
+  const after = await c.get(`/api/sales/orders/${so.id}`);
+  assert.equal(after.lines[0].delivered_qty, 5 * U);
+  assert.equal(after.status, 'partially_delivered');
+  const drafts = c.app.kernel.db.all<{ status: string }>("SELECT status FROM documents WHERE kind = 'sales_invoice' AND party_id = ?", [customer]);
+  assert.deepEqual(drafts.map((d) => d.status), ['draft']);
+  const snaps = (await feed()).filter((e) => e.type === 'acc.sales_order.v1' && e.data.code === order.number);
+  assert.equal(snaps.at(-1).data.lines[0].delivered_qty, '5', 'the order goes back to manufacturing with what was delivered');
+});
