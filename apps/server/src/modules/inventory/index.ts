@@ -6,6 +6,7 @@ import { divRound } from '../../kernel/money.js';
 import { paging, parse, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import { migrations, STOCK_DOC_KINDS, STOCK_SEQ } from './schema.js';
 import { createInventory, type InventoryService } from './service.js';
+import { publishInventory, warehouseChanged } from './eco.js';
 
 const zWarehouse = z.object({
   code: z.string().trim().min(1).max(20),
@@ -29,6 +30,8 @@ const zReceipt = z.object({
   warehouseId: zId,
   reference: zOptText(100),
   notes: zOptText(2000),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullish().transform((v) => v ?? null),
+  exchangeRate: z.number().int().positive().nullish().transform((v) => v ?? null),
   lines: z
     .array(
       z.object({
@@ -141,9 +144,11 @@ export const inventoryModule: AppModule = {
     ];
   },
 
+  after: ['eco'],
   setup(ctx) {
     const inv = createInventory(ctx);
     ctx.services.provide('inventory', inv);
+    publishInventory(ctx);
     // Stock follows sales & purchase documents automatically, inside their transaction.
     // With the Inventory app off, new documents no longer move stock. Voids always run:
     // they only undo moves that exist, so stock stays right whatever was switched since.
@@ -191,6 +196,8 @@ export const inventoryModule: AppModule = {
           fail('warehouse.default_required', 'One active warehouse must be the default');
         }
         audit.log({ userId, action: id == null ? 'create' : 'update', entity: 'warehouse', entityId: wid, summary: input.code });
+        // A new default changes the old default too; unchanged snapshots publish nothing.
+        warehouseChanged(services, db, input.isDefault ? undefined : wid);
         return wid;
       });
     };

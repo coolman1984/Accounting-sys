@@ -305,3 +305,15 @@ migrations.push({
     BEGIN SELECT RAISE(ABORT, 'inventory: posted landed costs cannot be deleted'); END;
   `,
 });
+
+migrations.push({
+  // Goods bought in a foreign currency (a USD purchase order): the receipt keeps the order's currency and
+  // the rate of the receipt date; unit_cost and value stay in the base currency (what stock and GRNI use).
+  id: '003_receipt_currency',
+  up: `
+    ALTER TABLE goods_receipts ADD COLUMN currency TEXT;                 -- NULL = base currency
+    ALTER TABLE goods_receipts ADD COLUMN exchange_rate INTEGER;         -- base units per 1 unit x 1,000,000
+    ALTER TABLE goods_receipt_lines ADD COLUMN unit_cost_fx INTEGER;     -- per line unit, in the receipt currency
+    ALTER TABLE goods_receipt_lines ADD COLUMN value_fx INTEGER;
+  `,
+});

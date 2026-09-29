@@ -3,6 +3,7 @@ import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { lineAmount } from '../../kernel/money.js';
 import type { Item } from '../../contracts/catalog.js';
+import type {} from '../../contracts/fx.js';
 import type { ProductionInput, ProductionResult } from '../../contracts/inventory.js';
 import { KIND_INFO, type DocKind, type DocumentLine } from '../../contracts/documents.js';
 import { STOCK_SEQ, type StockDocKind } from './schema.js';
@@ -83,6 +84,10 @@ export interface ReceiptInput {
   warehouseId: number;
   reference?: string | null;
   notes?: string | null;
+  /** Currency of the unit costs (a foreign purchase order's); null = base. */
+  currency?: string | null;
+  /** Rate for that currency; null = the rate of the receipt date. */
+  exchangeRate?: number | null;
   lines: { itemId: number; description?: string | null; unitId?: number | null; quantity: number; unitCost: number; poLineId?: number | null; lots?: LotInput[] | null }[];
 }
 
@@ -98,6 +103,8 @@ export interface Receipt {
   status: 'draft' | 'posted' | 'void';
   journal_entry_id: number | null;
   void_entry_id: number | null;
+  currency: string | null;
+  exchange_rate: number | null;
 }
 
 export interface ReceiptLine {
@@ -586,6 +593,18 @@ export function createInventory(ctx: ModuleContext) {
     services.get('parties').assertKind(party, 'supplier');
     activeWarehouse(input.warehouseId);
     if (!input.lines.length) fail('stock.no_lines', 'Add at least one line');
+    // Foreign currency: costs are typed in that currency and valued at the receipt date's rate.
+    let currency: string | null = null;
+    let rate: number | null = null;
+    if (input.currency && services.has('fx') && services.get('fx').isForeign(input.currency)) {
+      const fx = services.get('fx');
+      currency = fx.assertCurrency(input.currency).code;
+      rate = input.exchangeRate ?? fx.rate(currency, input.date);
+      if (!Number.isSafeInteger(rate) || rate <= 0) fail('fx.invalid_rate', 'Invalid exchange rate');
+    } else if (input.currency && (!services.has('fx') || services.get('fx').isForeign(input.currency))) {
+      fail('fx.unavailable', `Multi-currency is not installed: ${input.currency} cannot be used`, { currency: input.currency });
+    }
+    const toBase = (v: number) => (rate == null ? v : services.get('fx').toBase(v, rate));
     const lines = input.lines.map((l, i) => {
       const n = i + 1;
       const item = catalog().item(l.itemId);
@@ -602,14 +621,18 @@ export function createInventory(ctx: ModuleContext) {
         unit_factor: factor,
         quantity: l.quantity,
         base_quantity: mulDiv(l.quantity, factor, 1000),
-        unit_cost: l.unitCost,
-        value: lineAmount(l.quantity, l.unitCost),
+        unit_cost: toBase(l.unitCost),
+        value: toBase(lineAmount(l.quantity, l.unitCost)),
+        unit_cost_fx: rate == null ? null : l.unitCost,
+        value_fx: rate == null ? null : lineAmount(l.quantity, l.unitCost),
         po_line_id: l.poLineId ?? null,
         lots: l.lots?.length ? json(l.lots) : null,
       };
     });
     const row = {
       supplier_id: input.supplierId,
+      currency,
+      exchange_rate: rate,
       po_id: input.poId ?? null,
       date: input.date,
       warehouse_id: input.warehouseId,

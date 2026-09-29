@@ -4,6 +4,7 @@ import { isValidDate, nowIso } from '../../kernel/dates.js';
 import { divRound } from '../../kernel/money.js';
 import type { JournalLineInput } from '../ledger/service.js';
 import type { Item } from '../../contracts/catalog.js';
+import type {} from '../../contracts/eco.js';
 
 export interface StockMove {
   id: number;
@@ -255,6 +256,8 @@ export function createEngine({ db, services }: ModuleContext) {
       created_at: nowIso(),
     });
     touch(m.itemId, m.date, id);
+    // The integration feed follows the balance (one snapshot per item × warehouse, written before commit).
+    if (services.has('eco')) services.get('eco').changed('acc.stock_position.v1', `${m.itemId}:${m.warehouseId}`);
     return db.get<StockMove>('SELECT * FROM stock_moves WHERE id = ?', [id])!;
   }
 
