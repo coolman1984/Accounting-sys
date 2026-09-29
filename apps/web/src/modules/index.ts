@@ -22,6 +22,7 @@ import { catalogModule } from './catalog';
 import { inventoryModule } from './inventory';
 import { purchasingModule } from './purchasing';
 import { pricingModule } from './pricing';
+import { ecoModule } from './eco';
 import { adminModule } from './admin';
 
 /**
@@ -53,6 +54,7 @@ export const webModules: WebModule[] = [
   inventoryModule,
   purchasingModule,
   pricingModule,
+  ecoModule,
   importsModule,
   adminModule,
 ];

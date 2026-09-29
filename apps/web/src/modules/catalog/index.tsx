@@ -15,7 +15,7 @@ import { Badge } from '../../ui/Badge';
 import { Money } from '../../ui/Money';
 import { Dialog } from '../../ui/Dialog';
 import { Checkbox, DecimalInput, Field, Input, Select, Textarea } from '../../ui/Field';
-import { AccountPicker, TaxSelect, useTaxes } from '../../ui/Pickers';
+import { AccountPicker, PartyPicker, TaxSelect, useTaxes } from '../../ui/Pickers';
 import { useToast } from '../../ui/Toast';
 import { useConfirm } from '../../ui/Dialog';
 import { DataGrid, type Column, type Preset } from '../../ui/DataGrid';
@@ -62,6 +62,14 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
     tracking: 'none' as Item['tracking'],
     requiresExpiry: false,
     minSalePrice: 0 as number | null,
+    materialType: '' as string,
+    procurementType: 'buy' as Item['procurement_type'],
+    leadTimeDays: 0 as number | null,
+    moq: 0 as number | null,
+    lotSizeRule: 'lot_for_lot' as Item['lot_size_rule'],
+    lotSize: 0 as number | null,
+    safetyStock: 0 as number | null,
+    defaultSupplierId: null as number | null,
     units: [] as UnitRow[],
   };
   const [f, setF] = useState(blank);
@@ -97,6 +105,14 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             tracking: item.tracking,
             requiresExpiry: !!item.requires_expiry,
             minSalePrice: item.min_sale_price,
+            materialType: item.material_type ?? '',
+            procurementType: item.procurement_type,
+            leadTimeDays: item.lead_time_days,
+            moq: item.moq,
+            lotSizeRule: item.lot_size_rule,
+            lotSize: item.lot_size,
+            safetyStock: item.safety_stock,
+            defaultSupplierId: item.default_supplier_id,
             units: item.units
               .filter((u) => u.is_active)
               .map((u) => ({ id: u.id, nameEn: u.name_en, nameAr: u.name_ar, factor: u.factor, barcode: u.barcode ?? '', salePrice: u.sale_price, purchasePrice: u.purchase_price })),
@@ -117,6 +133,11 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
         reorderLevel: f.reorderLevel ?? 0,
         reorderQty: f.reorderQty ?? 0,
         minSalePrice: f.minSalePrice ?? 0,
+        materialType: f.kind === 'product' ? f.materialType || null : null,
+        leadTimeDays: f.leadTimeDays ?? 0,
+        moq: f.moq ?? 0,
+        lotSize: f.lotSizeRule === 'lot_for_lot' ? 0 : f.lotSize ?? 0,
+        safetyStock: f.safetyStock ?? 0,
         units: (f.kind === 'product' && f.tracking !== 'serial' ? f.units : [])
           .filter((u) => u.nameEn.trim() && u.factor)
           .map((u) => ({ ...u, nameAr: u.nameAr.trim() || u.nameEn, barcode: u.barcode.trim() || null })),
@@ -292,8 +313,58 @@ function ItemDialog({ open, onClose, item }: { open: boolean; onClose(): void; i
             </div>
           </div>
         )}
-        <Field label={t('adv.minSalePrice')} hint={t('adv.minSalePriceHint')}>
-          <DecimalInput scale={scale} value={f.minSalePrice} onChange={(v) => set('minSalePrice', v)} />
+        {f.kind === 'product' && (
+          <div className="card" style={{ padding: 16, background: 'var(--bg-subtle)' }}>
+            <div className="label" style={{ marginBottom: 10 }}>
+              {t('items.planning')}
+            </div>
+            <div className="grid-2">
+              <Field label={t('items.materialType')}>
+                <Select value={f.materialType} onChange={(e) => set('materialType', e.target.value)}>
+                  <option value="">—</option>
+                  {['raw', 'semi_finished', 'finished', 'packaging', 'service'].map((x) => (
+                    <option key={x} value={x}>
+                      {t('items.materialTypes.' + x)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t('items.procurementType')}>
+                <Select value={f.procurementType} onChange={(e) => set('procurementType', e.target.value as Item['procurement_type'])}>
+                  <option value="buy">{t('items.procurement.buy')}</option>
+                  <option value="make">{t('items.procurement.make')}</option>
+                </Select>
+              </Field>
+              <Field label={t('items.leadTimeDays')} hint={t('items.leadTimeHint')}>
+                <DecimalInput trim scale={0} value={f.leadTimeDays} onChange={(v) => set('leadTimeDays', v)} />
+              </Field>
+              <Field label={t('items.moq')}>
+                <DecimalInput trim scale={QTY_SCALE} value={f.moq} onChange={(v) => set('moq', v)} />
+              </Field>
+              <Field label={t('items.lotSizeRule')}>
+                <Select value={f.lotSizeRule} onChange={(e) => set('lotSizeRule', e.target.value as Item['lot_size_rule'])}>
+                  {['lot_for_lot', 'fixed', 'multiple'].map((x) => (
+                    <option key={x} value={x}>
+                      {t('items.lotRules.' + x)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {f.lotSizeRule !== 'lot_for_lot' && (
+                <Field label={t('items.lotSize')}>
+                  <DecimalInput trim scale={QTY_SCALE} value={f.lotSize} onChange={(v) => set('lotSize', v)} />
+                </Field>
+              )}
+              <Field label={t('items.safetyStock')}>
+                <DecimalInput trim scale={QTY_SCALE} value={f.safetyStock} onChange={(v) => set('safetyStock', v)} />
+              </Field>
+              <Field label={t('items.defaultSupplier')}>
+                <PartyPicker kind="supplier" value={f.defaultSupplierId} onChange={(v) => set('defaultSupplierId', v)} />
+              </Field>
+            </div>
+          </div>
+        )}
+        <Field label={t('adv.minSalePrice')} hint={t('adv.minSalePriceHint')}>          <DecimalInput scale={scale} value={f.minSalePrice} onChange={(v) => set('minSalePrice', v)} />
         </Field>
         <Field label={t('common.description')}>
           <Textarea rows={2} value={f.description} onChange={(e) => set('description', e.target.value)} />

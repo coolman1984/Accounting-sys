@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Ban, ClipboardList, FilePlus, Lock, LockOpen, Pencil, PackageCheck, Plus, Printer, ShoppingCart, Trash2 } from 'lucide-react';
+import { Ban, CalendarCheck, ClipboardCheck, ClipboardList, FilePlus, Hourglass, Landmark, Lock, LockOpen, Pencil, PackageCheck, Plus, Printer, ShoppingCart, Trash2 } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useDate, useErrorText } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
@@ -18,6 +18,9 @@ import { useConfirm } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
 import { Qty } from '../../ui/Stock';
 import { PoEditor } from './PoEditor';
+import { RequisitionsPage } from './requisitions';
+import { LcListPage, LcStatus, LcView } from './lc';
+import { OpenOrdersPage, SupplierOnTimePage } from './reports';
 
 const TONE: Record<string, Tone> = { draft: 'neutral', open: 'blue', closed: 'green', cancelled: 'red' };
 
@@ -50,7 +53,9 @@ function PoList() {
       { id: 'number', header: t('common.number'), pinned: true, nowrap: true, value: (r) => r.number, render: (r) => <span style={{ fontWeight: 550 }}>{r.number ?? <span className="faint">{t('status.draft')}</span>}</span> },
       { id: 'supplier', header: t('docs.supplier'), type: 'enum', value: (r) => r.supplier_name },
       { id: 'date', header: t('common.date'), type: 'date', nowrap: true, value: (r) => r.date },
-      { id: 'expected', header: t('adv.expectedDate'), type: 'date', nowrap: true, value: (r) => r.expected_date },
+      { id: 'expected', header: t('adv.expectedDate'), type: 'date', nowrap: true, value: (r) => r.next_expected ?? r.expected_date },
+      { id: 'currency', header: t('fx.currency'), type: 'enum', hidden: true, value: (r) => r.currency ?? '' },
+      { id: 'incoterm', header: t('pur.incoterm'), type: 'enum', hidden: true, value: (r) => r.incoterm },
       { id: 'reference', header: t('common.reference'), hidden: true, value: (r) => r.reference },
       { id: 'received', header: t('adv.received'), type: 'number', value: (r) => Math.round((r.received_ratio ?? 0) * 100), format: (v) => `${v}%`, render: (r) => <Progress ratio={r.received_ratio} /> },
       { id: 'billed', header: t('adv.billed'), type: 'number', value: (r) => Math.round((r.billed_ratio ?? 0) * 100), format: (v) => `${v}%`, render: (r) => <Progress ratio={r.billed_ratio} /> },
@@ -114,7 +119,7 @@ function PoView() {
         crumbs={[{ to: '/purchasing/orders', label: t('adv.purchaseOrders') }]}
         title={o.number ?? `${t('adv.purchaseOrder')} · ${t('status.draft')}`}
         badge={<PoStatus status={o.status} />}
-        subtitle={`${o.supplier.name} · ${date(o.date, 'long')}`}
+        subtitle={[o.supplier.name, date(o.date, 'long'), o.currency, o.incoterm && [o.incoterm, o.port_of_loading, o.port_of_discharge].filter(Boolean).join(' · ')].filter(Boolean).join(' · ')}
         actions={
           <>
             <Button icon={<Printer />} onClick={() => window.print()}>
@@ -181,6 +186,7 @@ function PoView() {
                   <th className="end">{t('docs.qty')}</th>
                   <th className="end">{t('docs.price')}</th>
                   <th className="end">{t('docs.discount')}</th>
+                  <th>{t('pur.lineExpected')}</th>
                   <th className="end">{t('adv.received')}</th>
                   <th className="end">{t('adv.billed')}</th>
                   <th className="end">{t('docs.lineTotal')}</th>
@@ -193,6 +199,7 @@ function PoView() {
                     <td>
                       {l.description}
                       {l.sku && <span className="faint" style={{ fontSize: 12, marginInline: 8 }}>{l.sku}</span>}
+                      {l.requisition_number && <Badge tone={l.requisition_source === 'mrp' ? 'cyan' : 'neutral'}>{l.requisition_number}</Badge>}
                     </td>
                     <td className="end nowrap">
                       <Qty v={l.quantity} unit={l.unit_id ? pick(l.unit_name_en, l.unit_name_ar) : l.base_unit} />
@@ -201,6 +208,7 @@ function PoView() {
                       <Money v={l.unit_price} />
                     </td>
                     <td className="end muted">{l.discount_bp ? formatBp(l.discount_bp) : '—'}</td>
+                    <td className="nowrap muted">{(l.expected_date ?? o.expected_date) ? date(l.expected_date ?? o.expected_date) : '—'}</td>
                     <td className={`end ${l.received_base >= l.base_quantity ? 'success-text' : ''}`}>
                       <Qty v={l.received_base} />
                     </td>
@@ -215,7 +223,7 @@ function PoView() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={7}>{t('common.total')}</td>
+                  <td colSpan={8}>{t('common.total')}{o.currency ? ` (${o.currency})` : ''}</td>
                   <td className="end">
                     <Money v={o.total} />
                   </td>
@@ -224,6 +232,21 @@ function PoView() {
             </table>
           </div>
         </Card>
+        {o.letters_of_credit.length > 0 && (
+          <Card>
+            <CardHeader title={t('pur.lettersOfCredit')} icon={<Landmark size={18} className="muted" />} />
+            <div className="card-body stack" style={{ '--gap': '6px' } as React.CSSProperties}>
+              {o.letters_of_credit.map((c: any) => (
+                <Link key={c.id} to={`/purchasing/lc/${c.id}`} className="row">
+                  <span style={{ fontWeight: 550 }}>{c.number}</span>
+                  <span className="muted">{c.lc_number}</span>
+                  <span className="spacer" />
+                  <LcStatus status={c.status} />
+                </Link>
+              ))}
+            </div>
+          </Card>
+        )}
         {(o.receipts.length > 0 || o.bills.length > 0) && (
           <div className="grid-2">
             <Card>
@@ -267,15 +290,30 @@ function PoView() {
 
 export const purchasingModule: WebModule = {
   id: 'purchasing',
-  nav: [{ to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchasing', order: 5, perm: 'purchasing.orders.read', app: 'purchasing' }],
+  nav: [
+    { to: '/purchasing/requisitions', label: 'nav.requisitions', icon: ClipboardCheck, section: 'purchasing', order: 4, perm: 'purchasing.requisitions.read', app: 'purchasing' },
+    { to: '/purchasing/orders', label: 'nav.purchaseOrders', icon: ClipboardList, section: 'purchasing', order: 5, perm: 'purchasing.orders.read', app: 'purchasing' },
+    { to: '/purchasing/lc', label: 'nav.lettersOfCredit', icon: Landmark, section: 'purchasing', order: 6, perm: 'purchasing.lc.read', app: 'purchasing' },
+  ],
+  reports: [
+    { to: '/reports/purchasing/on-time', group: 'pur.reportsGroup', title: 'pur.rep.onTimeTitle', desc: 'pur.rep.onTimeSubtitle', icon: CalendarCheck, color: 'var(--line-teal)', perm: 'purchasing.reports.read', app: 'purchasing' },
+    { to: '/reports/purchasing/open-orders', group: 'pur.reportsGroup', title: 'pur.rep.openTitle', desc: 'pur.rep.openSubtitle', icon: Hourglass, color: 'var(--line-amber)', perm: 'purchasing.reports.read', app: 'purchasing' },
+  ],
   routes: [
     { path: '/purchasing/orders', element: <PoList /> },
+    { path: '/purchasing/requisitions', element: <RequisitionsPage /> },
+    { path: '/purchasing/lc', element: <LcListPage /> },
+    { path: '/purchasing/lc/:id', element: <LcView /> },
+    { path: '/reports/purchasing/on-time', element: <SupplierOnTimePage />, perm: 'purchasing.reports.read', app: 'purchasing' },
+    { path: '/reports/purchasing/open-orders', element: <OpenOrdersPage />, perm: 'purchasing.reports.read', app: 'purchasing' },
     { path: '/purchasing/orders/new', element: <PoEditor key="new" /> },
     { path: '/purchasing/orders/:id', element: <PoView /> },
     { path: '/purchasing/orders/:id/edit', element: <PoEditor key="edit" /> },
   ],
   commands: [
     { id: 'new-po', label: 'adv.newPo', icon: ShoppingCart, group: 'create', to: '/purchasing/orders/new', perm: 'purchasing.orders.write', app: 'purchasing', keywords: 'purchase order po أمر شراء' },
+    { id: 'new-req', label: 'pur.newRequisition', icon: ClipboardCheck, group: 'create', to: '/purchasing/requisitions', perm: 'purchasing.requisitions.write', app: 'purchasing', keywords: 'requisition purchase request طلب شراء' },
+    { id: 'go-lc', label: 'nav.lettersOfCredit', icon: Landmark, group: 'navigate', to: '/purchasing/lc', perm: 'purchasing.lc.read', app: 'purchasing', keywords: 'letter of credit lc اعتماد مستندي' },
     { id: 'go-po', label: 'nav.purchaseOrders', icon: ClipboardList, group: 'navigate', to: '/purchasing/orders', perm: 'purchasing.orders.read', app: 'purchasing', keywords: 'أوامر شراء' },
   ],
 };

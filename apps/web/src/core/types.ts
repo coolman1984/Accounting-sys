@@ -104,6 +104,14 @@ export interface Item {
   tracking: 'none' | 'batch' | 'serial';
   requires_expiry: number;
   min_sale_price: number;
+  material_type: 'raw' | 'semi_finished' | 'finished' | 'packaging' | 'service' | null;
+  procurement_type: 'buy' | 'make';
+  lead_time_days: number;
+  moq: number;
+  lot_size_rule: 'lot_for_lot' | 'fixed' | 'multiple';
+  lot_size: number;
+  safety_stock: number;
+  default_supplier_id: number | null;
   units: ItemUnit[];
 }
 

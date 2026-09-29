@@ -14,6 +14,8 @@ import { ItemPicker, PartyPicker, TaxSelect, useItems, useTaxes } from '../../ui
 import { useToast } from '../../ui/Toast';
 import { computeLine } from '../../engines/documents/kinds';
 import { useStockOn, WarehouseSelect } from '../../ui/Stock';
+import { CurrencyRateFields, RATE_ONE } from '../../ui/Currency';
+import { useSession } from '../../core/session';
 import { unitLabel } from '../../core/units';
 
 interface Line {
@@ -25,9 +27,12 @@ interface Line {
   unitPrice: number | null;
   discountBp: number | null;
   taxId: number | null;
+  expectedDate: string;
+  requisitionId: number | null;
 }
 
 let k = 0;
+const INCOTERMS = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
 
 export interface PoPrefill {
   supplierId?: number | null;
@@ -45,6 +50,7 @@ export function PoEditor() {
   const toast = useToast();
   const errText = useErrorText();
   const { fmt, scale } = useMoney();
+  const { company } = useSession();
   const { data: items } = useItems();
   const { data: taxes } = useTaxes();
   const itemById = useMemo(() => new Map((items ?? []).map((i) => [i.id, i])), [items]);
@@ -55,6 +61,10 @@ export function PoEditor() {
   const [expected, setExpected] = useState('');
   const [wh, setWh] = useState<number | null>(null);
   const [reference, setReference] = useState('');
+  const [cur, setCur] = useState({ currency: company?.baseCurrency ?? '', rate: RATE_ONE });
+  const [incoterm, setIncoterm] = useState('');
+  const [portLoading, setPortLoading] = useState('');
+  const [portDischarge, setPortDischarge] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [err, setErr] = useState('');
@@ -68,6 +78,8 @@ export function PoEditor() {
     unitPrice: item?.purchase_price ?? null,
     discountBp: null,
     taxId: item?.purchase_tax_id ?? null,
+    expectedDate: '',
+    requisitionId: null,
   });
 
   useEffect(() => {
@@ -84,6 +96,10 @@ export function PoEditor() {
     setExpected(existing.expected_date ?? '');
     setWh(existing.warehouse_id);
     setReference(existing.reference ?? '');
+    setCur({ currency: existing.currency ?? company?.baseCurrency ?? '', rate: existing.exchange_rate ?? RATE_ONE });
+    setIncoterm(existing.incoterm ?? '');
+    setPortLoading(existing.port_of_loading ?? '');
+    setPortDischarge(existing.port_of_discharge ?? '');
     setNotes(existing.notes ?? '');
     setLines(
       existing.lines.map((l: any) => ({
@@ -95,6 +111,8 @@ export function PoEditor() {
         unitPrice: l.unit_price,
         discountBp: l.discount_bp || null,
         taxId: l.tax_id,
+        expectedDate: l.expected_date ?? '',
+        requisitionId: l.requisition_id ?? null,
       })),
     );
   }, [existing]);
@@ -111,11 +129,16 @@ export function PoEditor() {
       expectedDate: expected || null,
       warehouseId: stockOn ? wh : null,
       reference: reference || null,
+      currency: cur.currency && cur.currency !== company?.baseCurrency ? cur.currency : null,
+      exchangeRate: cur.currency && cur.currency !== company?.baseCurrency ? cur.rate : null,
+      incoterm: incoterm || null,
+      portOfLoading: portLoading || null,
+      portOfDischarge: portDischarge || null,
       notes: notes || null,
       approve,
       lines: lines
         .filter((l) => (l.itemId || l.description.trim()) && l.quantity)
-        .map((l) => ({ itemId: l.itemId, description: l.description || null, unitId: l.unitId, quantity: l.quantity, unitPrice: l.unitPrice ?? 0, discountBp: l.discountBp ?? 0, taxId: l.taxId })),
+        .map((l) => ({ itemId: l.itemId, description: l.description || null, unitId: l.unitId, quantity: l.quantity, unitPrice: l.unitPrice ?? 0, discountBp: l.discountBp ?? 0, taxId: l.taxId, expectedDate: l.expectedDate || null, requisitionId: l.requisitionId })),
     };
     return editing ? api.put<{ id: number }>(`/purchase-orders/${id}`, body) : api.post<{ id: number }>('/purchase-orders', body);
   });
@@ -172,6 +195,23 @@ export function PoEditor() {
             <Field label={t('common.reference')}>
               <Input value={reference} onChange={(e) => setReference(e.target.value)} />
             </Field>
+            <CurrencyRateFields currency={cur.currency} rate={cur.rate} date={date} onChange={setCur} />
+            <Field label={t('pur.incoterm')}>
+              <Select value={incoterm} onChange={(e) => setIncoterm(e.target.value)}>
+                <option value="">—</option>
+                {INCOTERMS.map((x) => (
+                  <option key={x} value={x}>
+                    {x}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={t('pur.portOfLoading')}>
+              <Input value={portLoading} onChange={(e) => setPortLoading(e.target.value)} placeholder="Shenzhen" />
+            </Field>
+            <Field label={t('pur.portOfDischarge')}>
+              <Input value={portDischarge} onChange={(e) => setPortDischarge(e.target.value)} placeholder="Sokhna" />
+            </Field>
           </div>
         </Card>
         <Card className="lines-grid">
@@ -193,6 +233,7 @@ export function PoEditor() {
                     {t('docs.discount')}
                   </th>
                   <th style={{ width: 140 }}>{t('docs.tax')}</th>
+                  <th style={{ width: 150 }}>{t('pur.lineExpected')}</th>
                   <th className="end" style={{ width: 120 }}>
                     {t('docs.lineTotal')}
                   </th>
@@ -246,6 +287,9 @@ export function PoEditor() {
                       </td>
                       <td>
                         <TaxSelect side="purchases" value={l.taxId} onChange={(taxId) => update(l.key, { taxId })} />
+                      </td>
+                      <td>
+                        <Input type="date" value={l.expectedDate} min={date} onChange={(e) => update(l.key, { expectedDate: e.target.value })} />
                       </td>
                       <td className="line-total">{fmt(computed[i].total)}</td>
                       <td>

@@ -28,6 +28,27 @@ function useAction() {
 
 // ---------------------------------------------------------------- company
 
+/** The company's id in the ecosystem (set once, never changes): what the other applications are paired with. */
+function CompanyIdCard() {
+  const { t } = useI18n();
+  const { hasApp } = useSession();
+  const { data } = useApi<{ companyId: string; source: string }>(hasApp('eco') ? '/eco/company' : null);
+  if (!data) return null;
+  return (
+    <Card>
+      <CardHeader title={t('eco.settingsId')} sub={t('eco.settingsIdHint')} icon={<Network size={18} className="muted" />} />
+      <div className="card-body">
+        <dl className="kv">
+          <dt>{t('eco.companyId')}</dt>
+          <dd className="mono" style={{ userSelect: 'all' }}>{data.companyId}</dd>
+          <dt>{t('eco.source')}</dt>
+          <dd className="mono">{data.source}</dd>
+        </dl>
+      </div>
+    </Card>
+  );
+}
+
 export function CompanyTab() {
   const { t } = useI18n();
   const { company, lockDate, refresh, can } = useSession();
@@ -94,6 +115,7 @@ export function CompanyTab() {
           </div>
         )}
       </Card>
+      <CompanyIdCard />
       <Card>
         <CardHeader title={t('settings.lockDate')} sub={t('settings.lockDateHint')} icon={<Lock size={18} className="muted" />} />
         <div className="card-body row wrap">

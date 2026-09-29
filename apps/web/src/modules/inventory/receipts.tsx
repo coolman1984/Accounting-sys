@@ -58,6 +58,8 @@ export function ReceiptEditor() {
   const [date, setDate] = useState(todayIso());
   const [wh, setWh] = useState<number | null>(null);
   const [reference, setReference] = useState('');
+  // A foreign-currency order is received in its currency; the server values it at the receipt date's rate.
+  const [currency, setCurrency] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([blank()]);
   const [lotsFor, setLotsFor] = useState<number | null>(null);
@@ -77,6 +79,7 @@ export function ReceiptEditor() {
     setDate(existing.date);
     setWh(existing.warehouse_id);
     setReference(existing.reference ?? '');
+    setCurrency(existing.currency ?? null);
     setNotes(existing.notes ?? '');
     setLines(
       existing.lines.map((l: any) => ({ key: ++k, itemId: l.item_id, unitId: l.unit_id, quantity: l.quantity, unitCost: l.unit_cost, poLineId: l.po_line_id, lots: l.lots })),
@@ -90,6 +93,7 @@ export function ReceiptEditor() {
     setPoId(po.id);
     if (po.warehouse_id) setWh(po.warehouse_id);
     setReference(po.number ?? '');
+    setCurrency(po.currency ?? null);
     const open = po.lines.filter((l: any) => l.item_id && l.to_receive > 0);
     setLines(
       open.length
@@ -119,6 +123,7 @@ export function ReceiptEditor() {
       date,
       warehouseId: wh,
       reference: reference || null,
+      currency,
       notes: notes || null,
       post,
       lines: lines
@@ -254,7 +259,8 @@ export function ReceiptEditor() {
             </Button>
             <span className="spacer" />
             <span className="muted">
-              {t('common.total')} <span className="amount">{fmt(total)}</span>
+              {currency && <span className="faint" style={{ marginInlineEnd: 12 }}>{t('pur.valuedIn', { currency })}</span>}
+              {t('common.total')} <span className="amount">{fmt(total)}</span>{currency ? ' ' + currency : ''}
             </span>
           </div>
         </Card>
