@@ -4,7 +4,7 @@ import { nowIso } from '../../kernel/dates.js';
 import { lineAmount } from '../../kernel/money.js';
 import type { Item } from '../../contracts/catalog.js';
 import type {} from '../../contracts/fx.js';
-import type { IssueInput, IssueResult, LineCost, ProductionInput, ProductionResult } from '../../contracts/inventory.js';
+import type { IssueInput, IssueResult, LineCost, ProductionInput, ProductionResult, WipMoveInput } from '../../contracts/inventory.js';
 import { KIND_INFO, type DocKind, type DocumentLine } from '../../contracts/documents.js';
 import { STOCK_SEQ, type StockDocKind } from './schema.js';
 import { createEngine, mulDiv, split, type Diff, type PostMeta, type StockMove } from './engine.js';
@@ -983,6 +983,39 @@ export function createInventory(ctx: ModuleContext) {
     });
   }
 
+  // ------------------------------------------------------------ production recorded by manufacturing (GMES)
+  /** Material consumed on a work order: it leaves its warehouse at the moving average; Dr work in progress / Cr inventory. */
+  function wipIssue(input: WipMoveInput): number {
+    ledger().assertPostingDate(input.date);
+    const meta: PostMeta = { date: input.date, memo: input.memo, reference: input.reference, sourceType: 'mes_production', sourceId: input.sourceId, userId: null };
+    return engine.operation(meta, () => {
+      const item = catalog().item(input.itemId);
+      if (!catalog().isStockItem(item)) return 0;
+      const wh = activeWarehouse(input.warehouseId).id;
+      const parts = engine.allocateOut(item, wh, input.qty, engine.parseLots(input.lots ?? null, 1000, 1), { date: input.date, allowExpired: false, line: 1 });
+      const moves = moveOut(parts, { date: input.date, itemId: item.id, warehouseId: wh, sourceType: 'mes_production', sourceId: input.sourceId, sourceLineId: null, userId: null });
+      const diffs: Diff[] = moves.map((m) => ({ invAccount: inventoryAccount(item), counterAccount: input.wipAccountId, amount: m.value }));
+      linkEntry(moves.map((m) => m.id), postDifference(diffs, meta));
+      return moves.reduce((a, m) => a - m.value, 0);
+    });
+  }
+
+  /** Product completed on a work order: it enters its warehouse at the value taken out of work in progress; Dr inventory / Cr WIP. */
+  function wipReceipt(input: WipMoveInput & { value: number }): void {
+    ledger().assertPostingDate(input.date);
+    if (!Number.isSafeInteger(input.value) || input.value < 0) fail('validation', 'Invalid production value');
+    const meta: PostMeta = { date: input.date, memo: input.memo, reference: input.reference, sourceType: 'mes_production', sourceId: input.sourceId, userId: null };
+    engine.operation(meta, () => {
+      const item = catalog().item(input.itemId);
+      if (!catalog().isStockItem(item)) fail('stock.not_stock_item', `${item.sku} is not a stock item`, { sku: item.sku });
+      const wh = activeWarehouse(input.warehouseId).id;
+      const parts = engine.allocateIn(item, input.qty, engine.parseLots(input.lots ?? null, 1000, 1), 1);
+      const moves = moveIn(parts, input.value, { date: input.date, itemId: item.id, warehouseId: wh, sourceType: 'mes_production', sourceId: input.sourceId, userId: null });
+      const diffs: Diff[] = moves.map((m) => ({ invAccount: inventoryAccount(item), counterAccount: input.wipAccountId, amount: m.value }));
+      linkEntry(moves.map((m) => m.id), postDifference(diffs, meta));
+    });
+  }
+
   function reverseIssue(sourceType: string, sourceId: number, date: string, memo: string, reference: string | null, userId: number | null): number | null {
     ledger().assertPostingDate(date);
     const meta: PostMeta = { date, memo, reference, sourceType, sourceId, userId };
@@ -1029,6 +1062,8 @@ export function createInventory(ctx: ModuleContext) {
     reverseProduction,
     unitCost,
     issue,
+    wipIssue,
+    wipReceipt,
     reverseIssue,
     lineCosts,
     onHand,

@@ -48,6 +48,20 @@ export interface IssueInput {
   lines: { lineId: number; itemId: number; warehouseId: number; qty: number; lots?: { lotNo: string; qty: number }[] | null }[];
 }
 
+/** A stock move of production recorded by manufacturing (GMES), against the work-in-progress account. Quantities x1000. */
+export interface WipMoveInput {
+  date: string;
+  /** The work order's row in manufacturing's WIP ledger. */
+  sourceId: number;
+  reference: string | null;
+  memo: string;
+  itemId: number;
+  warehouseId: number;
+  qty: number;
+  lots?: { lotNo: string; qty: number }[] | null;
+  wipAccountId: number;
+}
+
 export interface IssueResult {
   entryId: number | null;
   /** Cost that left for each line, in input order (positive). */
@@ -81,6 +95,10 @@ export interface InventoryService {
   defaultWarehouse(): number;
   /** Post a goods issue (e.g. a sales delivery). */
   issue(input: IssueInput): IssueResult;
+  /** Consumed on a GMES work order: Dr WIP / Cr inventory at the moving average; returns the value. */
+  wipIssue(input: WipMoveInput): number;
+  /** Completed on a GMES work order: Dr inventory / Cr WIP at the given value. */
+  wipReceipt(input: WipMoveInput & { value: number }): void;
   /** Undo the goods issue of this source: the goods come back at the cost they left at; returns the entry. */
   reverseIssue(sourceType: string, sourceId: number, date: string, memo: string, reference: string | null, userId: number | null): number | null;
   /** Net movement per source line of these sources (reversals included). */

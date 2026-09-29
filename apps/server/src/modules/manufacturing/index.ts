@@ -3,7 +3,8 @@ import type { AppModule, ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso, today } from '../../kernel/dates.js';
 import { parse, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
-import { allowed, monthFraction, orderVariances, overheadVariances, standardCost, type Standard } from './engine.js';
+import { allowed, monthFraction, orderVariances, overheadVariances, standardCost, type Standard } from './engine.js';
+import { consumeProduction, gmesWipMigration } from './gmes.js';
 
 interface Bom {
   id: number;
@@ -415,6 +416,7 @@ function createManufacturing({ db, services }: ModuleContext) {
 export const manufacturingModule: AppModule = {
   id: 'manufacturing',
   dependsOn: ['ledger', 'catalog', 'inventory'],
+  after: ['eco'],
   permissions: ['mfg.boms.read', 'mfg.boms.write', 'mfg.orders.read', 'mfg.orders.write', 'mfg.orders.post', 'mfg.reports.read', 'mfg.settings.manage'],
   apps: [{ id: 'mfg', order: 45, requires: ['inventory'], permissions: ['mfg'] }],
   roles: [{ id: 'production_planner', permissions: ['mfg.boms.*', 'mfg.orders.*', 'mfg.reports.read', 'inventory.stock.read'] }],
@@ -500,10 +502,12 @@ export const manufacturingModule: AppModule = {
         INSERT INTO mfg_settings (id) VALUES (1);
       `,
     },
+    gmesWipMigration,
   ],
 
   setup(ctx) {
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('production_order', 'MO-', 1, 5)");
+    consumeProduction(ctx);
   },
 
   health({ db }) {

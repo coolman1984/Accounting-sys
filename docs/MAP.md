@@ -44,7 +44,7 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 12 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 14 | shared types and constants modules use to talk to each other |
 | `apps/server/src/eco-contracts/` | 11 | ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here) |
-| `apps/server/src/modules/` | 73 | one folder per module (below) |
+| `apps/server/src/modules/` | 74 | one folder per module (below) |
 | `apps/server/src/test/` | 31 | end-to-end tests, boundary and edition tests |
 
 Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
@@ -278,7 +278,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `goods_receipt_lines`, `goods_receipts`, `landed_cost_allocations`, `landed_cost_targets`, `landed_costs`, `lot_levels`, `receipt_matches`, `stock_doc_lines`, `stock_docs`, `stock_levels`, `stock_lots`, `stock_moves`, `stock_moves_v2`, `stock_quarantine`, `stock_values`, `warehouses`
 - **Provides services:** `inventory`
 - **Events:** emits `stock.receipt.posted`, `stock.receipt.voided` · listens `document.posted`, `document.voided`, `stock.receipt.posted`, `stock.receipt.voided`
-- **Files:** `eco.ts` (190), `engine.ts` (558), `index.ts` (887), `schema.ts` (336), `service.ts` (1094)
+- **Files:** `eco.ts` (190), `engine.ts` (558), `index.ts` (887), `schema.ts` (336), `service.ts` (1129)
 
 <details><summary>39 routes</summary>
 
@@ -675,9 +675,9 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Apps:** `mfg` · **Depends on:** `ledger`, `catalog`, `inventory` · **Health checks:** yes
 - **Permissions:** `mfg.boms.read`, `mfg.boms.write`, `mfg.orders.read`, `mfg.orders.write`, `mfg.orders.post`, `mfg.reports.read`, `mfg.settings.manage`
 - **Role templates:** `production_planner`
-- **Tables / views:** `bom_lines`, `boms`, `mfg_settings`, `production_order_lines`, `production_orders`
+- **Tables / views:** `bom_lines`, `boms`, `mfg_settings`, `mfg_wip`, `production_order_lines`, `production_orders`
 - **Provides services:** —
-- **Files:** `engine.ts` (184), `index.ts` (625)
+- **Files:** `engine.ts` (184), `gmes.ts` (127), `index.ts` (629)
 
 <details><summary>16 routes</summary>
 

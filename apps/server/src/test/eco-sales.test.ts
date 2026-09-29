@@ -81,6 +81,39 @@ test('a lot put on hold by incoming inspection moves to QA-HOLD, and back when r
   assert.deepEqual([level(main), level(qa)], [50 * U, 0]);
 });
 
+test('production facts from manufacturing are valued through work in progress; the close leaves WIP at zero', async () => {
+  const company = (await c.get('/api/eco/company')).companyId as string;
+  const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes-prod', scopes: ['eco.inbox.write'] })).key;
+  const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Boards Co' })).id;
+  const board = (await c.post('/api/items', { sku: 'BOARD', nameEn: 'Board', nameAr: 'لوحة', kind: 'product', unit: 'PCS', purchasePrice: 1000 })).id;
+  const set = (await c.post('/api/items', { sku: 'SET-P', nameEn: 'Set', nameAr: 'جهاز', kind: 'product', unit: 'PCS' })).id;
+  const main = (await c.get('/api/inventory/warehouses')).find((w: any) => w.is_default);
+  await c.post('/api/documents', { kind: 'purchase_bill', partyId: supplier, date: '2026-09-01', post: true, lines: [{ itemId: board, quantity: 10 * U, unitPrice: 1000 }] });
+  const { mizanId, newUuidv7 } = await import('../eco-contracts/index.js');
+  const ref = (kind: 'item' | 'warehouse', id: number, code: string) => ({ id: mizanId(company, kind, id), code });
+  const wo = { id: newUuidv7(), code: 'WO-1', item: ref('item', set, 'SET-P'), planned_qty: '4' };
+  const op = { production_date: '2026-09-10', performed_by: { user: 'op' }, ledger_seq: 1 };
+  let seq = 0;
+  const ev = (type: string, data: unknown) => ({ specversion: '1.0', id: newUuidv7(), source: `eco://${company}/gmes/plant-1`, type, subject: 'wo/1', time: '2026-09-10T10:00:00Z', datacontenttype: 'application/json', ecoseq: ++seq, ecocorrelation: 'wo/1', data });
+  const send = async (e: unknown) => (await c.app.http.inject({ method: 'POST', url: '/eco/v1/inbox', headers: { 'x-eco-key': inboxKey }, payload: { events: [e] } }).then((r) => JSON.parse(r.body))).results[0];
+  const wh = ref('warehouse', main.id, main.code);
+  for (const e of [
+    ev('mes.material.consumed.v1', { work_order: wo, item: ref('item', board, 'BOARD'), qty: '4', uom: 'PCS', warehouse: wh, ...op }),
+    ev('mes.production.completed.v1', { work_order: { ...wo, completed_qty_after: '1', scrapped_qty: '0', is_final: false }, item: ref('item', set, 'SET-P'), qty: '1', uom: 'PCS', warehouse: wh, ...op }),
+    ev('mes.production.scrapped.v1', { work_order: wo, qty: '1', uom: 'PCS', reason_code: 'SCRATCH', ...op }),
+    ev('mes.production.completed.v1', { work_order: { ...wo, completed_qty_after: '3', scrapped_qty: '1', is_final: true }, item: ref('item', set, 'SET-P'), qty: '2', uom: 'PCS', warehouse: wh, ...op }),
+    ev('mes.work_order.closed.v1', { work_order: { ...wo, completed_qty: '3', scrapped_qty: '1' }, ...op }),
+  ]) assert.equal((await send(e)).result, 'applied');
+  const db = c.app.kernel.db;
+  const w = db.get<any>("SELECT * FROM mfg_wip WHERE code = 'WO-1'")!;
+  assert.deepEqual([w.issued_value, w.received_value, w.received_qty, w.scrapped_qty, w.status], [4000, 4000, 3 * U, 1 * U, 'closed'], 'the scrapped unit is carried by the good ones');
+  const wipAccount = db.get<{ wip_account_id: number }>('SELECT wip_account_id FROM mfg_settings WHERE id = 1')!.wip_account_id;
+  const bal = db.get<{ b: number }>('SELECT COALESCE(SUM(debit - credit), 0) b FROM ledger WHERE account_id = ?', [wipAccount])!.b;
+  assert.equal(bal, 0, 'work in progress is empty once the order is closed');
+  const level = (item: number) => db.get<{ qty: number }>('SELECT qty FROM stock_levels WHERE item_id = ? AND warehouse_id = ?', [item, main.id])?.qty ?? 0;
+  assert.deepEqual([level(board), level(set)], [6 * U, 3 * U]);
+});
+
 test('a shipment dispatched by manufacturing becomes a posted delivery and a draft invoice, once', async () => {
   const company = (await c.get('/api/eco/company')).companyId as string;
   const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes', scopes: ['eco.inbox.write'] })).key;
