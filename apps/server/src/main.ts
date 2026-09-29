@@ -40,6 +40,16 @@ if (eco) {
       http.log.error(err, 'peer synchronisation failed');
     }
   };
+  // Publish what changed while this version was not running (first start, restored backup, app switched off); daily after that.
+  const resync = () => {
+    try {
+      if (kernel.services.get('settings').isSetupComplete() && kernel.apps.isEnabled('eco')) eco.resync();
+    } catch (err) {
+      http.log.error(err, 'integration resync failed');
+    }
+  };
+  resync();
+  setInterval(resync, 24 * 3_600_000).unref();
   setTimeout(syncPeers, 15_000).unref();
   setInterval(syncPeers, 60_000).unref();
 }
