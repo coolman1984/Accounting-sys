@@ -6,7 +6,7 @@ import { divRound } from '../../kernel/money.js';
 import { paging, parse, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import { migrations, STOCK_DOC_KINDS, STOCK_SEQ } from './schema.js';
 import { createInventory, type InventoryService } from './service.js';
-import { publishInventory, publishReceipts, warehouseChanged } from './eco.js';
+import { consumeLotDecisions, publishInventory, publishReceipts, warehouseChanged } from './eco.js';
 
 const zWarehouse = z.object({
   code: z.string().trim().min(1).max(20),
@@ -150,6 +150,7 @@ export const inventoryModule: AppModule = {
     ctx.services.provide('inventory', inv);
     publishInventory(ctx);
     publishReceipts(ctx);
+    consumeLotDecisions(ctx, inv);
     // Stock follows sales & purchase documents automatically, inside their transaction.
     // With the Inventory app off, new documents no longer move stock. Voids always run:
     // they only undo moves that exist, so stock stays right whatever was switched since.

@@ -317,3 +317,19 @@ migrations.push({
     ALTER TABLE goods_receipt_lines ADD COLUMN value_fx INTEGER;
   `,
 });
+migrations.push({
+  // Manufacturing's incoming inspection (mes.lot_decision.v1): what was moved to the quarantine warehouse, per lot,
+  // so a release moves exactly that back.
+  id: '004_quarantine',
+  up: `
+    CREATE TABLE stock_quarantine (
+      item_id         INTEGER NOT NULL REFERENCES items(id),
+      lot_no          TEXT NOT NULL,
+      from_warehouse  INTEGER NOT NULL REFERENCES warehouses(id),
+      qty             INTEGER NOT NULL CHECK (qty >= 0),
+      rejected        INTEGER NOT NULL DEFAULT 0,
+      updated_at      TEXT NOT NULL,
+      PRIMARY KEY (item_id, lot_no)
+    );
+  `,
+});

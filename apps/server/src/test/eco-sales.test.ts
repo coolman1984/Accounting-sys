@@ -55,6 +55,32 @@ test('a posted goods receipt reaches manufacturing with its purchase order line;
   assert.equal(after.at(-1).data.status, 'voided');
 });
 
+test('a lot put on hold by incoming inspection moves to QA-HOLD, and back when released', async () => {
+  const company = (await c.get('/api/eco/company')).companyId as string;
+  const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes-qc', scopes: ['eco.inbox.write'] })).key;
+  const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Glass Co' })).id;
+  const glass = (await c.post('/api/items', { sku: 'GLASS', nameEn: 'Glass', nameAr: 'زجاج', kind: 'product', unit: 'PCS', purchasePrice: 1000 })).id;
+  const main = (await c.get('/api/inventory/warehouses')).find((w: any) => w.is_default).id;
+  const gr = (await c.post('/api/inventory/receipts', { supplierId: supplier, date: '2026-09-05', warehouseId: main, post: true, lines: [{ itemId: glass, quantity: 50 * U, unitCost: 1000 }] })).id;
+  const number = (await c.get(`/api/inventory/receipts/${gr}`)).number;
+  const { mizanId, newUuidv7 } = await import('../eco-contracts/index.js');
+  const decision = (decision: string) => ({
+    specversion: '1.0', id: newUuidv7(), source: `eco://${company}/gmes/plant-1`, type: 'mes.lot_decision.v1', subject: 'lot/x', time: '2026-09-06T08:00:00Z',
+    datacontenttype: 'application/json', ecoseq: 1, ecocorrelation: 'lot/x',
+    data: { id: newUuidv7(), code: 'LD-1', version: 1, origin: { app: 'gmes', type: 'lot_decision', key: 'LD-1' }, item: { id: mizanId(company, 'item', glass), code: 'GLASS' },
+      lot_no: `${number}-1`, goods_receipt: { id: mizanId(company, 'goods_receipt', gr), code: number }, decision, accepted_qty: '0', rejected_qty: '0', uom: 'PCS',
+      defect_codes: [], decided_at: '2026-09-06T08:00:00Z', decided_by: { user: 'qc' } },
+  });
+  const send = async (ev: unknown) => (await c.app.http.inject({ method: 'POST', url: '/eco/v1/inbox', headers: { 'x-eco-key': inboxKey }, payload: { events: [ev] } }).then((r) => JSON.parse(r.body))).results[0];
+  const level = (wh: number) => c.app.kernel.db.get<{ qty: number }>('SELECT qty FROM stock_levels WHERE item_id = ? AND warehouse_id = ?', [glass, wh])?.qty ?? 0;
+  const held = await send(decision('on_hold'));
+  assert.equal(held.result, 'applied', JSON.stringify(held));
+  const qa = c.app.kernel.db.get<{ id: number }>("SELECT id FROM warehouses WHERE code = 'QA-HOLD'")!.id;
+  assert.deepEqual([level(main), level(qa)], [0, 50 * U]);
+  assert.equal((await send(decision('released'))).result, 'applied');
+  assert.deepEqual([level(main), level(qa)], [50 * U, 0]);
+});
+
 test('a shipment dispatched by manufacturing becomes a posted delivery and a draft invoice, once', async () => {
   const company = (await c.get('/api/eco/company')).companyId as string;
   const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes', scopes: ['eco.inbox.write'] })).key;
