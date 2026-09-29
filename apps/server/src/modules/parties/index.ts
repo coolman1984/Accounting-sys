@@ -4,6 +4,7 @@ import { AppError, conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { paging, parse, zDate, zOptId, zOptText } from '../../kernel/validate.js';
 import type { Party, PartiesService, PartyKind, PartyRoleInfo } from '../../contracts/parties.js';
+import type {} from '../../contracts/eco.js';
 
 const zParty = z.object({
   kind: z.enum(['customer', 'supplier', 'both']),
@@ -86,6 +87,7 @@ function createParties({ db, services }: ModuleContext): PartiesService {
         if (db.get('SELECT 1 FROM parties WHERE code = ?', [code])) conflict('party.duplicate_code', `Code ${code} already exists`);
         const id = db.insert('parties', { ...row(input), code, created_at: nowIso() });
         services.get('audit').log({ userId, action: 'create', entity: 'party', entityId: id, summary: input.name });
+        partyChanged(services, id);
         return { id, code };
       });
     },
@@ -98,9 +100,40 @@ function createParties({ db, services }: ModuleContext): PartiesService {
   };
 }
 
+const PARTY_V1 = 'eco.party.v1';
+const partyChanged = (services: ModuleContext['services'], id: number) => services.has('eco') && services.get('eco').changed(PARTY_V1, id);
+
+/**
+ * Mizan owns customers and suppliers: publish who they are (eco.party.v1) — never credit, prices or bank data.
+ * The country goes out only when it is an ISO 3166 alpha-2 code (the field is free text here).
+ */
+function publishParties({ db, services }: ModuleContext) {
+  if (!services.has('eco')) return;
+  services.get('eco').registerSnapshot({
+    type: PARTY_V1,
+    entity: 'party',
+    all: () => db.all<{ id: number }>('SELECT id FROM parties ORDER BY id').map((r) => String(r.id)),
+    build(localId, h) {
+      const p = db.get<Party>('SELECT * FROM parties WHERE id = ?', [Number(localId)]);
+      if (!p) return null;
+      const country = (p.country ?? '').trim().toUpperCase();
+      return {
+        id: h.id('party', p.id),
+        code: p.code,
+        origin: h.origin('party', p.id),
+        name: { en: p.name, ar: p.name_alt || p.name },
+        roles: p.kind === 'both' ? ['customer', 'supplier'] : [p.kind],
+        ...(/^[A-Z]{2}$/.test(country) ? { country } : {}),
+        active: !!p.is_active,
+      };
+    },
+  });
+}
+
 export const partiesModule: AppModule = {
   id: 'parties',
   dependsOn: ['ledger'],
+  after: ['eco'],
   // No permissions of its own: customers are guarded by AR (ar.customers.*), suppliers by AP (ap.suppliers.*).
   migrations: [
     {
@@ -139,6 +172,7 @@ export const partiesModule: AppModule = {
 
   setup(ctx) {
     ctx.services.provide('parties', createParties(ctx));
+    publishParties(ctx);
     ctx.events.on('system.setup', () => {
       const seq = ctx.services.get('sequences');
       seq.ensure('customer', 'C-', 4);
@@ -234,6 +268,7 @@ export const partiesModule: AppModule = {
       db.tx(() => {
         db.update('parties', id, { ...row(input), code });
         audit.log({ userId: user.id, action: 'update', entity: 'party', entityId: id, data: { before: cur, after: input } });
+        partyChanged(services, id);
       });
       return { ok: true };
     });

@@ -2,9 +2,9 @@
   "source": {
     "repo": "coolman1984/GMES",
     "path": "packages/eco-contracts/src",
-    "baseCommit": "3c09b3df27ac068e3222f23484af7896632edbde",
+    "baseCommit": "bf5c467",
     "copiedAt": "2026-09-29",
-    "note": "Byte-identical copy of the owner working tree: plan.ts and the ids.ts/index.ts/mes.ts changes were not committed in GMES yet. Never edit these files here: copy them again from GMES and update this pin."
+    "note": "Byte-identical copy of GMES main at bf5c467 (Contracts v2). Never edit these files here: copy them again from GMES and update this pin."
   },
   "files": {
     "ack.ts": "1fb0ec52fabaed3bcadb342ca0294781b99c6739f68c7c198e17833167128fdc",

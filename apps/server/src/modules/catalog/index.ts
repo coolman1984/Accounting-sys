@@ -3,7 +3,10 @@ import type { AppModule, ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { parse, zOptId, zOptText } from '../../kernel/validate.js';
-import type { CatalogService, Item, ItemUnit } from '../../contracts/catalog.js';
+import { MATERIAL_TYPES, type CatalogService, type Item, type ItemUnit } from '../../contracts/catalog.js';
+import { formatQty } from '../../eco-contracts/index.js';
+import type {} from '../../contracts/eco.js';
+import type {} from '../../contracts/parties.js';
 
 export type { Item, ItemUnit } from '../../contracts/catalog.js';
 
@@ -31,6 +34,15 @@ const zItem = z.object({
   tracking: z.enum(['none', 'batch', 'serial']).default('none'),
   requiresExpiry: z.boolean().default(false),
   minSalePrice: z.number().int().min(0).default(0),
+  // Planning (MRP) — all optional so older clients and imports keep working.
+  materialType: z.enum(MATERIAL_TYPES).nullish().transform((v) => v ?? null),
+  procurementType: z.enum(['buy', 'make']).default('buy'),
+  leadTimeDays: z.number().int().min(0).max(3650).default(0),
+  moq: z.number().int().min(0).default(0),
+  lotSizeRule: z.enum(['lot_for_lot', 'fixed', 'multiple']).default('lot_for_lot'),
+  lotSize: z.number().int().min(0).default(0),
+  safetyStock: z.number().int().min(0).default(0),
+  defaultSupplierId: zOptId.transform((v) => v ?? null),
   units: z
     .array(
       z.object({
@@ -86,6 +98,14 @@ function createItemWriter({ db, services }: ModuleContext) {
       tracking: i.kind === 'product' && i.trackStock ? i.tracking : 'none',
       requires_expiry: i.kind === 'product' && i.trackStock && i.tracking === 'batch' && i.requiresExpiry,
       min_sale_price: i.minSalePrice,
+      material_type: i.materialType,
+      procurement_type: i.procurementType,
+      lead_time_days: i.leadTimeDays,
+      moq: i.moq,
+      lot_size_rule: i.lotSizeRule,
+      lot_size: i.lotSizeRule === 'lot_for_lot' ? 0 : i.lotSize,
+      safety_stock: i.safetyStock,
+      default_supplier_id: i.defaultSupplierId,
     });
 
     /** Upsert the item's units; units removed from the list are deactivated, never deleted (documents reference them). */
@@ -147,6 +167,12 @@ function createItemWriter({ db, services }: ModuleContext) {
           fail('item.stock_locked', 'This item has stock movements; its inventory account cannot change');
         }
       }
+      if (i.lotSizeRule !== 'lot_for_lot' && i.lotSize <= 0) fail('item.lot_size', 'Enter the lot size for this lot-size rule');
+      if (i.defaultSupplierId) {
+        if (!services.has('parties')) fail('item.no_parties', 'Suppliers are not installed');
+        const p = services.get('parties').get(i.defaultSupplierId);
+        if (p.kind === 'customer') fail('party.not_supplier', `${p.name} is not a supplier`);
+      }
       // Default taxes come from the Tax module; without it an item simply carries none.
       for (const taxId of [i.salesTaxId, i.purchaseTaxId]) {
         if (!taxId) continue;
@@ -165,10 +191,44 @@ function createItemWriter({ db, services }: ModuleContext) {
       const id = db.insert('items', { ...itemRow(input), created_at: nowIso() });
       writeUnits(id, input.units);
       audit().log({ userId, action: 'create', entity: 'item', entityId: id, summary: input.sku });
+      itemChanged(services, id);
       return id;
     });
   }
   return { itemRow, writeUnits, checkItem, createItem };
+}
+
+const ITEM_V1 = 'eco.item.v1';
+const itemChanged = (services: ModuleContext['services'], id: number) => services.has('eco') && services.get('eco').changed(ITEM_V1, id);
+
+/** Base unit as a code on the wire ("pcs" → "PCS"); items without one count in "UNIT". */
+export const uomCode = (unit: string | null | undefined) => (unit ?? '').trim().toUpperCase().slice(0, 64) || 'UNIT';
+
+/** Mizan owns items: publish each one's snapshot (eco.item.v1) when the integration module is installed. */
+function publishItems({ db, services }: ModuleContext) {
+  if (!services.has('eco')) return;
+  services.get('eco').registerSnapshot({
+    type: ITEM_V1,
+    entity: 'item',
+    all: () => db.all<{ id: number }>('SELECT id FROM items ORDER BY id').map((r) => String(r.id)),
+    build(localId, h) {
+      const i = db.get<Item>('SELECT * FROM items WHERE id = ?', [Number(localId)]);
+      if (!i) return null;
+      const units = db.all<ItemUnit>('SELECT * FROM item_units WHERE item_id = ? AND is_active = 1 ORDER BY factor, id', [i.id]);
+      return {
+        id: h.id('item', i.id),
+        code: i.sku,
+        name: { en: i.name_en, ar: i.name_ar },
+        active: !!i.is_active,
+        origin: h.origin('item', i.id),
+        kind: i.kind,
+        stock_tracked: i.kind === 'product' && !!i.track_stock,
+        tracking: i.tracking === 'batch' ? 'lot' : i.tracking,
+        base_uom: uomCode(i.unit),
+        units: units.map((u) => ({ code: uomCode(u.name_en), factor: formatQty(u.factor) })),
+      };
+    },
+  });
 }
 
 function createCatalog(ctx: ModuleContext): CatalogService {
@@ -273,10 +333,27 @@ export const catalogModule: AppModule = {
         ALTER TABLE items ADD COLUMN min_sale_price INTEGER NOT NULL DEFAULT 0;   -- per base unit
       `,
     },
+    {
+      // Planning fields for MRP and purchasing (lead time, MOQ, lot sizing, safety stock, usual supplier).
+      id: '004_planning',
+      up: `
+        ALTER TABLE items ADD COLUMN material_type TEXT CHECK (material_type IS NULL OR material_type IN ('raw', 'semi_finished', 'finished', 'packaging', 'service'));
+        ALTER TABLE items ADD COLUMN procurement_type TEXT NOT NULL DEFAULT 'buy' CHECK (procurement_type IN ('buy', 'make'));
+        ALTER TABLE items ADD COLUMN lead_time_days INTEGER NOT NULL DEFAULT 0 CHECK (lead_time_days >= 0);
+        ALTER TABLE items ADD COLUMN moq INTEGER NOT NULL DEFAULT 0 CHECK (moq >= 0);                     -- x1000
+        ALTER TABLE items ADD COLUMN lot_size_rule TEXT NOT NULL DEFAULT 'lot_for_lot' CHECK (lot_size_rule IN ('lot_for_lot', 'fixed', 'multiple'));
+        ALTER TABLE items ADD COLUMN lot_size INTEGER NOT NULL DEFAULT 0 CHECK (lot_size >= 0);           -- x1000
+        ALTER TABLE items ADD COLUMN safety_stock INTEGER NOT NULL DEFAULT 0 CHECK (safety_stock >= 0);   -- x1000
+        ALTER TABLE items ADD COLUMN default_supplier_id INTEGER;                                         -- parties(id), checked by the service
+        CREATE INDEX items_default_supplier ON items(default_supplier_id) WHERE default_supplier_id IS NOT NULL;
+      `,
+    },
   ],
+  after: ['eco'],
 
   setup(ctx) {
     ctx.services.provide('catalog', createCatalog(ctx));
+    publishItems(ctx);
   },
 
   routes(r, ctx) {
@@ -369,6 +446,7 @@ export const catalogModule: AppModule = {
         db.update('items', id, itemRow(input));
         writeUnits(id, input.units);
         audit.log({ userId: user.id, action: 'update', entity: 'item', entityId: id, data: { before: cur, after: input } });
+        itemChanged(services, id);
       });
       return { ok: true };
     });

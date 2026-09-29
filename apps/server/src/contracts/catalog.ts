@@ -28,7 +28,27 @@ export interface Item {
   requires_expiry: number;
   /** Lowest allowed net selling price per base unit (0 = no guard). */
   min_sale_price: number;
+  // ---- planning (MRP) fields; manufacturing plans with them, purchasing orders with them
+  /** raw | semi_finished | finished | packaging | service; null = not classified. */
+  material_type: MaterialType | null;
+  /** buy (purchased) | make (produced in-house). */
+  procurement_type: 'buy' | 'make';
+  /** Planned lead time in calendar days (order to receipt at the plant). */
+  lead_time_days: number;
+  /** Minimum order quantity, base units x1000 (0 = none). */
+  moq: number;
+  /** How an order quantity is rounded: lot_for_lot (exact), fixed (always lot_size), multiple (of lot_size). */
+  lot_size_rule: 'lot_for_lot' | 'fixed' | 'multiple';
+  /** x1000; used by `fixed` and `multiple`. */
+  lot_size: number;
+  /** x1000. */
+  safety_stock: number;
+  /** Usual supplier (a party), null = none. */
+  default_supplier_id: number | null;
 }
+
+export const MATERIAL_TYPES = ['raw', 'semi_finished', 'finished', 'packaging', 'service'] as const;
+export type MaterialType = (typeof MATERIAL_TYPES)[number];
 
 /** An alternative unit of measure: 1 unit = factor/1000 base units (a box of 12 => 12000). */
 export interface ItemUnit {
