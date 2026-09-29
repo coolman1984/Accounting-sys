@@ -132,4 +132,26 @@ export const migrations: Migration[] = [
       ]);
     },
   },
+  {
+    // Other applications this server talks to on its own (push its feed to their inbox, pull their feed).
+    id: '002_peers',
+    up: `
+      CREATE TABLE eco_peers (
+        id            INTEGER PRIMARY KEY,
+        name          TEXT NOT NULL UNIQUE,
+        url           TEXT NOT NULL,
+        key_sealed    TEXT NOT NULL,                 -- the key the peer gave us (x-eco-key), sealed, never returned
+        consumer      TEXT NOT NULL,                 -- our name at the peer (its key's name), used in acks
+        push          INTEGER NOT NULL DEFAULT 1,    -- send our feed to its inbox
+        pull          INTEGER NOT NULL DEFAULT 0,    -- read its feed into our inbox
+        types         TEXT,                          -- space-separated event types to push (NULL = all)
+        push_cursor   INTEGER NOT NULL DEFAULT 0,    -- last of OUR outbox seq the peer took
+        pull_cursor   INTEGER NOT NULL DEFAULT 0,    -- last of ITS feed seq we took
+        active        INTEGER NOT NULL DEFAULT 1,
+        last_ok_at    TEXT,
+        last_error    TEXT,
+        created_at    TEXT NOT NULL
+      );
+    `,
+  },
 ];

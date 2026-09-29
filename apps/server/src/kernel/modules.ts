@@ -4,6 +4,7 @@ import type { EventBus } from './events.js';
 import type { ServiceRegistry } from './services.js';
 import type { AppConfig } from '../config.js';
 import type { AppManifest, AppRegistry } from './apps.js';
+import type { Secrets } from './secrets.js';
 
 /**
  * The "mechano" contract. Every feature of the system — ledger, sales,
@@ -89,6 +90,8 @@ export interface ModuleContext {
   permissions: readonly string[];
   /** Which apps are switched on. */
   apps: AppRegistry;
+  /** Sealing of secrets that must be read back (AES-256-GCM; the key is not in the database). */
+  secrets: Secrets;
   /** Every installed module, in boot order. */
   installed: readonly ModuleInfo[];
 }

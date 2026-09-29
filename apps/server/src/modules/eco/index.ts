@@ -7,6 +7,7 @@ import { parse, zId } from '../../kernel/validate.js';
 import type {} from '../../contracts/eco.js';
 import { migrations } from './schema.js';
 import { createEco, type EcoInternal, type OutboxRow } from './service.js';
+import { peerView } from './peers.js';
 import { authenticate, createKey, ECO_SCOPES, listKeys, requireScope, revokeKey, type EcoScope } from './keys.js';
 
 /**
@@ -193,6 +194,46 @@ export const ecoModule: AppModule = {
       audit.log({ userId: user.id, action: 'resync', entity: 'eco', summary: `${published} snapshots` });
       return { published };
     });
+
+    // ---- peers: applications this server exchanges facts with (its keys are sealed and never returned)
+    const zPeer = z.object({
+      name: z.string().max(60),
+      url: z.string().max(300),
+      key: z.string().min(8).max(300),
+      consumer: z.string().min(2).max(60).optional(),
+      push: z.boolean().default(true),
+      pull: z.boolean().default(false),
+      types: z.array(z.string().max(100)).max(50).nullish().transform((v) => v ?? null),
+    });
+    r.get('/eco/peers', 'eco.settings.manage', () => eco.peers.list().map(peerView));
+    r.post('/eco/peers', 'eco.settings.manage', ({ body, user }) => {
+      const i = parse(zPeer, body);
+      const id = db.tx(() => {
+        const id = eco.peers.add({ ...i, consumer: i.consumer ?? 'mizan' });
+        audit.log({ userId: user.id, action: 'create', entity: 'eco_peer', entityId: id, summary: `${i.name} ${i.url}` });
+        return id;
+      });
+      return { id };
+    });
+    r.put('/eco/peers/:id', 'eco.settings.manage', ({ params, body, user }) => {
+      const id = parse(zId, params.id);
+      const i = parse(zPeer.partial().extend({ active: z.boolean().optional(), key: z.string().min(8).max(300).nullish() }), body);
+      db.tx(() => {
+        eco.peers.update(id, i);
+        audit.log({ userId: user.id, action: 'update', entity: 'eco_peer', entityId: id, summary: Object.keys(i).filter((k) => k !== 'key').join(',') + (i.key ? ' key' : '') });
+      });
+      return { ok: true };
+    });
+    r.delete('/eco/peers/:id', 'eco.settings.manage', ({ params, user }) => {
+      const id = parse(zId, params.id);
+      db.tx(() => {
+        eco.peers.remove(id);
+        audit.log({ userId: user.id, action: 'delete', entity: 'eco_peer', entityId: id });
+      });
+      return { ok: true };
+    });
+    r.post('/eco/peers/:id/sync', 'eco.settings.manage', async ({ params }) => eco.peers.sync(parse(zId, params.id)));
+    r.post('/eco/sync', 'eco.settings.manage', async () => ({ peers: await eco.peers.syncAll() }));
 
     r.get('/eco/supply-plan', 'eco.events.read', () => eco.supplyPlan());
 

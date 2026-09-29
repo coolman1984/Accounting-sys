@@ -35,7 +35,11 @@ export interface OutboxRow {
 
 export type InboxOutcome = { id: string | null; result: 'applied' | 'unchanged' | 'stale' | 'duplicate' | 'rejected'; code?: string; message?: string };
 
+import { createPeers, realHttp, type Http, type PeerService } from './peers.js';
+
 export type EcoInternal = EcoService & {
+  peers: PeerService;
+  http: { current: Http };
   sources(): EcoSnapshotSource[];
   toEnvelope(r: OutboxRow): Envelope;
   /** Rebuild every snapshot; returns how many new events were published. */
@@ -188,7 +192,9 @@ export function createEco(ctx: ModuleContext): EcoInternal {
     }
   }
 
-  const service: EcoInternal = {
+  const http = { current: realHttp as Http };
+  const built: Omit<EcoInternal, 'peers'> = {
+    http,
     companyId: company,
     source,
     globalId,
@@ -231,5 +237,7 @@ export function createEco(ctx: ModuleContext): EcoInternal {
     },
     receive,
   };
+  const service = built as EcoInternal;
+  service.peers = createPeers(ctx, service, http);
   return service;
 }

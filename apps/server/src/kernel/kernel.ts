@@ -4,6 +4,7 @@ import { ServiceRegistry } from './services.js';
 import { runMigrations, sortModules, type AppModule, type ModuleContext } from './modules.js';
 import type { AppConfig } from '../config.js';
 import { createAppRegistry } from './apps.js';
+import { createSecrets } from './secrets.js';
 
 export interface Kernel extends ModuleContext {
   modules: AppModule[];
@@ -25,7 +26,7 @@ export function createKernel(config: AppConfig, modules: AppModule[]): Kernel {
     roles: m.roles ?? [],
     sod: m.sod ?? [],
   }));
-  const ctx: ModuleContext = { db, services: new ServiceRegistry(), events: new EventBus(), config, permissions, apps, installed };
+  const ctx: ModuleContext = { db, services: new ServiceRegistry(), events: new EventBus(), config, permissions, apps, installed, secrets: createSecrets(config.dbFile, config.dataDir) };
   for (const m of ordered) m.setup?.(ctx);
   return { ...ctx, modules: ordered, close: () => db.close() };
 }
