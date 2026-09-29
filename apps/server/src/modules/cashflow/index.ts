@@ -93,7 +93,8 @@ function createCashflow({ db, installed }: ModuleContext) {
       // Approved orders not yet billed: paid on the supplier's terms after the expected delivery.
       const orders = db.all<{ number: string | null; supplier: string; date: string; expected_date: string | null; terms: number; unbilled: number }>(
         `SELECT o.number, p.name AS supplier, o.date, o.expected_date, p.payment_terms_days AS terms,
-                SUM(CASE WHEN l.base_quantity > l.billed_base THEN (l.total * (l.base_quantity - l.billed_base)) / l.base_quantity ELSE 0 END) AS unbilled
+                SUM(CASE WHEN l.base_quantity > l.billed_base THEN (l.total * (l.base_quantity - l.billed_base)) / l.base_quantity ELSE 0 END)
+                  * (CASE WHEN o.currency IS NULL THEN 1.0 ELSE COALESCE(o.exchange_rate, 1000000) / 1000000.0 END) AS unbilled
          FROM purchase_orders o JOIN parties p ON p.id = o.supplier_id JOIN purchase_order_lines l ON l.po_id = o.id
          WHERE o.status = 'open' GROUP BY o.id`,
       );

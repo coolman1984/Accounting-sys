@@ -119,8 +119,8 @@ export interface DocInput {
   lines: DocLineInput[];
 }
 
-/** What settled part of an invoice or bill: a receipt/payment, a credit note, or a cheque. */
-export type SettlementSource = 'payment' | 'credit' | 'cheque';
+/** What settled part of an invoice or bill: a receipt/payment, a credit note, a cheque, or a letter of credit. */
+export type SettlementSource = 'payment' | 'credit' | 'cheque' | 'lc';
 
 export interface DocumentsService {
   get(id: number): Document;
