@@ -2,20 +2,20 @@
   "source": {
     "repo": "coolman1984/GMES",
     "path": "packages/eco-contracts/src",
-    "baseCommit": "bf5c467",
+    "baseCommit": "22ae41e",
     "copiedAt": "2026-09-29",
-    "note": "Byte-identical copy of GMES main at bf5c467 (Contracts v2). Never edit these files here: copy them again from GMES and update this pin."
+    "note": "Byte-identical copy of GMES main at 22ae41e. Never edit these files here: copy them again from GMES (scripts\\Refresh-Contracts.ps1 in complete-company) and update this pin."
   },
   "files": {
     "ack.ts": "1fb0ec52fabaed3bcadb342ca0294781b99c6739f68c7c198e17833167128fdc",
     "canonical.ts": "3edb2c050f5ff02f0100d7b83e291f3acbc56c81eb180f37bccfb33bc16af913",
-    "common.ts": "4481f8efb68311c022112ca41ce2c7b65627612fc2e7e8fb2097758f09b77b60",
+    "common.ts": "2976e77277d026b055d863c97b5d1ff67b531d53e755bd0c07754bee3c766469",
     "envelope.ts": "aaca5a66352878c820c57ae5e1752ff508ff16bf6a91539609d7af5d890bb764",
-    "ids.ts": "b2cd1df2c4a2034f50f5ac6e34e893e3d9eb39810fbac6319500fb9e129a8752",
-    "index.ts": "b4825ebe79dfe379107a2a37d0c20df06e39398131a7660ea74bd5c20df9bb10",
-    "master.ts": "15d92e9961e570943c50ea3b86f9262c7f7d31d0f4dc56de86f448336d753571",
+    "ids.ts": "6d9d92c3c0dd94ce4136a231dd2c26cbe881fad49fb98003c9a3c733b9e18049",
+    "index.ts": "5f21191ee6a79b906439271c4f390b146a0933d0a36b321c711336d880da9cec",
+    "master.ts": "a3410eced49c35ca034a9d647eb59c6d70cf183787dc657c8c8f4a26b60e62b5",
     "mes.ts": "15163e6e33711fb8eec737dae5689dc9ac09de97b083870fc055493d4761c15a",
-    "plan.ts": "a8c4e89084709374e33d11af10bc55dddd963b188b053390e7f8afb07166823e",
+    "plan.ts": "5cd30b76990d0c5a93630fba839497e0d76b5641f6a21fb8802ec4fa61328bf5",
     "quantity.ts": "88ee2c589771a06b3f3b262643f609e42baffe02c11d7f6bcdaeb795ad671571",
     "schemas.ts": "b201a00b692a8b2df03ca0b07af0fc31e2619b470a9a7908b6472d787bd3d076"
   }
