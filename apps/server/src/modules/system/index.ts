@@ -6,6 +6,7 @@ import type { AppModule } from '../../kernel/modules.js';
 import { AppError, conflict, fail, notFound } from '../../kernel/errors.js';
 import { paging, parse, zDate, zOptText } from '../../kernel/validate.js';
 import { migrations } from './schema.js';
+import { rehearse } from './rehearsal.js';
 import {
   createAudit,
   createSequences,
@@ -489,8 +490,15 @@ export const systemModule: AppModule = {
     r.get('/system/backups', 'admin.backup.manage', () => backup.list());
     r.post('/system/backups', 'admin.backup.manage', ({ user }) => {
       const b = backup.create('manual');
-      audit.log({ userId: user.id, action: 'backup', entity: 'system', summary: b.name });
-      return b;
+      // not a backup until it has been opened and checked elsewhere than in the live database
+      const rehearsal = rehearse(backup.path(b.name));
+      audit.log({ userId: user.id, action: 'backup', entity: 'system', summary: `` });
+      return { ...b, rehearsal };
+    });
+    r.post('/system/backups/:name/verify', 'admin.backup.manage', ({ params, user }) => {
+      const rehearsal = rehearse(backup.path(params.name));
+      audit.log({ userId: user.id, action: 'backup', entity: 'system', summary: `verify ${params.name}: ${rehearsal.ok ? 'ok' : 'FAILED'}` });
+      return { name: params.name, rehearsal };
     });
     r.get('/system/backups/:name', 'admin.backup.manage', ({ params, reply }) => {
       const file = backup.path(params.name);

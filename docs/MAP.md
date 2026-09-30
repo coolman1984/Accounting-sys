@@ -44,8 +44,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 12 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 14 | shared types and constants modules use to talk to each other |
 | `apps/server/src/eco-contracts/` | 11 | ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here) |
-| `apps/server/src/modules/` | 76 | one folder per module (below) |
-| `apps/server/src/test/` | 33 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 77 | one folder per module (below) |
+| `apps/server/src/test/` | 34 | end-to-end tests, boundary and edition tests |
 
 Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
 
@@ -58,9 +58,9 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `audit_log`, `role_permissions`, `roles`, `sequences`, `sessions`, `settings`, `user_roles`, `users`
 - **Provides services:** `access`, `audit`, `backup`, `sequences`, `settings`
 - **Events:** emits `system.setup` · listens —
-- **Files:** `auth.ts` (189), `index.ts` (503), `schema.ts` (95), `settings.ts` (117)
+- **Files:** `auth.ts` (189), `index.ts` (511), `rehearsal.ts` (51), `schema.ts` (95), `settings.ts` (117)
 
-<details><summary>25 routes</summary>
+<details><summary>26 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -88,6 +88,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | GET | `/api/audit` | `admin.audit.read` |
 | GET | `/api/system/backups` | `admin.backup.manage` |
 | POST | `/api/system/backups` | `admin.backup.manage` |
+| POST | `/api/system/backups/:name/verify` | `admin.backup.manage` |
 | GET | `/api/system/backups/:name` | `admin.backup.manage` |
 
 </details>
