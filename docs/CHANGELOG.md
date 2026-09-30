@@ -3,6 +3,11 @@
 All notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/).
 Every change adds a line under **[Unreleased]** in the same commit.
 
+### Added
+- Machine calls can be signed (HMAC-SHA256 over method, path, body and time, five-minute window); `ECO_REQUIRE_SIGNATURE=1` makes signatures mandatory (ADR-030). Peers sign their calls.
+### Fixed
+- A dispatch fact from manufacturing is booked even when other orders had reserved the goods; reservations shrink to the stock (a shortage is still refused).
+
 ## [Unreleased]
 
 ### Added

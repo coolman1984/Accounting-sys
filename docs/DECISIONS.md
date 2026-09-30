@@ -282,3 +282,13 @@ process are not supported.
 **Decision:** Creating a backup opens the copy read-only and checks structure, references, balanced posted journals and the row counts of
 the main tables; `POST /api/system/backups/:name/verify` repeats it. A failed rehearsal is written in the audit. Same rule as GMES and HR.
 **Consequences:** The package portal's "Back up everything" counts only rehearsed backups.
+
+## ADR-030 · Machine calls can be signed (HMAC over method, path, body and time)
+**Status:** Accepted · 2026-09-30 (WP-X2, second part; the first part, pinned TLS, is not built)
+**Decision:** A machine call may carry `x-eco-ts` (real time, ms) and `x-eco-sig` = HMAC-SHA256 over `METHOD|path?query|sha256(body)|ts`, keyed with the
+SHA-256 of the machine key (the only form receivers keep). A signature older than five minutes, or for another path, method or body, is refused with
+401. Unsigned calls still work unless `ECO_REQUIRE_SIGNATURE=1`. The raw JSON text of a request is kept beside the parsed body for this.
+**Rejected:** TLS with pinned self-signed certificates now (Node and Python standard libraries cannot create a certificate, so it needs a dependency
+or a generated tool: a decision for the owner); signing the parsed object (another sender's JSON layout would not match); a clock from the simulation
+(signatures are about the wire: `wallClockMs`).
+**Consequences:** A copied request cannot be replayed later or altered. It does not hide traffic: on a LAN the content is still readable until TLS exists.

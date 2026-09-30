@@ -44,8 +44,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 12 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 14 | shared types and constants modules use to talk to each other |
 | `apps/server/src/eco-contracts/` | 11 | ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here) |
-| `apps/server/src/modules/` | 77 | one folder per module (below) |
-| `apps/server/src/test/` | 34 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 78 | one folder per module (below) |
+| `apps/server/src/test/` | 35 | end-to-end tests, boundary and edition tests |
 
 Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
 
@@ -142,7 +142,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Role templates:** `integration_admin`
 - **Tables / views:** `eco_ack`, `eco_company`, `eco_inbox`, `eco_inbox_rejects`, `eco_keys`, `eco_outbox`, `eco_peers`, `eco_snapshots`, `eco_supply_plan`, `eco_supply_plans`
 - **Provides services:** `eco`
-- **Files:** `index.ts` (249), `keys.ts` (79), `peers.ts` (195), `schema.ts` (159), `service.ts` (244)
+- **Files:** `index.ts` (254), `keys.ts` (81), `peers.ts` (198), `schema.ts` (159), `service.ts` (244), `signing.ts` (35)
 
 <details><summary>20 routes</summary>
 
@@ -403,7 +403,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `sales_deliveries`, `sales_delivery_lines`, `sales_order_lines`, `sales_orders`, `sales_reservations`, `sales_supply_plan`
 - **Provides services:** `sales`
 - **Events:** emits `sales.delivery.posted`, `sales.delivery.voided`, `sales.order.confirmed` · listens `document.posted`, `document.voided`
-- **Files:** `eco.ts` (91), `index.ts` (397), `reports.ts` (263), `schema.ts` (146), `service.ts` (899)
+- **Files:** `eco.ts` (91), `index.ts` (397), `reports.ts` (263), `schema.ts` (146), `service.ts` (918)
 
 <details><summary>28 routes</summary>
 

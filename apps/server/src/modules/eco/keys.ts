@@ -24,6 +24,8 @@ export interface Caller {
   id: number;
   name: string;
   scopes: Set<string>;
+  /** SHA-256 of the key: the signing key of request signatures (signing.ts). */
+  keyHash: string;
 }
 
 const PREFIX = 'mk_';
@@ -67,7 +69,7 @@ export function authenticate(db: Database, header: string | string[] | undefined
   const h = hash(header);
   const row = db.get<{ id: number; name: string; key_hash: string; scopes: string; active: number }>('SELECT id, name, key_hash, scopes, active FROM eco_keys WHERE key_hash = ?', [h]);
   if (!row || !row.active || !timingSafeEqual(Buffer.from(row.key_hash), Buffer.from(h))) return null;
-  return { id: row.id, name: row.name, scopes: new Set(row.scopes.split(' ')) };
+  return { id: row.id, name: row.name, scopes: new Set(row.scopes.split(' ')), keyHash: row.key_hash };
 }
 
 /** 401 without a valid key, 403 when the key lacks the scope. */

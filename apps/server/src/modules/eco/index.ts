@@ -8,6 +8,7 @@ import type {} from '../../contracts/eco.js';
 import { migrations } from './schema.js';
 import { createEco, type EcoInternal, type OutboxRow } from './service.js';
 import { peerView } from './peers.js';
+import { checkSignature } from './signing.js';
 import { authenticate, createKey, ECO_SCOPES, listKeys, requireScope, revokeKey, type EcoScope } from './keys.js';
 
 /**
@@ -87,6 +88,10 @@ export const ecoModule: AppModule = {
     /** A machine call: the eco app must be on and the key must carry the scope. */
     const caller = (c: MachineCtx, scope: EcoScope) => {
       const who = requireScope(authenticate(db, c.headers['x-eco-key']), scope);
+      // a signed request must match its path, body and time; an unsigned one is refused only when the installation requires signatures
+      const problem = checkSignature({ keyHash: who.keyHash, method: c.req.method, pathWithQuery: c.req.raw.url ?? '', rawBody: (c.req as { rawBody?: string }).rawBody ?? '',
+        ts: c.headers['x-eco-ts'], sig: c.headers['x-eco-sig'], required: process.env.ECO_REQUIRE_SIGNATURE === '1' });
+      if (problem) throw new AppError(problem, 'The request signature is missing, expired or does not match the request', 401);
       if (!apps.isEnabled('eco')) throw new AppError('eco.disabled', 'The integration app is switched off', 403);
       return who;
     };

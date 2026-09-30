@@ -37,6 +37,7 @@ export type Http = (url: string, init: { method: 'GET' | 'POST'; headers: Record
 const OK = new Set(['applied', 'unchanged', 'stale', 'duplicate']);
 const PAGE = 100;
 
+import { signatureHeaders } from './signing.js';
 const trimUrl = (u: string) => u.replace(/\/+$/, '');
 
 export function peerView(p: PeerRow) {
@@ -89,10 +90,12 @@ export function createPeers(ctx: ModuleContext, eco: EcoInternal, http: { curren
   const remove = (id: number) => (get(id), db.run('DELETE FROM eco_peers WHERE id = ?', [id]));
 
   async function call(p: PeerRow, method: 'GET' | 'POST', path: string, body?: unknown) {
+    const key = secrets.open(p.key_sealed);
+    const text = body === undefined ? undefined : JSON.stringify(body);
     const res = await http.current(trimUrl(p.url) + path, {
       method,
-      headers: { 'x-eco-key': secrets.open(p.key_sealed), 'content-type': 'application/json', accept: 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { 'x-eco-key': key, ...signatureHeaders(key, method, path, text ?? ''), 'content-type': 'application/json', accept: 'application/json' },
+      body: text,
     });
     const json = (await res.json().catch(() => null)) as any;
     if (res.status >= 400) throw new Error(`${p.name} answered ${res.status}: ${json?.error?.code ?? json?.error?.message ?? 'error'}`);

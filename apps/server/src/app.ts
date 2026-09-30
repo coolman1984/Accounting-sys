@@ -31,6 +31,12 @@ export async function buildApp(config: AppConfig, modules: AppModule[] = default
     bodyLimit: 5 * 1024 * 1024,
   });
   await http.register(cookie);
+  // the raw text of a JSON body is kept beside the parsed one: request signatures are computed over the bytes that were sent
+  const parseJson = http.getDefaultJsonParser('error', 'error');
+  http.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    (req as { rawBody?: string }).rawBody = body as string;
+    parseJson(req, body as string, (err: Error | null, value: unknown) => { if (err) (err as { statusCode?: number }).statusCode = 400; done(err, value); });
+  });
 
   const access = kernel.services.get('access');
   const settings = kernel.services.get('settings');

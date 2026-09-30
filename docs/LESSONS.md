@@ -114,3 +114,5 @@ non-obvious cause or a tool behaved unexpectedly.
   `import(pathToFileURL(p).href)`. Git's `core.autocrlf` checks text out with CRLF, so any "generated file is
   current" check must normalise `\r\n` before comparing.
 - **Clock**: one process-wide clock (`kernel/dates.ts`) serves every date read; a process that starts a second `buildApp` replaces it, so two Mizan apps with different clocks in one process is not supported (the scenario engine runs one).
+
+- **A reservation is a promise, a dispatch is a fact (2026-09-30).** Refusing a delivery because another order reserved the goods made manufacturing's shipment fact park for ever while the truck had left. Facts are booked; promises shrink.

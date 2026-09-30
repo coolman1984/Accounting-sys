@@ -25,6 +25,11 @@ export function nowMs(): number {
   return clock.now().getTime();
 }
 
+/** The machine's real time, never the simulated one: only for what is about the wire (request signatures), not about business days. */
+export function wallClockMs(): number {
+  return Date.now();
+}
+
 export function today(): string {
   return toIso(clock.now());
 }
