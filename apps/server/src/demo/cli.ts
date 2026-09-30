@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../modules/system/auth.js';
-import { DEMO_ADMIN, seedSamsungEgypt } from './samsung-egypt.js';
+import { DEMO_ADMIN, seedHorizonEgypt } from './horizon-egypt.js';
 
 const DEV_PASSWORD = '123';
 
@@ -27,7 +27,7 @@ if (existsSync(config.dbFile)) {
 const started = Date.now();
 const app = await buildApp(config);
 try {
-  const s = await seedSamsungEgypt(app, (msg) => console.log('  ·', msg));
+  const s = await seedHorizonEgypt(app, (msg) => console.log('  ·', msg));
   // Development sign-in admin / 123 (shorter than the app allows, so it is written directly).
   app.kernel.db.run('UPDATE users SET password_hash = ? WHERE username = ?', [hashPassword(DEV_PASSWORD), DEMO_ADMIN.username]);
   app.kernel.services.get('backup').create('demo');

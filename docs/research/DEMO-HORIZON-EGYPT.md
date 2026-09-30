@@ -1,7 +1,7 @@
-# Demo company — a Samsung Electronics Egypt–style factory
+# Demo company — a Horizon Electronics Egypt–style factory
 
 `npm run demo` (or `start-demo.bat`) builds a company in `data-demo/` from
-`apps/server/src/demo/samsung-egypt.ts`, through the app's own HTTP API, so every figure comes from
+`apps/server/src/demo/horizon-egypt.ts`, through the app's own HTTP API, so every figure comes from
 the real engine. `src/test/demo.test.ts` builds the same company in memory and checks that it ties.
 
 **Only the public facts below are real. Every amount, quantity, price, person, local customer and
@@ -11,11 +11,11 @@ local supplier is illustrative** — realistic in size, not company records.
 
 | Fact | Source |
 |---|---|
-| Plant at Kom Abu Radi industrial zone, El Wasta, Beni Suef; Samsung's first factory in the Middle East & Africa (production from 2013) | [Ahram Online](https://english.ahram.org.eg/NewsContent/3/12/81270/Business/Economy/First-Egyptian-Samsung-factory-starts-production.aspx), [Egypt Independent](https://www.egyptindependent.com/samsung-factory-to-be-established-in-beni-suef/), [Panjiva](https://panjiva.com/Samsung-Electronics-Egypt/88418849) |
-| Products: TVs (up to 98"), monitors, Galaxy A phones (from 2023), tablets | [Tech Review Africa](https://techreviewafrica.com/news/5270/egypts-communications-minister-inspects-samsung-factory-expansion-in-beni-suef), [Daily News Egypt](https://www.dailynewsegypt.com/2025/05/27/egypts-pm-meets-samsung-stresses-importance-of-localising-advanced-tech-industries/) |
-| About 85–90% of TV output exported to 55–60+ countries | same, and [Madison Manor](https://madisonmanor.co.za/blog/samsung-made-in-egypt/) |
-| Education tablets supplied to the Ministry of Education (~700k a year); USD 30m tablet line | [Ecofin](https://www.ecofinagency.com/telecom/0503-42412-egypt-samsung-earmarks-30mln-to-build-learning-tablets-factory-in-beni-suef) |
-| Capacity about 6 million units a year; ~5,000 direct and indirect jobs; total investment about USD 700m | [Egyptian Streets](https://egyptianstreets.com/2024/05/30/egypt-emerges-as-a-smartphone-manufacturing-hub/), [Daily News Egypt 2018](https://www.dailynewsegypt.com/2018/10/28/270m-investments-in-samsungs-tv-factory-in-beni-suef/) |
+| Plant at Kom Abu Radi industrial zone, El Wasta, Beni Suef; Horizon's first factory in the Middle East & Africa (production from 2013) | [Ahram Online](https://english.ahram.org.eg/NewsContent/3/12/81270/Business/Economy/First-Egyptian-Horizon-factory-starts-production.aspx), [Egypt Independent](https://www.egyptindependent.com/horizon-factory-to-be-established-in-beni-suef/), [Panjiva](https://panjiva.com/Horizon-Electronics-Egypt/88418849) |
+| Products: TVs (up to 98"), monitors, Galaxy A phones (from 2023), tablets | [Tech Review Africa](https://techreviewafrica.com/news/5270/egypts-communications-minister-inspects-horizon-factory-expansion-in-beni-suef), [Daily News Egypt](https://www.dailynewsegypt.com/2025/05/27/egypts-pm-meets-horizon-stresses-importance-of-localising-advanced-tech-industries/) |
+| About 85–90% of TV output exported to 55–60+ countries | same, and [Madison Manor](https://madisonmanor.co.za/blog/horizon-made-in-egypt/) |
+| Education tablets supplied to the Ministry of Education (~700k a year); USD 30m tablet line | [Ecofin](https://www.ecofinagency.com/telecom/0503-42412-egypt-horizon-earmarks-30mln-to-build-learning-tablets-factory-in-beni-suef) |
+| Capacity about 6 million units a year; ~5,000 direct and indirect jobs; total investment about USD 700m | [Egyptian Streets](https://egyptianstreets.com/2024/05/30/egypt-emerges-as-a-smartphone-manufacturing-hub/), [Daily News Egypt 2018](https://www.dailynewsegypt.com/2018/10/28/270m-investments-in-horizons-tv-factory-in-beni-suef/) |
 | Private-sector minimum wage 7,000 EGP (from March 2025) | [SIS](https://sis.gov.eg/en/media-center/news/egypt-raises-minimum-wage-for-private-sector-to-egp-7-000/) |
 | Industrial medium-voltage electricity 1.94 EGP/kWh after the April 2026 rise | [EgyptERA](https://egyptera.org/en/TarrifApril2026.aspx), [Mada Masr](https://www.madamasr.com/en/2026/05/21/news/u/govt-releases-new-electricity-tariffs-revealing-hikes-that-extend-to-egypts-major-power-users/) |
 | USD/EGP around 50–54 during 2026 (51.8 late September) | [Investing.com](https://www.investing.com/currencies/usd-egp-historical-data) |

@@ -1,17 +1,17 @@
 import type { App } from '../app.js';
 
 /**
- * Demo company: a consumer-electronics factory modelled on Samsung Electronics Egypt (Kom Abu Radi
+ * Demo company: a consumer-electronics factory modelled on Horizon Electronics Egypt (Kom Abu Radi
  * industrial zone, El Wasta, Beni Suef): TVs 43/55/65", Galaxy A phones for the local market, education
  * tablets, 85 % of TVs exported. Nine months of 2026 (January – 25 September) built through the app's own
  * HTTP API, so every number comes from the real engine.
  *
  * The public facts (products, export share, a government tablet programme, the site) come from press
- * reports — see docs/research/DEMO-SAMSUNG-EGYPT.md. Every amount, quantity, price, person and local
+ * reports — see docs/research/DEMO-HORIZON-EGYPT.md. Every amount, quantity, price, person and local
  * company here is illustrative: they are realistic in size, not real records.
  */
 
-export const DEMO_ADMIN = { username: 'admin', password: 'Samsung@2026', displayName: 'Finance Manager' };
+export const DEMO_ADMIN = { username: 'admin', password: 'Horizon@2026', displayName: 'Finance Manager' };
 export const DEMO_TO = '2026-09-25';
 
 const K = 100; // piastres in a pound (money scale 2)
@@ -63,8 +63,8 @@ async function connect(app: App): Promise<Client> {
   };
   await call('POST', '/api/setup', {
     company: {
-      name: 'Samsung Electronics Egypt — Beni Suef Factory (demo)',
-      legalName: 'Samsung Electronics Egypt S.A.E. (sample data)',
+      name: 'Horizon Electronics Egypt — Beni Suef Factory (demo)',
+      legalName: 'Horizon Electronics Egypt S.A.E. (sample data)',
       address: 'Kom Abu Radi Industrial Zone, El Wasta, Beni Suef, Egypt',
       baseCurrency: 'EGP',
       moneyScale: 2,
@@ -127,11 +127,11 @@ interface Product {
   bom: [string, number][]; hours: number; exportShare: number; cc: string;
 }
 const PRODUCTS: Product[] = [
-  { key: 'TV43', sku: 'FG-UA43DU', en: 'Samsung 43" Crystal UHD TV', ar: 'تلفزيون سامسونج 43 بوصة كريستال UHD', cat: 'tv', local: 12_900, exportUsd: 235,
+  { key: 'TV43', sku: 'FG-HZ43', en: 'Horizon 43" Crystal UHD TV', ar: 'تلفزيون هورايزن 43 بوصة كريستال UHD', cat: 'tv', local: 12_900, exportUsd: 235,
     bom: [['RM-OC43', 1], ['RM-TVMB', 1], ['RM-PSU', 1], ['RM-BLU', 1], ['RM-RMT', 1], ['PK-C43', 1], ['PK-EPS', 1], ['RM-STAND', 1], ['RM-SCRW', 1]], hours: 2.6, exportShare: 0.85, cc: 'PRD-TV' },
-  { key: 'TV55', sku: 'FG-UA55DU', en: 'Samsung 55" Crystal UHD TV', ar: 'تلفزيون سامسونج 55 بوصة كريستال UHD', cat: 'tv', local: 18_900, exportUsd: 345,
+  { key: 'TV55', sku: 'FG-HZ55', en: 'Horizon 55" Crystal UHD TV', ar: 'تلفزيون هورايزن 55 بوصة كريستال UHD', cat: 'tv', local: 18_900, exportUsd: 345,
     bom: [['RM-OC55', 1], ['RM-TVMB', 1], ['RM-PSU', 1], ['RM-BLU', 1], ['RM-RMT', 1], ['PK-C55', 1], ['PK-EPS', 1], ['RM-STAND', 1], ['RM-SCRW', 1]], hours: 3.0, exportShare: 0.85, cc: 'PRD-TV' },
-  { key: 'TV65', sku: 'FG-UA65DU', en: 'Samsung 65" Crystal UHD TV', ar: 'تلفزيون سامسونج 65 بوصة كريستال UHD', cat: 'tv', local: 26_900, exportUsd: 480,
+  { key: 'TV65', sku: 'FG-HZ65', en: 'Horizon 65" Crystal UHD TV', ar: 'تلفزيون هورايزن 65 بوصة كريستال UHD', cat: 'tv', local: 26_900, exportUsd: 480,
     bom: [['RM-OC65', 1], ['RM-TVMB', 1], ['RM-PSU', 1], ['RM-BLU', 1], ['RM-RMT', 1], ['PK-C65', 1], ['PK-EPS', 1], ['RM-STAND', 1], ['RM-SCRW', 1]], hours: 3.6, exportShare: 0.85, cc: 'PRD-TV' },
   { key: 'TAB', sku: 'FG-SMX216', en: 'Galaxy Tab A9+ (education edition)', ar: 'جالاكسي تاب A9+ (إصدار التعليم)', cat: 'tab', local: 7_300, exportUsd: null,
     bom: [['RM-TPCBA', 1], ['RM-TLCD', 1], ['RM-TBAT', 1], ['PK-GIFT', 1]], hours: 2.2, exportShare: 0, cc: 'PRD-TAB' },
@@ -162,16 +162,16 @@ const CUSTOMERS: Customer[] = [
   { code: 'C-CANAL', name: 'Canal Electronics', alt: 'القناة للإلكترونيات', city: 'Ismailia', country: 'Egypt', usd: false, terms: 45, wht: false, cheques: false, tin: '608-745-112', share: 0.12 },
   { code: 'C-MEGA', name: 'Mega Store Egypt', alt: 'ميجا ستور مصر', city: 'Cairo', country: 'Egypt', usd: false, terms: 30, wht: true, cheques: false, tin: '719-006-835', share: 0.12 },
   { code: 'C-EDU', name: 'Education Tablet Programme (government buyer)', alt: 'مشروع التابلت التعليمي (جهة حكومية)', city: 'Cairo', country: 'Egypt', usd: false, terms: 60, wht: true, cheques: false, tin: '100-000-117', share: 0 },
-  { code: 'X-SGE', name: 'Samsung Gulf Electronics (Dubai)', alt: 'سامسونج الخليج للإلكترونيات (دبي)', city: 'Dubai', country: 'UAE', usd: true, terms: 60, wht: false, cheques: false, tin: 'TRN 100354672900003', share: 0.34 },
-  { code: 'X-SSA', name: 'Samsung Electronics Saudi Arabia', alt: 'سامسونج إلكترونيكس السعودية', city: 'Riyadh', country: 'Saudi Arabia', usd: true, terms: 60, wht: false, cheques: false, tin: 'VAT 300418265700003', share: 0.26 },
-  { code: 'X-SSAF', name: 'Samsung Electronics South Africa', alt: 'سامسونج إلكترونيكس جنوب أفريقيا', city: 'Johannesburg', country: 'South Africa', usd: true, terms: 60, wht: false, cheques: false, tin: 'VAT 4290173548', share: 0.16 },
-  { code: 'X-SEWA', name: 'Samsung Electronics West Africa', alt: 'سامسونج إلكترونيكس غرب أفريقيا', city: 'Lagos', country: 'Nigeria', usd: true, terms: 60, wht: false, cheques: false, tin: 'TIN 02718845-0001', share: 0.14 },
-  { code: 'X-SELV', name: 'Samsung Electronics Levant', alt: 'سامسونج إلكترونيكس المشرق', city: 'Amman', country: 'Jordan', usd: true, terms: 60, wht: false, cheques: false, tin: 'TIN 013372291', share: 0.1 },
+  { code: 'X-SGE', name: 'Horizon Gulf Electronics (Dubai)', alt: 'هورايزن الخليج للإلكترونيات (دبي)', city: 'Dubai', country: 'UAE', usd: true, terms: 60, wht: false, cheques: false, tin: 'TRN 100354672900003', share: 0.34 },
+  { code: 'X-SSA', name: 'Horizon Electronics Saudi Arabia', alt: 'هورايزن إلكترونيكس السعودية', city: 'Riyadh', country: 'Saudi Arabia', usd: true, terms: 60, wht: false, cheques: false, tin: 'VAT 300418265700003', share: 0.26 },
+  { code: 'X-SSAF', name: 'Horizon Electronics South Africa', alt: 'هورايزن إلكترونيكس جنوب أفريقيا', city: 'Johannesburg', country: 'South Africa', usd: true, terms: 60, wht: false, cheques: false, tin: 'VAT 4290173548', share: 0.16 },
+  { code: 'X-SEWA', name: 'Horizon Electronics West Africa', alt: 'هورايزن إلكترونيكس غرب أفريقيا', city: 'Lagos', country: 'Nigeria', usd: true, terms: 60, wht: false, cheques: false, tin: 'TIN 02718845-0001', share: 0.14 },
+  { code: 'X-SELV', name: 'Horizon Electronics Levant', alt: 'هورايزن إلكترونيكس المشرق', city: 'Amman', country: 'Jordan', usd: true, terms: 60, wht: false, cheques: false, tin: 'TIN 013372291', share: 0.1 },
 ];
 
 interface Supplier { code: string; name: string; alt: string; city: string; country: string; usd: boolean; terms: number; wht: 'supplies' | 'services' | 'contracting' | null; tin: string }
 const SUPPLIERS: Supplier[] = [
-  { code: 'HQ', name: 'Samsung Electronics Co., Ltd. (Suwon HQ)', alt: 'سامسونج إلكترونيكس — المقر الرئيسي (سوون)', city: 'Suwon', country: 'South Korea', usd: true, terms: 90, wht: null, tin: '' },
+  { code: 'HQ', name: 'Horizon Electronics Co., Ltd. (Suwon HQ)', alt: 'هورايزن إلكترونيكس — المقر الرئيسي (سوون)', city: 'Suwon', country: 'South Korea', usd: true, terms: 90, wht: null, tin: '' },
   { code: 'CARTON', name: 'Beni Suef Packaging Industries', alt: 'بني سويف لصناعات التعبئة والتغليف', city: 'Beni Suef', country: 'Egypt', usd: false, terms: 30, wht: 'supplies', tin: '231-554-908' },
   { code: 'FOAM', name: 'Egypt Foam Industries', alt: 'مصر لصناعات الفوم', city: '10th of Ramadan', country: 'Egypt', usd: false, terms: 30, wht: 'supplies', tin: '244-870-315' },
   { code: 'PLASTIC', name: 'Delta Plastics Injection', alt: 'الدلتا لحقن البلاستيك', city: 'Sadat City', country: 'Egypt', usd: false, terms: 45, wht: 'supplies', tin: '258-331-770' },
@@ -196,7 +196,7 @@ export interface DemoSummary {
   journals: number;
 }
 
-export async function seedSamsungEgypt(app: App, log: (msg: string) => void = () => {}): Promise<DemoSummary> {
+export async function seedHorizonEgypt(app: App, log: (msg: string) => void = () => {}): Promise<DemoSummary> {
   const c = await connect(app);
   const rand = rng(20260101);
   const count: DemoSummary = { documents: 0, payments: 0, productionOrders: 0, employees: 0, journals: 0 };
@@ -612,7 +612,7 @@ export async function seedSamsungEgypt(app: App, log: (msg: string) => void = ()
       const inv = (await c.get(`/api/payments/open-documents?partyId=${party['C-DELTA']}&direction=in&role=customer`)).at(-1);
       await doc({
         kind: 'sales_credit', partyId: party['C-DELTA'], date: d(27), againstDocumentId: inv.id, reference: `RMA-${ym}-01`, warehouseId: wh.fg, notes: 'Transport damage — 40 units returned',
-        lines: [{ itemId: item['FG-UA55DU'], quantity: 40 * Q, unitPrice: E(18_900), taxId: VAT, warehouseId: wh.fg, costCenterId: cc['SLS-LOC'] }],
+        lines: [{ itemId: item['FG-HZ55'], quantity: 40 * Q, unitPrice: E(18_900), taxId: VAT, warehouseId: wh.fg, costCenterId: cc['SLS-LOC'] }],
       });
     }
 
