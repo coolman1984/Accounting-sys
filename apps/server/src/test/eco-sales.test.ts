@@ -114,6 +114,42 @@ test('production facts from manufacturing are valued through work in progress; t
   assert.deepEqual([level(board), level(set)], [6 * U, 3 * U]);
 });
 
+test('a payroll period from HR is booked as one balanced entry per cost centre, refused when unbalanced, reversed on request', async () => {
+  const company = (await c.get('/api/eco/company')).companyId as string;
+  const inboxKey = (await c.post('/api/eco/keys', { name: 'hr-pay', scopes: ['eco.inbox.write'] })).key;
+  const { newUuidv7 } = await import('../eco-contracts/index.js');
+  const cc = (await c.post('/api/cost-centers', { code: 'PROD', nameEn: 'Production', nameAr: 'الإنتاج' })).id;
+  assert.ok(cc);
+  const period = (lines: [string, string, number][], version = 1, status = 'approved', id = '0192f7c4-8a3e-5b21-9c55-3d1f2a4b6c7e') => ({
+    specversion: '1.0', id: newUuidv7(), source: `eco://${company}/hr/main`, type: 'hr.payroll_period.v1', subject: 'payroll/x', time: '2026-09-30T08:00:00Z',
+    datacontenttype: 'application/json', ecoseq: 1, ecocorrelation: 'payroll/x',
+    data: { id, code: 'PAY-2026-09-1', version, origin: { app: 'hr', type: 'payroll_period', key: '2026-09-1' }, period: '2026-09', run: 1, currency: 'EGP', pay_date: '2026-09-30', status,
+      lines: lines.map(([cost_center, account_key, amount_minor]) => ({ cost_center, account_key, amount_minor })), headcount: 40, hours: { regular: 6400, overtime_day: 200, overtime_night: 50 } },
+  });
+  const send = async (e: unknown) => (await c.app.http.inject({ method: 'POST', url: '/eco/v1/inbox', headers: { 'x-eco-key': inboxKey }, payload: { events: [e] } }).then((r) => JSON.parse(r.body))).results[0];
+  // earnings 100000 + overtime 10000 = insurance 11000 + tax 9000 + net 90000; employer insurance 18750 is a cost owed to the same authority
+  const good: [string, string, number][] = [['PROD', 'gross_earnings', 100000], ['PROD', 'overtime', 10000], ['PROD', 'employer_social_insurance', 18750], ['PROD', 'employee_social_insurance', 11000], ['PROD', 'salary_tax', 9000], ['PROD', 'net_payable', 90000]];
+  const bad = await send(period(good.map(([a, b, n]) => [a, b, b === 'net_payable' ? 80000 : n] as [string, string, number])));
+  assert.equal(bad.code, 'payroll.unbalanced', JSON.stringify(bad));
+  const unknown = await send(period(good.map(([, b, n]) => ['NOPE', b, n] as [string, string, number])));
+  assert.equal(unknown.code, 'payroll.unknown_cost_center', JSON.stringify(unknown));
+  const ok = await send(period(good));
+  assert.equal(ok.result, 'applied', JSON.stringify(ok));
+  const db = c.app.kernel.db;
+  const entries = db.all<{ id: number; date: string }>("SELECT id, date FROM journal_entries WHERE source_type = 'hr_payroll' ORDER BY id");
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]!.date, '2026-09-30');
+  const sums = db.get<{ d: number; c: number }>('SELECT SUM(debit) d, SUM(credit) c FROM journal_lines WHERE entry_id = ?', [entries[0]!.id])!;
+  assert.deepEqual([sums.d, sums.c], [128750, 128750]);
+  assert.equal((await send(period(good, 1))).result, 'unchanged');
+  assert.equal((await c.get('/api/payroll/source')).source, 'hr');
+  const blocked = await c.raw('POST', '/api/payroll/runs', { month: '2026-09' });
+  assert.equal(blocked.body.error.code, 'payroll.calculated_by_hr');
+  assert.equal((await send(period(good, 2, 'reversed'))).result, 'applied');
+  const bal = db.get<{ b: number }>("SELECT COALESCE(SUM(debit - credit), 0) b FROM journal_lines WHERE entry_id IN (SELECT id FROM journal_entries WHERE source_type = 'hr_payroll')", [])!.b;
+  assert.equal(bal, 0, 'the reversal cancels the booking');
+});
+
 test('a shipment dispatched by manufacturing becomes a posted delivery and a draft invoice, once', async () => {
   const company = (await c.get('/api/eco/company')).companyId as string;
   const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes', scopes: ['eco.inbox.write'] })).key;

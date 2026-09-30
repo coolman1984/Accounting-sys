@@ -44,7 +44,7 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 12 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 14 | shared types and constants modules use to talk to each other |
 | `apps/server/src/eco-contracts/` | 11 | ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here) |
-| `apps/server/src/modules/` | 74 | one folder per module (below) |
+| `apps/server/src/modules/` | 75 | one folder per module (below) |
 | `apps/server/src/test/` | 31 | end-to-end tests, boundary and edition tests |
 
 Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
@@ -739,11 +739,11 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Permissions:** `payroll.employees.read`, `payroll.employees.write`, `payroll.runs.read`, `payroll.runs.write`, `payroll.runs.post`, `payroll.settings.manage`
 - **Role templates:** `payroll_officer`
 - **Duties to split:** `payroll.employees.write × payroll.runs.post`
-- **Tables / views:** `employee_components`, `employees`, `pay_components`, `payroll_lines`, `payroll_runs`, `payroll_settings`
+- **Tables / views:** `employee_components`, `employees`, `pay_components`, `payroll_account_map`, `payroll_hr_period`, `payroll_lines`, `payroll_runs`, `payroll_settings`
 - **Provides services:** —
-- **Files:** `engine.ts` (184), `index.ts` (705)
+- **Files:** `engine.ts` (184), `hr.ts` (148), `index.ts` (725)
 
-<details><summary>20 routes</summary>
+<details><summary>24 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -758,6 +758,10 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | PUT | `/api/payroll/components/:id` | `payroll.settings.manage` |
 | GET | `/api/payroll/runs` | `payroll.runs.read` |
 | GET | `/api/payroll/runs/:id` | `payroll.runs.read` |
+| GET | `/api/payroll/source` | `payroll.runs.read` |
+| PUT | `/api/payroll/source` | `payroll.settings.manage` |
+| GET | `/api/payroll/account-map` | `payroll.settings.manage` |
+| PUT | `/api/payroll/account-map` | `payroll.settings.manage` |
 | POST | `/api/payroll/runs` | `payroll.runs.write` |
 | PUT | `/api/payroll/runs/:id` | `payroll.runs.write` |
 | POST | `/api/payroll/runs/:id/recalculate` | `payroll.runs.write` |

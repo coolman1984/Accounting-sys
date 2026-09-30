@@ -5,6 +5,9 @@ import { endOfMonth, nowIso, today } from '../../kernel/dates.js';
 import { parse, zDate, zId, zOptId, zOptText } from '../../kernel/validate.js';
 import type { JournalLineInput } from '../ledger/service.js';
 import { EG_INSURANCE } from '../../contracts/egypt.js';
+import { type PayrollPeriodV1 } from '../../eco-contracts/index.js';
+import type {} from '../../contracts/eco.js';
+import { hrPayroll, hrPayrollMigration, ALL_KEYS } from './hr.js';
 import { payslip, workedShare, type Bracket, type Calc, type Component, type Kind, type PayslipLine, type TaxRule } from './engine.js';
 
 interface Employee {
@@ -441,6 +444,7 @@ function createPayroll({ db, services, apps }: ModuleContext) {
 export const payrollModule: AppModule = {
   id: 'payroll',
   dependsOn: ['ledger'],
+  after: ['eco'],
   permissions: ['payroll.employees.read', 'payroll.employees.write', 'payroll.runs.read', 'payroll.runs.write', 'payroll.runs.post', 'payroll.settings.manage'],
   apps: [{ id: 'payroll', order: 65, permissions: ['payroll'] }],
   roles: [{ id: 'payroll_officer', permissions: ['payroll.employees.*', 'payroll.runs.read', 'payroll.runs.write'] }],
@@ -555,10 +559,13 @@ export const payrollModule: AppModule = {
         ALTER TABLE pay_components ADD COLUMN tax_rule TEXT CHECK (tax_rule IS NULL OR tax_rule IN ('eg_2024'));
       `,
     },
+    hrPayrollMigration,
   ],
 
   setup(ctx) {
     ctx.db.run("INSERT OR IGNORE INTO sequences (key, prefix, next_value, padding) VALUES ('employee', 'EMP-', 1, 4)");
+    // the payroll HR-System calculated (hr.payroll_period.v1) is booked here; see hr.ts
+    if (ctx.services.has('eco')) ctx.services.get('eco').registerConsumer<PayrollPeriodV1>({ type: 'hr.payroll_period.v1', apply: (d) => hrPayroll(ctx).apply(d) });
   },
 
   routes(r, ctx) {
@@ -664,7 +671,20 @@ export const payrollModule: AppModule = {
         return null;
       }
     };
+    /** When HR-System calculates pay, a second calculation here would be a second truth. */
+    const notFromHr = () => { if (db.get<{ source: string }>('SELECT source FROM payroll_settings WHERE id = 1')!.source === 'hr') conflict('payroll.calculated_by_hr', 'Payroll is calculated by HR-System; it is booked here from its approved periods'); };
+    r.get('/payroll/source', 'payroll.runs.read', () => ({ source: db.get<{ source: string }>('SELECT source FROM payroll_settings WHERE id = 1')!.source }));
+    r.put('/payroll/source', 'payroll.settings.manage', ({ body }) => { const s = parse(z.object({ source: z.enum(['mizan', 'hr']) }), body).source; db.run('UPDATE payroll_settings SET source = ? WHERE id = 1', [s]); return { source: s }; });
+    r.get('/payroll/account-map', 'payroll.settings.manage', () => { const h = hrPayroll(ctx); return ALL_KEYS.map((k) => ({ key: k, accountId: h.accountFor(k) })); });
+    r.put('/payroll/account-map', 'payroll.settings.manage', ({ body }) => {
+      const i = parse(z.object({ key: z.enum(ALL_KEYS), accountId: zId }), body);
+      const a = ctx.services.get('ledger').account(i.accountId);
+      if (a.is_group || !a.is_active) fail('payroll.account', `account ${a.code} cannot be used`);
+      db.run('INSERT INTO payroll_account_map (account_key, account_id) VALUES (?, ?) ON CONFLICT (account_key) DO UPDATE SET account_id = excluded.account_id', [i.key, i.accountId]);
+      return { ok: true };
+    });
     r.post('/payroll/runs', 'payroll.runs.write', ({ body, user }) => {
+      notFromHr();
       const q = parse(z.object({ month: zMonth, payDate: zDate.nullish() }), body);
       return { id: pr.createRun(q.month, q.payDate ?? endOfMonth(`${q.month}-01`), user.id) };
     });
@@ -684,7 +704,7 @@ export const payrollModule: AppModule = {
       pr.adjust(Number(params.id), Number(params.lineId), q, user.id);
       return { ok: true };
     });
-    r.post('/payroll/runs/:id/post', 'payroll.runs.post', ({ params, user }) => (pr.post(Number(params.id), user.id), { ok: true }));
+    r.post('/payroll/runs/:id/post', 'payroll.runs.post', ({ params, user }) => (notFromHr(), pr.post(Number(params.id), user.id), { ok: true }));
     r.post('/payroll/runs/:id/unpost', 'payroll.runs.post', ({ params, user }) => (pr.unpost(Number(params.id), user.id), { ok: true }));
     r.post('/payroll/runs/:id/pay', 'payroll.runs.post', ({ params, body, user }) => {
       pr.pay(Number(params.id), parse(z.object({ date: zDate, accountId: zId }), body), user.id);
