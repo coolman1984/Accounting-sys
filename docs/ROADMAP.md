@@ -71,7 +71,8 @@ away.
 - [x] **Manufacturing**: recipes (BOM) with standard costs, production orders through stock, material / labour / overhead variances
 - [ ] Projects as a second dimension next to cost centers; budgets per cost center
 - [x] Recurring invoices, bills and journal templates
-- [ ] Quotations → sales orders → invoices; purchase orders → bills
+- [x] Sales orders, reservations, ATP, deliveries, OTD/OTIF, S&OP demand plan, KPI pack (API), requisitions → purchase orders, native link to manufacturing and HR (ecosystem plan)
+- [ ] Quotations; KPI pack and executive S&OP screens
 
 ## Phase 3 — Business modules
 

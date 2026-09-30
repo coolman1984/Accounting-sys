@@ -322,3 +322,11 @@ All reports are computed from posted ledger movements:
   side sections fold and remember it.
 * Printable invoices and reports; CSV export (Excel-friendly UTF-8 BOM).
 * Responsive down to phones (slide-in navigation).
+
+## 8. Integration with the rest of the company (ecosystem)
+Mizan is the owner of the company identity, parties, items, warehouses, stock value, sales orders, the S&OP demand plan, purchase orders and
+money. The `eco` module (outbox, inbox, scoped machine keys, peers with sealed keys) exchanges versioned events with GMES (plan, requisitions,
+lot decisions, production facts, shipments) and receives `hr.payroll_period.v1` from HR-System; the contracts are a pinned copy of GMES's
+(ADR-025). Production facts are booked through a work-in-progress ledger per work order (ADR-026), payroll from HR per period and cost centre
+(ADR-027). Every date of the server reads one injectable clock (ADR-028). The KPI pack and the executive S&OP view (`GET /api/kpi/pack`,
+`GET /api/sop/versions/:id/executive`) read only services. Backups are rehearsed (ADR-029).

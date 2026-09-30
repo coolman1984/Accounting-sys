@@ -237,3 +237,48 @@ existing database) and `start-demo.bat` serves it on another port, so a real com
 Its sign-in for development is admin / 123, set after the build (shorter than the app allows).
 **Consequences:** A change that breaks a posting rule also breaks the demo test. Seeding takes about
 10 seconds; the numbers are illustrative and documented in `docs/research/DEMO-SAMSUNG-EGYPT.md`.
+
+## ADR-024 · Sales orders and S&OP are modules of their own; the plan prices itself from the price list
+**Status:** Accepted · 2026-09-30 (ecosystem plan WP-M1)
+**Decision:** `sales` (orders, reservations, ATP, deliveries, OTD/OTIF) and `sop` (monthly cycle, demand plan versions from a
+baseline + firm orders + overrides, consensus approval as its own duty, demand vs supply vs budget) are separate modules with
+typed services in `contracts/`. An approved plan is frozen by triggers. Rejected: putting S&OP in GMES (it may hold no money), and
+one "planning" module (sales needs the plan's history, S&OP needs sales figures: two services are simpler than one tangle).
+**Consequences:** The KPI pack and the executive S&OP view live in `sop` and read sales only through its service.
+
+## ADR-025 · The ecosystem link is a native module with vendored contracts
+**Status:** Accepted · 2026-09-30 (WP-M2, WP-M3)
+**Decision:** `eco` owns an append-only outbox written in the business transaction, an inbox with per-event results, scoped machine
+keys stored as hashes, and peers (pushed from here, keys sealed at rest). Contracts are a byte-identical copy of GMES's
+`packages/eco-contracts/src` with a SHA-256 pin test; a contract changes in GMES first. Rejected: the `link-mizan` agent (it signs in
+as a person and pulls), and a message broker (one more thing to install at every customer).
+**Consequences:** An event that cannot be applied is parked with a code and shown on both sides; nothing fails silently.
+
+## ADR-026 · Production facts from manufacturing are booked natively through a work-in-progress ledger
+**Status:** Accepted · 2026-09-30 (WP-M4)
+**Decision:** Consumption debits work in progress at the moving-average cost, completion credits it at the order's WIP value (the final
+completion takes the remainder), scrap is absorbed, closing the order books any remainder to the variance account; every posting
+carries the event id as its unique reference. Rejected: keeping manual adjustments ("ADJ-") as the booking: no trace to the order,
+no variance.
+**Consequences:** The value side lives only in Mizan; GMES never holds a price. A paired Mizan must not also run `link-mizan`.
+
+## ADR-027 · Payroll calculated by HR is booked here, one journal per period and cost centre
+**Status:** Accepted · 2026-09-30 (WP-M5)
+**Decision:** `hr.payroll_period.v1` is mapped to accounts by an editable table, refused when unbalanced or for an unknown cost centre,
+reversed by a reversing journal; Mizan's own payroll runs stop while an HR peer calculates pay. Rejected: employees in Mizan beside HR
+(two truths for people and for pay).
+**Consequences:** HR's payroll calculation itself is not built yet (its gate is the owner's decision); only the receiving side exists.
+
+## ADR-028 · One injectable clock for every date of the server
+**Status:** Accepted · 2026-09-30 (WP-M7, first part)
+**Decision:** `kernel/dates.ts` holds the clock (`today`, `nowIso`, `nowMs`, `currentDate`); `buildApp(config, modules, { clock })` sets it;
+a test fails if a module reads `new Date()` or `Date.now()` directly. The clock is one per process. Rejected: passing a clock through
+every service (243 call sites for no gain), and faking `Date` globally in the scenario engine (hides real bugs).
+**Consequences:** The scenario engine can drive simulated days through the real routes. Two Mizan apps with different clocks in one
+process are not supported.
+
+## ADR-029 · A backup is rehearsed before it is called a backup
+**Status:** Accepted · 2026-09-30 (WP-X3)
+**Decision:** Creating a backup opens the copy read-only and checks structure, references, balanced posted journals and the row counts of
+the main tables; `POST /api/system/backups/:name/verify` repeats it. A failed rehearsal is written in the audit. Same rule as GMES and HR.
+**Consequences:** The package portal's "Back up everything" counts only rehearsed backups.
