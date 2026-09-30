@@ -41,7 +41,7 @@ export function wireSalesEco({ db, services }: ModuleContext, sales: SalesDelive
         const soLine = db.get<{ id: number }>('SELECT id FROM sales_order_lines WHERE so_id = ? AND line_no = ?', [so.id, l.sales_order.line_no]);
         if (!soLine) throw new AppError('sales.no_order', `sales order ${so.number} has no line ${l.sales_order.line_no}`, 409);
         const wh = eco.localId('warehouse', l.warehouse.id);
-        const r = sales.deliverLine({ soLineId: soLine.id, qty: parseQty(l.qty), date: d.production_date, warehouseId: wh == null ? null : Number(wh), reference: `eco:${env.id}:${i + 1}`, userId: null });
+        const r = sales.deliverLine({ soLineId: soLine.id, qty: parseQty(l.qty), date: d.production_date, warehouseId: wh == null ? null : Number(wh), reference: `eco:${env.id}:${i + 1}`, lots: l.serials?.length ? l.serials.map((lotNo) => ({ lotNo, qty: 1000 })) : null, userId: null });
         if (r.created) deliveries.push(r.deliveryId);
       });
       if (!deliveries.length) return 'unchanged';

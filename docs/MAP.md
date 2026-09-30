@@ -677,12 +677,13 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Role templates:** `production_planner`
 - **Tables / views:** `bom_lines`, `boms`, `mfg_settings`, `mfg_wip`, `production_order_lines`, `production_orders`
 - **Provides services:** —
-- **Files:** `engine.ts` (184), `gmes.ts` (127), `index.ts` (629)
+- **Files:** `engine.ts` (184), `gmes.ts` (127), `index.ts` (631)
 
-<details><summary>16 routes</summary>
+<details><summary>17 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
+| GET | `/api/mfg/gmes-wip` | `mfg.reports.read` |
 | GET | `/api/mfg/boms` | `mfg.boms.read` |
 | GET | `/api/mfg/boms/:id` | `mfg.boms.read` |
 | POST | `/api/mfg/boms` | `mfg.boms.write` |

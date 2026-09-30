@@ -524,6 +524,8 @@ export const manufacturingModule: AppModule = {
     const audit = ctx.services.get('audit');
 
     // ------------------------------------------------------------ recipes
+    // production recorded by manufacturing (GMES): what was issued to and received from work in progress, per work order
+    r.get('/mfg/gmes-wip', 'mfg.reports.read', () => db.all('SELECT w.*, w.issued_value - w.received_value AS in_progress FROM mfg_wip w ORDER BY w.id DESC LIMIT 1000'));
     r.get('/mfg/boms', 'mfg.boms.read', () =>
       db
         .all<Bom & { sku: string; name_en: string; name_ar: string; lines: number }>(

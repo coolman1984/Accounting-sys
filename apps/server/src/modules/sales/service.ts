@@ -724,7 +724,7 @@ export function createSales(ctx: ModuleContext) {
     if (found) return { deliveryId: found.id, created: false };
     const l = line(input.soLineId);
     return db.tx(() => {
-      const id = writeDelivery(null, { soId: l.so_id, date: input.date, reference: ref, externalRef: ref, lines: [{ soLineId: l.id, qty: input.qty, warehouseId: input.warehouseId ?? null }] }, input.userId);
+      const id = writeDelivery(null, { soId: l.so_id, date: input.date, reference: ref, externalRef: ref, lines: [{ soLineId: l.id, qty: input.qty, warehouseId: input.warehouseId ?? null, lots: input.lots ?? null }] }, input.userId);
       postDelivery(id, input.userId);
       return { deliveryId: id, created: true };
     });

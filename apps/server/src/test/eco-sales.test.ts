@@ -85,10 +85,10 @@ test('production facts from manufacturing are valued through work in progress; t
   const company = (await c.get('/api/eco/company')).companyId as string;
   const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes-prod', scopes: ['eco.inbox.write'] })).key;
   const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Boards Co' })).id;
-  const board = (await c.post('/api/items', { sku: 'BOARD', nameEn: 'Board', nameAr: 'لوحة', kind: 'product', unit: 'PCS', purchasePrice: 1000 })).id;
+  const board = (await c.post('/api/items', { sku: 'BOARD', nameEn: 'Board', nameAr: 'لوحة', kind: 'product', unit: 'PCS', purchasePrice: 1000, tracking: 'batch' })).id;
   const set = (await c.post('/api/items', { sku: 'SET-P', nameEn: 'Set', nameAr: 'جهاز', kind: 'product', unit: 'PCS' })).id;
   const main = (await c.get('/api/inventory/warehouses')).find((w: any) => w.is_default);
-  await c.post('/api/documents', { kind: 'purchase_bill', partyId: supplier, date: '2026-09-01', post: true, lines: [{ itemId: board, quantity: 10 * U, unitPrice: 1000 }] });
+  await c.post('/api/inventory/receipts', { supplierId: supplier, date: '2026-09-01', warehouseId: main.id, post: true, lines: [{ itemId: board, quantity: 10 * U, unitCost: 1000, lots: [{ lotNo: 'BRD-L1', qty: 10 * U }] }] });
   const { mizanId, newUuidv7 } = await import('../eco-contracts/index.js');
   const ref = (kind: 'item' | 'warehouse', id: number, code: string) => ({ id: mizanId(company, kind, id), code });
   const wo = { id: newUuidv7(), code: 'WO-1', item: ref('item', set, 'SET-P'), planned_qty: '4' };
@@ -98,7 +98,7 @@ test('production facts from manufacturing are valued through work in progress; t
   const send = async (e: unknown) => (await c.app.http.inject({ method: 'POST', url: '/eco/v1/inbox', headers: { 'x-eco-key': inboxKey }, payload: { events: [e] } }).then((r) => JSON.parse(r.body))).results[0];
   const wh = ref('warehouse', main.id, main.code);
   for (const e of [
-    ev('mes.material.consumed.v1', { work_order: wo, item: ref('item', board, 'BOARD'), qty: '4', uom: 'PCS', warehouse: wh, ...op }),
+    ev('mes.material.consumed.v1', { work_order: wo, item: ref('item', board, 'BOARD'), qty: '4', uom: 'PCS', warehouse: wh, lot_no: 'BRD-L1', ...op }),
     ev('mes.production.completed.v1', { work_order: { ...wo, completed_qty_after: '1', scrapped_qty: '0', is_final: false }, item: ref('item', set, 'SET-P'), qty: '1', uom: 'PCS', warehouse: wh, ...op }),
     ev('mes.production.scrapped.v1', { work_order: wo, qty: '1', uom: 'PCS', reason_code: 'SCRATCH', ...op }),
     ev('mes.production.completed.v1', { work_order: { ...wo, completed_qty_after: '3', scrapped_qty: '1', is_final: true }, item: ref('item', set, 'SET-P'), qty: '2', uom: 'PCS', warehouse: wh, ...op }),

@@ -66,6 +66,8 @@ export interface DeliverLineInput {
   warehouseId?: number | null;
   /** Idempotency key, e.g. "eco:<event id>": the same reference never delivers twice. */
   reference: string;
+  /** The serial or batch numbers that leave, for tracked items (quantities x1000). */
+  lots?: { lotNo: string; qty: number }[] | null;
   userId: number | null;
 }
 
