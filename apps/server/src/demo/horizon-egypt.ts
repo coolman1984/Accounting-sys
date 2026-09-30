@@ -6,7 +6,7 @@ import type { App } from '../app.js';
  * the app's own HTTP API, so every number comes from the real engine.
  *
  * The company, its products, customers, suppliers and people are invented; only general Egyptian facts (wages,
- * tariffs, tax rules, exchange rates) are real — see docs/research/DEMO-ELECTRONICS-FACTORY.md. Amounts and
+ * tariffs, tax rules, exchange rates) are real — see docs/research/DEMO-HORIZON-EGYPT.md. Amounts and
  * quantities are realistic in size, not real records.
  */
 
@@ -195,7 +195,7 @@ export interface DemoSummary {
   journals: number;
 }
 
-export async function seedHorizonElectronics(app: App, log: (msg: string) => void = () => {}): Promise<DemoSummary> {
+export async function seedHorizonEgypt(app: App, log: (msg: string) => void = () => {}): Promise<DemoSummary> {
   const c = await connect(app);
   const rand = rng(20260101);
   const count: DemoSummary = { documents: 0, payments: 0, productionOrders: 0, employees: 0, journals: 0 };
@@ -213,7 +213,7 @@ export async function seedHorizonElectronics(app: App, log: (msg: string) => voi
   };
   await addAccount('1121', 'Bank — Banque Misr (payroll account)', 'بنك مصر — حساب الرواتب', 'asset', 'bank', '11');
   await addAccount('1126', 'Bank — HSBC (USD account)', 'بنك HSBC — حساب بالدولار', 'asset', 'bank', '11', 'USD');
-  await addAccount('1205', 'Land — Kom Abu Radi site', 'أرض المصنع — كوم أبو راضي', 'asset', 'fixed_asset', '12');
+  await addAccount('1205', 'Land — factory site', 'أرض المصنع', 'asset', 'fixed_asset', '12');
   await addAccount('1240', 'Factory Buildings', 'مباني المصنع', 'asset', 'fixed_asset', '12');
   await addAccount('1250', 'Production Lines & Machinery', 'خطوط الإنتاج والآلات', 'asset', 'fixed_asset', '12');
   await addAccount('1291', 'Accumulated Depreciation — Buildings', 'مجمع إهلاك المباني', 'asset', 'accumulated_depreciation', '12');

@@ -4,7 +4,7 @@ All notable changes, newest first. Format: [Keep a Changelog](https://keepachang
 Every change adds a line under **[Unreleased]** in the same commit.
 
 ### Changed
-- The demo company is now **Horizon Electronics**, an invented electronics factory: no real company, site, product, customer or password in the demo (`demo/horizon-electronics.ts`, demo sign-in `admin` / `Horizon@2026`).
+- The Horizon demo company is fully invented: no real site, address, product line or group-company codes remain (`demo/horizon-egypt.ts`); its research note keeps only general Egyptian facts.
 
 ### Fixed
 - An item snapshot now carries its planning block (material type, buy or make, lead time, order quantities, safety stock, default supplier): before, manufacturing planned every purchase with a lead time of zero.
@@ -25,7 +25,7 @@ Every change adds a line under **[Unreleased]** in the same commit.
   with customs and import VAT, zero-rated exports, withholding, cheques, payroll, depreciation, FX
   revaluation, budget and a reconciled bank statement. Built through the HTTP API by `npm run demo`
   into `data-demo/` (never over an existing company); `start-demo.bat` runs it on port 4810; a test
-  checks that it ties. Facts and limits: `docs/research/DEMO-ELECTRONICS-FACTORY.md`.
+  checks that it ties. Facts and limits: `docs/research/DEMO-HORIZON-EGYPT.md`.
 - **Egyptian withholding tax (خصم وإضافة)** on receipts and payments: deducted from suppliers on the value
   before VAT (1% supplies/contracting, 3% services, 5% commissions, 300 EGP minimum, editable) and due with
   Form 41; tax withheld by customers kept as a credit against income tax; suggestion from the party's type;

@@ -1,7 +1,7 @@
 # Demo company — Horizon Electronics, an invented electronics factory
 
 `npm run demo` (or `start-demo.bat`) builds a company in `data-demo/` from
-`apps/server/src/demo/horizon-electronics.ts`, through the app's own HTTP API, so every figure comes from
+`apps/server/src/demo/horizon-egypt.ts`, through the app's own HTTP API, so every figure comes from
 the real engine. `src/test/demo.test.ts` builds the same company in memory and checks that it ties.
 
 **The company is invented. Only the general Egyptian facts below are real. Every amount, quantity, price,
