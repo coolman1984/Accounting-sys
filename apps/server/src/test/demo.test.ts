@@ -2,13 +2,13 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp, type App } from '../app.js';
 import { loadConfig } from '../config.js';
-import { DEMO_ADMIN, DEMO_TO, seedSamsungEgypt, type DemoSummary } from '../demo/samsung-egypt.js';
+import { DEMO_ADMIN, DEMO_TO, seedHorizonElectronics, type DemoSummary } from '../demo/horizon-electronics.js';
 
 /**
  * The demo company (npm run demo) is shown to accountants who will look for mistakes: every
  * statement must tie. It is built here in memory through the same code, then checked.
  */
-describe('demo company: Samsung Electronics Egypt factory', () => {
+describe('demo company: Horizon Electronics factory (invented)', () => {
   let app: App;
   let summary: DemoSummary;
   let cookie = '';
@@ -20,7 +20,7 @@ describe('demo company: Samsung Electronics Egypt factory', () => {
 
   before(async () => {
     app = await buildApp(loadConfig({ dbFile: ':memory:', dataDir: '/tmp/mizan-test', logLevel: 'silent', webDir: null }));
-    summary = await seedSamsungEgypt(app);
+    summary = await seedHorizonElectronics(app);
     const res = await app.http.inject({ method: 'POST', url: '/api/auth/login', payload: { username: DEMO_ADMIN.username, password: DEMO_ADMIN.password } });
     cookie = `mizan_sid=${res.cookies.find((x) => x.name === 'mizan_sid')!.value}`;
   });

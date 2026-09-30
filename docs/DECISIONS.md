@@ -236,7 +236,7 @@ memory and check that it ties. `npm run demo` writes only into an empty `data-de
 existing database) and `start-demo.bat` serves it on another port, so a real company is never touched.
 Its sign-in for development is admin / 123, set after the build (shorter than the app allows).
 **Consequences:** A change that breaks a posting rule also breaks the demo test. Seeding takes about
-10 seconds; the numbers are illustrative and documented in `docs/research/DEMO-SAMSUNG-EGYPT.md`.
+10 seconds; the numbers are illustrative and documented in `docs/research/DEMO-ELECTRONICS-FACTORY.md`.
 
 ## ADR-024 · Sales orders and S&OP are modules of their own; the plan prices itself from the price list
 **Status:** Accepted · 2026-09-30 (ecosystem plan WP-M1)

@@ -1,5 +1,5 @@
 @echo off
-REM Mizan demo - the Samsung Electronics Egypt factory sample company, on port 4810.
+REM Mizan demo - the Horizon Electronics factory sample company (invented), on port 4810.
 REM Its data lives in data-demo\ ; your own company in data\ is never touched.
 cd /d "%~dp0"
 if not exist node_modules call npm install

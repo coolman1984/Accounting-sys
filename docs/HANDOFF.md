@@ -195,7 +195,7 @@ advisor reads and never writes"; LESSONS: "`find or create` by code alone borrow
 
 ### 3.8 Demo company — **MOSTLY DONE (2026-09-28)**
 
-Built: `apps/server/src/demo/` (Samsung Electronics Egypt–style factory), `npm run demo`, `start-demo.bat`
+Built: `apps/server/src/demo/` (Horizon Electronics, an invented electronics factory), `npm run demo`, `start-demo.bat`
 (port 4810, `data-demo/`), `src/test/demo.test.ts`. **Still open:** offer it in the setup wizard
 ("Start with a demo company") and the browser screenshots EN/AR. The original plan follows.
 
