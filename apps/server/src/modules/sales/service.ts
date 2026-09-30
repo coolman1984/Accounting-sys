@@ -8,6 +8,7 @@ import type {} from '../../contracts/purchasing.js';
 import type { Item } from '../../contracts/catalog.js';
 import type { DeliverLineInput, OpenDemand, ReservedQty, SalesOrderSnapshot, SalesOrderStatus, SalesService } from '../../contracts/sales.js';
 import { SO_V1 } from './eco.js';
+import { createReports } from './reports.js';
 
 export interface SalesOrder {
   id: number;
@@ -859,7 +860,14 @@ export function createSales(ctx: ModuleContext) {
     );
   }
 
-  const contract: SalesService = { reserved, reservedQty, openDemand, orderSnapshots, deliverLine, invoicedQty };
+  function serviceLevel(from: string, to: string) {
+    // measured as of the end of the period, or today when the period is not over: a line due later is not late yet
+    const asOf = to < today() ? to : today();
+    const t = createReports(ctx).otif({ from, to, groupBy: 'month', asOf }).totals;
+    return { lines: t.lines, otdBp: t.otd_promised_bp, otifBp: t.otif_promised_bp, fillRateBp: t.fill_rate_bp };
+  }
+
+  const contract: SalesService = { reserved, reservedQty, openDemand, orderSnapshots, deliverLine, invoicedQty, serviceLevel };
   return {
     ...contract,
     order,

@@ -6,6 +6,7 @@ import type { SopService } from '../../contracts/sop.js';
 import { CONSTRAINTS, migrations } from './schema.js';
 import { createSop, MONTH, monthPlus, type SopInternal } from './service.js';
 import { wireSopEco } from './eco.js';
+import { createKpi } from './kpi.js';
 
 const zMonth = z.string().regex(MONTH, 'Invalid month (YYYY-MM)');
 
@@ -29,7 +30,8 @@ export const sopModule: AppModule = {
     wireSopEco(ctx);
   },
 
-  routes(r, { db, services }) {
+  routes(r, ctx) {
+    const { db, services } = ctx;
     const sop = services.get('sop') as unknown as SopInternal;
 
     r.get('/sop/cycles', 'sop.plans.read', () =>
@@ -86,6 +88,10 @@ export const sopModule: AppModule = {
     r.post('/sop/versions/:id/approve', 'sop.plans.approve', ({ params, user }) => (sop.approve(Number(params.id), user.id), { ok: true }));
     r.delete('/sop/versions/:id', 'sop.plans.write', ({ params, user }) => (sop.removeVersion(Number(params.id), user.id), { ok: true }));
     r.get('/sop/versions/:id/comparison', 'sop.plans.read', ({ params }) => sop.comparison(Number(params.id)));
+    // Executive S&OP page and the monthly KPI pack (WP-M6)
+    const kpi = createKpi(ctx, sop);
+    r.get('/sop/versions/:id/executive', 'sop.plans.read', ({ params }) => kpi.executive(Number(params.id)));
+    r.get('/kpi/pack', 'sop.plans.read', ({ query }) => kpi.pack(parse(z.object({ month: zMonth.default(today().slice(0, 7)) }), query).month));
 
     /** The approved plan of a cycle (what the integration publishes). */
     r.get('/sop/approved', 'sop.plans.read', ({ query }) => sop.approvedPlan(query.period ?? null));

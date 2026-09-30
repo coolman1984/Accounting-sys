@@ -6,6 +6,7 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **KPI pack and executive S&OP (WP-M6, API)** — `GET /api/kpi/pack?month=YYYY-MM`: delivery service level (OTD, OTIF, fill rate of the lines due in the month, measured as of the month end or today), forecast accuracy and bias with a lag of one month (plan of the cycle before vs invoiced quantity net of credit notes, per item), sales against the plan in money. A figure that cannot be measured is null, never 0 or 100 %. `GET /api/sop/versions/:id/executive`: demand, budget and supply gap in money per month and the five biggest supply shortfalls with their constraint; demand without any supply plan is counted as unknown, not as short. Turns, DSO/DIO/DPO, margin by model, PPV, production variances and payroll per set are listed as not measured here. No screen yet.
 - **Injectable clock (WP-M7)** — `buildApp(config, modules, { clock })`: every date and timestamp of the server (today's defaults, lock dates, due dates, sessions, event versions) reads `kernel/dates.ts` (`today`, `nowIso`, `nowMs`, `currentDate`), which follows the clock given; without one it is real time. A test fails if a module reads `new Date()` or `Date.now()` directly. The scenario engine uses it to drive simulated days.
 - **Demo company** — a Samsung Electronics Egypt–style TV / phone / tablet factory, 1 Jan – 25 Sep 2026:
   ~300 documents, ~250 receipts/payments/cheques, 90 production orders, 135 employees, imports in USD

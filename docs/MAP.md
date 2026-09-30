@@ -44,8 +44,8 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/kernel/` | 12 | the chassis: db adapter, module loader, services, events, apps, money, dates, validation |
 | `apps/server/src/contracts/` | 14 | shared types and constants modules use to talk to each other |
 | `apps/server/src/eco-contracts/` | 11 | ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here) |
-| `apps/server/src/modules/` | 75 | one folder per module (below) |
-| `apps/server/src/test/` | 32 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/modules/` | 76 | one folder per module (below) |
+| `apps/server/src/test/` | 33 | end-to-end tests, boundary and edition tests |
 
 Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
 
@@ -402,7 +402,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `sales_deliveries`, `sales_delivery_lines`, `sales_order_lines`, `sales_orders`, `sales_reservations`, `sales_supply_plan`
 - **Provides services:** `sales`
 - **Events:** emits `sales.delivery.posted`, `sales.delivery.voided`, `sales.order.confirmed` · listens `document.posted`, `document.voided`
-- **Files:** `eco.ts` (91), `index.ts` (397), `reports.ts` (263), `schema.ts` (146), `service.ts` (891)
+- **Files:** `eco.ts` (91), `index.ts` (397), `reports.ts` (263), `schema.ts` (146), `service.ts` (899)
 
 <details><summary>28 routes</summary>
 
@@ -448,9 +448,9 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `sop_cycles`, `sop_demand`, `sop_supply_plan`, `sop_versions`
 - **Provides services:** `sop`
 - **Events:** emits `sop.plan.approved` · listens —
-- **Files:** `eco.ts` (37), `index.ts` (128), `schema.ts` (87), `service.ts` (329)
+- **Files:** `eco.ts` (37), `index.ts` (134), `kpi.ts` (109), `schema.ts` (87), `service.ts` (329)
 
-<details><summary>13 routes</summary>
+<details><summary>15 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -464,6 +464,8 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | POST | `/api/sop/versions/:id/approve` | `sop.plans.approve` |
 | DELETE | `/api/sop/versions/:id` | `sop.plans.write` |
 | GET | `/api/sop/versions/:id/comparison` | `sop.plans.read` |
+| GET | `/api/sop/versions/:id/executive` | `sop.plans.read` |
+| GET | `/api/kpi/pack` | `sop.plans.read` |
 | GET | `/api/sop/approved` | `sop.plans.read` |
 | GET | `/api/sop/supply` | `sop.plans.read` |
 | PUT | `/api/sop/supply` | `sop.supply.write` |

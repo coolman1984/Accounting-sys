@@ -83,6 +83,8 @@ export interface SalesService {
   deliverLine(input: DeliverLineInput): { deliveryId: number; created: boolean };
   /** Net invoiced quantity per item and month (posted invoices − credit notes), for demand history. */
   invoicedQty(fromMonth: string, toMonth: string): { itemId: number; month: string; qty: number }[];
+  /** Delivery performance of the order lines due in a period (YYYY-MM-DD): on time, on time in full, and fill rate, in basis points. */
+  serviceLevel(from: string, to: string): { lines: number; otdBp: number; otifBp: number; fillRateBp: number };
 }
 
 declare module '../kernel/services.js' {
