@@ -1,9 +1,32 @@
 /** Dates are stored as ISO `YYYY-MM-DD` strings (no time zone surprises). */
 export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * The clock every date of the server reads (lock dates, fiscal year, due dates, timestamps). `buildApp(config, modules, { clock })`
+ * sets it; without one it is real time. It is one per process: a process that runs a second Mizan app sets its own clock.
+ */
+export interface Clock {
+  now(): Date;
+}
+
+const REAL: Clock = { now: () => new Date() };
+let clock: Clock = REAL;
+
+export function setClock(next?: Clock): void {
+  clock = next ?? REAL;
+}
+
+/** The current moment as a Date (for code that needs more than the ISO text). */
+export function currentDate(): Date {
+  return clock.now();
+}
+
+export function nowMs(): number {
+  return clock.now().getTime();
+}
+
 export function today(): string {
-  const d = new Date();
-  return toIso(d);
+  return toIso(clock.now());
 }
 
 export function toIso(d: Date): string {
@@ -49,5 +72,5 @@ export function addMonths(iso: string, months: number): string {
 }
 
 export function nowIso(): string {
-  return new Date().toISOString();
+  return clock.now().toISOString();
 }

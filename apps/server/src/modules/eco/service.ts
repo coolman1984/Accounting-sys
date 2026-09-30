@@ -10,7 +10,7 @@ import {
 } from '../../eco-contracts/index.js';
 import type { ModuleContext } from '../../kernel/modules.js';
 import { AppError } from '../../kernel/errors.js';
-import { nowIso } from '../../kernel/dates.js';
+import { nowIso, nowMs } from '../../kernel/dates.js';
 import type {
   EcoBuildHelpers,
   EcoConsumer,
@@ -108,7 +108,7 @@ export function createEco(ctx: ModuleContext): EcoInternal {
     if (prev && prev.hash === hash) return false;
     // Mizan rows carry no version: issue one that only goes up — above the last one and time-based, so it is
     // also above what link-mizan sent for the same entity before this module existed.
-    const version = Math.max((prev?.version ?? 0) + 1, Date.now());
+    const version = Math.max((prev?.version ?? 0) + 1, nowMs());
     const gid = h.id(src.entity, localId);
     const subject = `${src.entity}/${gid}`;
     const ev = publish({ type: src.type, subject, correlation: subject, data: { ...data, version } });

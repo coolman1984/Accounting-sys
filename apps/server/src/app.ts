@@ -3,6 +3,7 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
 import type { AppConfig } from './config.js';
+import { setClock, type Clock } from './kernel/dates.js';
 import { createKernel, type Kernel } from './kernel/kernel.js';
 import { AppError } from './kernel/errors.js';
 import { AppsError } from './kernel/apps.js';
@@ -17,7 +18,13 @@ export interface App {
   kernel: Kernel;
 }
 
-export async function buildApp(config: AppConfig, modules: AppModule[] = defaultModules): Promise<App> {
+export interface AppOptions {
+  /** The time every date and timestamp of the server reads; default real time (the scenario engine passes a controlled one). */
+  clock?: Clock;
+}
+
+export async function buildApp(config: AppConfig, modules: AppModule[] = defaultModules, options: AppOptions = {}): Promise<App> {
+  setClock(options.clock);
   const kernel = createKernel(config, modules);
   const http = Fastify({
     logger: config.logLevel === 'silent' ? false : { level: config.logLevel },

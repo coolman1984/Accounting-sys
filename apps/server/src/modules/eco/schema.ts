@@ -1,5 +1,6 @@
 import { isUuid, newUuidv7 } from '../../eco-contracts/index.js';
 import type { Migration } from '../../kernel/modules.js';
+import { nowIso } from '../../kernel/dates.js';
 
 /**
  * The company id is the root of every global id Mizan mints (UUIDv5 namespace), so it is set once and
@@ -128,7 +129,7 @@ export const migrations: Migration[] = [
       db.run('INSERT INTO eco_company (id, company_id, origin, created_at) VALUES (1, ?, ?, ?)', [
         configured || newUuidv7(),
         configured ? 'configured' : 'generated',
-        new Date().toISOString(),
+        nowIso(),
       ]);
     },
   },

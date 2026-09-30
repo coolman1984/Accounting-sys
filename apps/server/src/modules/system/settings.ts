@@ -1,5 +1,6 @@
 import type { Database } from '../../kernel/db.js';
 import { fail } from '../../kernel/errors.js';
+import { nowIso } from '../../kernel/dates.js';
 
 export interface CompanySettings {
   name: string;
@@ -102,7 +103,7 @@ export function createAudit(db: Database): AuditService {
   return {
     log(e) {
       db.insert('audit_log', {
-        at: new Date().toISOString(),
+        at: nowIso(),
         user_id: e.userId,
         action: e.action,
         entity: e.entity,

@@ -3,6 +3,7 @@ import type { Database } from '../../kernel/db.js';
 import { AppError, fail } from '../../kernel/errors.js';
 import type { SessionUser } from '../../kernel/modules.js';
 import type { AppRegistry } from '../../kernel/apps.js';
+import { currentDate, nowIso, nowMs } from '../../kernel/dates.js';
 
 /** Built-in roles, kept in the roles table with a rule instead of a list. */
 export const BUILTIN_ROLES = ['admin', 'accountant', 'viewer'] as const;
@@ -118,21 +119,21 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
     login(username, password, meta) {
       const key = `${username.toLowerCase()}|${meta.ip ?? ''}`;
       const f = failures.get(key);
-      if (f && f.until > Date.now()) {
+      if (f && f.until > nowMs()) {
         throw new AppError('auth.locked', 'Too many attempts, try again in a minute', 429);
       }
       const u = db.get<UserRow>('SELECT * FROM users WHERE username = ?', [username]);
       // Hash even for an unknown user, so the response time does not tell which usernames exist.
       const ok = verifyPassword(password, u?.password_hash ?? DUMMY_HASH);
       if (!u || !u.is_active || !ok) {
-        if (failures.size > 5000) for (const [k, v] of failures) if (v.until < Date.now()) failures.delete(k);
+        if (failures.size > 5000) for (const [k, v] of failures) if (v.until < nowMs()) failures.delete(k);
         const count = (f?.count ?? 0) + 1;
-        failures.set(key, { count, until: count >= 5 ? Date.now() + 60_000 : 0 });
+        failures.set(key, { count, until: count >= 5 ? nowMs() + 60_000 : 0 });
         throw new AppError('auth.invalid', 'Wrong username or password', 401);
       }
       failures.delete(key);
       const token = randomBytes(32).toString('base64url');
-      const now = new Date();
+      const now = currentDate();
       const expires = new Date(now.getTime() + sessionHours * 3_600_000);
       db.tx(() => {
         db.run('DELETE FROM sessions WHERE expires_at < ?', [now.toISOString()]);
@@ -159,7 +160,7 @@ export function createAccess(db: Database, all: readonly string[], sessionHours:
         `SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`,
         [sha256(token)],
       );
-      if (!row || !row.is_active || row.expires_at < new Date().toISOString()) return null;
+      if (!row || !row.is_active || row.expires_at < nowIso()) return null;
       return toSessionUser(row);
     },
 

@@ -15,7 +15,8 @@ import {
   type SequenceService,
   type SettingsService,
 } from './settings.js';
-import { BUILTIN_ROLES, createAccess, expandPermissions, hashPassword, permissionsForRule, validatePassword, verifyPassword, type AccessService, type RoleRule } from './auth.js';
+import { BUILTIN_ROLES, createAccess, expandPermissions, hashPassword, permissionsForRule, validatePassword, verifyPassword, type AccessService, type RoleRule } from './auth.js';
+import { nowIso, nowMs } from '../../kernel/dates.js';
 
 export const VERSION = '0.1.0';
 export const SESSION_COOKIE = 'mizan_sid';
@@ -81,7 +82,7 @@ export const systemModule: AppModule = {
   health({ db, services }) {
     const quick = db.get<{ quick_check: string }>('PRAGMA quick_check')?.quick_check;
     const last = services.get('backup').list()[0];
-    const ageDays = last ? Math.floor((Date.now() - Date.parse(last.createdAt)) / 86_400_000) : null;
+    const ageDays = last ? Math.floor((nowMs() - Date.parse(last.createdAt)) / 86_400_000) : null;
     return [
       { id: 'database', ok: quick === 'ok', details: { result: quick ?? '?' } },
       { id: 'backup', ok: ageDays != null && ageDays <= 2, severity: 'warning', details: { days: ageDays ?? -1 } },
@@ -97,7 +98,7 @@ export const systemModule: AppModule = {
     const backupName = /^mizan-[\w.-]+\.db$/;
     services.provide('backup', {
       create(label = 'manual') {
-        const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+        const stamp = nowIso().replace(/[:T]/g, '-').slice(0, 19);
         const name = `mizan-${stamp}-${label.replace(/[^\w-]/g, '')}.db`;
         const file = join(config.backupDir, name);
         db.backupTo(file);
@@ -154,7 +155,7 @@ export const systemModule: AppModule = {
           password_hash: hashPassword(input.admin.password),
           role: 'admin',
           locale: input.locale,
-          created_at: new Date().toISOString(),
+          created_at: nowIso(),
         });
         db.run("INSERT INTO user_roles (user_id, role_id) SELECT ?, id FROM roles WHERE key = 'admin'", [userId]);
         events.emit('system.setup', {
@@ -280,7 +281,7 @@ export const systemModule: AppModule = {
           role: legacyRole(roleIds),
           locale: input.locale,
           is_active: input.isActive,
-          created_at: new Date().toISOString(),
+          created_at: nowIso(),
         });
         for (const rid of roleIds) db.run('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rid]);
         audit.log({ userId: user.id, action: 'create', entity: 'user', entityId: id, summary: input.username, data: { roleIds } });
@@ -363,7 +364,7 @@ export const systemModule: AppModule = {
       const input = parse(zRole, body);
       if (db.get('SELECT 1 FROM roles WHERE name = ? COLLATE NOCASE', [input.name])) conflict('role.duplicate', 'A role with this name exists');
       return db.tx(() => {
-        const id = db.insert('roles', { name: input.name, description: input.description, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+        const id = db.insert('roles', { name: input.name, description: input.description, created_at: nowIso(), updated_at: nowIso() });
         savePermissions(id, input.permissions);
         audit.log({ userId: user.id, action: 'create', entity: 'role', entityId: id, summary: input.name, data: { permissions: input.permissions } });
         return { id };
@@ -378,7 +379,7 @@ export const systemModule: AppModule = {
       const dup = db.get<{ id: number }>('SELECT id FROM roles WHERE name = ? COLLATE NOCASE', [input.name]);
       if (dup && dup.id !== id) conflict('role.duplicate', 'A role with this name exists');
       db.tx(() => {
-        db.update('roles', id, { name: input.name, description: input.description, updated_at: new Date().toISOString() });
+        db.update('roles', id, { name: input.name, description: input.description, updated_at: nowIso() });
         savePermissions(id, input.permissions);
         audit.log({ userId: user.id, action: 'update', entity: 'role', entityId: id, summary: input.name, data: { permissions: input.permissions } });
       });

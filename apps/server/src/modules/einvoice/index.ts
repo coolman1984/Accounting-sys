@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AppModule, ModuleContext } from '../../kernel/modules.js';
 import { conflict, fail, notFound } from '../../kernel/errors.js';
-import { nowIso, today } from '../../kernel/dates.js';
+import { nowIso, today, nowMs } from '../../kernel/dates.js';
 import { parse, zDate, zId } from '../../kernel/validate.js';
 import { buildDocument, canonical, DEFAULT_SETTINGS, ENDPOINTS, settingsProblems, sha256, type EtaSettings, type Problem, type SourceDoc } from './eta.js';
 
@@ -176,11 +176,11 @@ function createEinvoice({ db, services }: ModuleContext) {
 
   async function accessToken(s: EtaSettings): Promise<string> {
     const key = `${endpoints(s).id}|${s.clientId}|${s.clientSecret}`;
-    if (token && token.key === key && token.until > Date.now()) return token.value;
+    if (token && token.key === key && token.until > nowMs()) return token.value;
     const form = new URLSearchParams({ grant_type: 'client_credentials', client_id: s.clientId ?? '', client_secret: s.clientSecret ?? '', scope: 'InvoicingAPI' });
     const b = await http(`${endpoints(s).id}/connect/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form.toString() }, 'Login to the ETA');
     if (!b?.access_token) throw new EtaError('einvoice.refused', 'Login to the ETA: no access token returned');
-    token = { value: b.access_token, until: Date.now() + Math.max(60, (b.expires_in ?? 3600) - 60) * 1000, key };
+    token = { value: b.access_token, until: nowMs() + Math.max(60, (b.expires_in ?? 3600) - 60) * 1000, key };
     return token.value;
   }
   const api = async (s: EtaSettings, path: string, init: RequestInit, what: string) =>
@@ -281,7 +281,7 @@ function createEinvoice({ db, services }: ModuleContext) {
       const rows = db
         .all<Row>("SELECT * FROM einvoice_documents WHERE status IN ('submitted', 'cancel_requested', 'valid') AND uuid IS NOT NULL ORDER BY document_id")
         // Accepted documents are watched for 10 days: the buyer may still reject them, or they may be cancelled on the portal.
-        .filter((r) => (ids ? ids.includes(r.document_id) : r.status !== 'valid' || (r.submitted_at ?? '') >= new Date(Date.now() - 10 * 86_400_000).toISOString()))
+        .filter((r) => (ids ? ids.includes(r.document_id) : r.status !== 'valid' || (r.submitted_at ?? '') >= new Date(nowMs() - 10 * 86_400_000).toISOString()))
         .slice(0, 200);
       const results: { documentId: number; status: Status; message?: string }[] = [];
       for (const r of rows) {

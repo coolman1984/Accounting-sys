@@ -113,3 +113,4 @@ non-obvious cause or a tool behaved unexpectedly.
 - **Windows**: `await import(absolutePath)` fails (`ERR_UNSUPPORTED_ESM_URL_SCHEME`, protocol `d:`) — always
   `import(pathToFileURL(p).href)`. Git's `core.autocrlf` checks text out with CRLF, so any "generated file is
   current" check must normalise `\r\n` before comparing.
+- **Clock**: one process-wide clock (`kernel/dates.ts`) serves every date read; a process that starts a second `buildApp` replaces it, so two Mizan apps with different clocks in one process is not supported (the scenario engine runs one).

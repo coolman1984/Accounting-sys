@@ -6,6 +6,7 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ## [Unreleased]
 
 ### Added
+- **Injectable clock (WP-M7)** — `buildApp(config, modules, { clock })`: every date and timestamp of the server (today's defaults, lock dates, due dates, sessions, event versions) reads `kernel/dates.ts` (`today`, `nowIso`, `nowMs`, `currentDate`), which follows the clock given; without one it is real time. A test fails if a module reads `new Date()` or `Date.now()` directly. The scenario engine uses it to drive simulated days.
 - **Demo company** — a Samsung Electronics Egypt–style TV / phone / tablet factory, 1 Jan – 25 Sep 2026:
   ~300 documents, ~250 receipts/payments/cheques, 90 production orders, 135 employees, imports in USD
   with customs and import VAT, zero-rated exports, withholding, cheques, payroll, depreciation, FX

@@ -5,6 +5,7 @@ import type { ServiceRegistry } from './services.js';
 import type { AppConfig } from '../config.js';
 import type { AppManifest, AppRegistry } from './apps.js';
 import type { Secrets } from './secrets.js';
+import { nowIso } from './dates.js';
 
 /**
  * The "mechano" contract. Every feature of the system — ledger, sales,
@@ -185,7 +186,7 @@ export function runMigrations(db: Database, modules: AppModule[]): string[] {
       db.tx(() => {
         if (typeof mig.up === 'string') db.exec(mig.up);
         else mig.up(db);
-        db.run('INSERT INTO _migrations (module, id, applied_at) VALUES (?, ?, ?)', [m.id, mig.id, new Date().toISOString()]);
+        db.run('INSERT INTO _migrations (module, id, applied_at) VALUES (?, ?, ?)', [m.id, mig.id, nowIso()]);
       });
       applied.push(`${m.id}/${mig.id}`);
     }

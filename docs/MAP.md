@@ -45,7 +45,7 @@ Engines (no app of their own, pulled in by `dependsOn`): `parties`, `catalog`, `
 | `apps/server/src/contracts/` | 14 | shared types and constants modules use to talk to each other |
 | `apps/server/src/eco-contracts/` | 11 | ecosystem contracts vendored byte for byte from GMES (pinned in PIN.json, never edited here) |
 | `apps/server/src/modules/` | 75 | one folder per module (below) |
-| `apps/server/src/test/` | 31 | end-to-end tests, boundary and edition tests |
+| `apps/server/src/test/` | 32 | end-to-end tests, boundary and edition tests |
 
 Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.ts`, `fx.ts`, `inventory.ts`, `parties.ts`, `pricing.ts`, `purchasing.ts`, `sales.ts`, `sop.ts`, `tax.ts`
 
@@ -58,7 +58,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `audit_log`, `role_permissions`, `roles`, `sequences`, `sessions`, `settings`, `user_roles`, `users`
 - **Provides services:** `access`, `audit`, `backup`, `sequences`, `settings`
 - **Events:** emits `system.setup` · listens —
-- **Files:** `auth.ts` (188), `index.ts` (502), `schema.ts` (95), `settings.ts` (116)
+- **Files:** `auth.ts` (189), `index.ts` (503), `schema.ts` (95), `settings.ts` (117)
 
 <details><summary>25 routes</summary>
 
@@ -141,7 +141,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Role templates:** `integration_admin`
 - **Tables / views:** `eco_ack`, `eco_company`, `eco_inbox`, `eco_inbox_rejects`, `eco_keys`, `eco_outbox`, `eco_peers`, `eco_snapshots`, `eco_supply_plan`, `eco_supply_plans`
 - **Provides services:** `eco`
-- **Files:** `index.ts` (249), `keys.ts` (79), `peers.ts` (195), `schema.ts` (158), `service.ts` (244)
+- **Files:** `index.ts` (249), `keys.ts` (79), `peers.ts` (195), `schema.ts` (159), `service.ts` (244)
 
 <details><summary>20 routes</summary>
 
