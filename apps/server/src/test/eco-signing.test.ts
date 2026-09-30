@@ -16,6 +16,9 @@ const call = (method: 'GET' | 'POST', url: string, headers: Record<string, strin
   c.app.http.inject({ method, url, headers: { 'x-eco-key': key, 'content-type': 'application/json', ...headers }, payload });
 
 test('a signature over method, path, body and time is accepted; anything changed is refused', () => {
+  // the same vector is pinned in GMES's and HR-System's tests: three implementations, one signature
+  assert.equal(sha256hex('mk_example_key'), '2e0337bdb84b83290ffebce13b546d7a2e9946911b81a9775b069bbb1afc7013');
+  assert.equal(signRequest(sha256hex('mk_example_key'), 'POST', '/eco/v1/inbox?x=1', '{"events":[]}', 1_800_000_000_000), 'd67f9a620fd70b7d0f6ffeee7f3f4cbc256e1ef3a573dedb2cb33507e0868197');
   const now = 1_800_000_000_000, body = '{"events":[]}', kh = sha256hex('k');
   const sig = signRequest(kh, 'POST', '/eco/v1/inbox', body, now);
   const base = { keyHash: kh, method: 'POST', pathWithQuery: '/eco/v1/inbox', rawBody: body, ts: String(now), sig, now, required: false };

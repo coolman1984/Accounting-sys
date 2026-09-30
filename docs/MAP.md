@@ -199,7 +199,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Permissions:** `catalog.items.read`, `catalog.items.write`
 - **Tables / views:** `item_categories`, `item_units`, `items`, `taxes`
 - **Provides services:** `catalog`
-- **Files:** `index.ts` (469)
+- **Files:** `index.ts` (485)
 
 <details><summary>9 routes</summary>
 

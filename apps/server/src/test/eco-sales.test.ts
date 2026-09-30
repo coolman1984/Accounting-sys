@@ -185,6 +185,20 @@ test('a shipment dispatched by manufacturing becomes a posted delivery and a dra
   assert.equal(snaps.at(-1).data.lines[0].delivered_qty, '5', 'the order goes back to manufacturing with what was delivered');
 });
 
+test('an item reaches manufacturing with how it is planned and bought (lead time, order quantities, supplier)', async () => {
+  const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Chip Maker' })).id;
+  const id = (await c.post('/api/items', { sku: 'SOC-PLAN', nameEn: 'Chip', nameAr: 'شريحة', kind: 'product', unit: 'EA', materialType: 'semi_finished', procurementType: 'buy', leadTimeDays: 90,
+    moq: 1000 * U, lotSizeRule: 'multiple', lotSize: 500 * U, safetyStock: 20 * U, defaultSupplierId: supplier })).id;
+  const snap = (await feed()).filter((e) => e.type === 'eco.item.v1' && e.data.code === 'SOC-PLAN').at(-1);
+  assert.ok(validateEvent(snap).ok, JSON.stringify(validateEvent(snap)));
+  const p = snap.data.planning;
+  assert.deepEqual([p.material_type, p.procurement, p.lead_time_days, p.moq, p.lot_rule, p.lot_size, p.safety_stock], ['semi', 'buy', 90, '1000', 'multiple', '500', '20']);
+  assert.ok(p.default_supplier?.id && p.default_supplier.code, 'the supplier is named');
+  const plain = (await c.post('/api/items', { sku: 'PLAIN', nameEn: 'Plain', nameAr: 'عادي', kind: 'product' })).id;
+  assert.ok(id && plain);
+  assert.equal((await feed()).filter((e) => e.type === 'eco.item.v1' && e.data.code === 'PLAIN').at(-1).data.planning, undefined, 'an item without a material type has no planning block');
+});
+
 test('goods that left the plant are booked even when other orders reserved them; the reservations shrink to the stock, a shortage is still refused', async () => {
   const company = (await c.get('/api/eco/company')).companyId as string;
   const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes-fact', scopes: ['eco.inbox.write'] })).key;

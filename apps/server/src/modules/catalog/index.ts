@@ -226,6 +226,22 @@ function publishItems({ db, services }: ModuleContext) {
         tracking: i.tracking === 'batch' ? 'lot' : i.tracking,
         base_uom: uomCode(i.unit),
         units: units.map((u) => ({ code: uomCode(u.name_en), factor: formatQty(u.factor) })),
+        // how the item is planned and bought: manufacturing's planning uses it (lead time, order quantities, who supplies it)
+        ...(i.material_type ? {
+          planning: {
+            material_type: i.material_type === 'semi_finished' ? ('semi' as const) : i.material_type,
+            procurement: i.procurement_type,
+            lead_time_days: i.lead_time_days,
+            moq: formatQty(i.moq),
+            lot_rule: i.lot_size_rule,
+            lot_size: formatQty(i.lot_size),
+            safety_stock: formatQty(i.safety_stock),
+            ...(i.default_supplier_id ? (() => {
+              const s = db.get<{ id: number; code: string }>('SELECT id, code FROM parties WHERE id = ?', [i.default_supplier_id]);
+              return s ? { default_supplier: h.ref('party', s.id, s.code) } : {};
+            })() : {}),
+          },
+        } : {}),
       };
     },
   });

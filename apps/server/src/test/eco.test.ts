@@ -139,9 +139,12 @@ describe('eco — the ecosystem side of Mizan', () => {
     assert.equal(v2.length, v1.length + 1);
     assert.ok(v2.at(-1)!.data.version > v1.at(-1)!.data.version);
     assert.equal(v2.at(-1)!.data.name.en, 'Main chip v2');
-    // Planning fields are Mizan's own: changing one does not touch the snapshot.
+    // The planning block travels with the item (manufacturing plans its purchases by it): changing a planning field is a new version.
     await c.put(`/api/items/${chip}`, { ...body, nameEn: 'Main chip v2', leadTimeDays: 75 });
-    assert.equal(list().length, v2.length);
+    const v3 = list();
+    assert.equal(v3.length, v2.length + 1);
+    assert.equal(v3.at(-1)!.data.planning.lead_time_days, 75);
+    assert.ok(v3.at(-1)!.data.version > v2.at(-1)!.data.version);
   });
 
   test('stock positions follow every move; `reserved` comes from the registry (default 0)', async () => {

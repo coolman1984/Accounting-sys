@@ -116,3 +116,5 @@ non-obvious cause or a tool behaved unexpectedly.
 - **Clock**: one process-wide clock (`kernel/dates.ts`) serves every date read; a process that starts a second `buildApp` replaces it, so two Mizan apps with different clocks in one process is not supported (the scenario engine runs one).
 
 - **A reservation is a promise, a dispatch is a fact (2026-09-30).** Refusing a delivery because another order reserved the goods made manufacturing's shipment fact park for ever while the truck had left. Facts are booked; promises shrink.
+
+- **A contract field nobody fills is a silent zero (2026-09-30).** eco.item.v1 had a planning block that GMES consumed but Mizan never published; planning ran with lead time 0 and the scenario showed 90 days of starved lines. Test the producer of every optional block, not only its consumer.

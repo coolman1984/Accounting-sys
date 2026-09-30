@@ -3,6 +3,9 @@
 All notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/).
 Every change adds a line under **[Unreleased]** in the same commit.
 
+### Fixed
+- An item snapshot now carries its planning block (material type, buy or make, lead time, order quantities, safety stock, default supplier): before, manufacturing planned every purchase with a lead time of zero.
+
 ### Added
 - Machine calls can be signed (HMAC-SHA256 over method, path, body and time, five-minute window); `ECO_REQUIRE_SIGNATURE=1` makes signatures mandatory (ADR-030). Peers sign their calls.
 ### Fixed
