@@ -221,6 +221,21 @@ export function createSales(ctx: ModuleContext) {
       );
   }
 
+  /** After goods left that other orders had reserved: reservations never exceed the stock, the least urgent lines give theirs up first. */
+  function trimReservations(itemId: number, warehouseId: number) {
+    let over = reservedQty(itemId, warehouseId) - Math.max(0, inv().onHand(itemId, warehouseId));
+    if (over <= 0) return;
+    const rows = db.all<{ so_line_id: number; qty: number }>(
+      `SELECT r.so_line_id, r.qty FROM sales_reservations r JOIN sales_order_lines l ON l.id = r.so_line_id JOIN sales_orders o ON o.id = l.so_id
+       WHERE r.item_id = ? AND r.warehouse_id = ? ORDER BY o.priority DESC, COALESCE(l.promised_date, l.requested_date) DESC, l.id DESC`, [itemId, warehouseId]);
+    for (const r of rows) {
+      if (over <= 0) break;
+      const cut = Math.min(r.qty, over);
+      setReservation(line(r.so_line_id), warehouseId, r.qty - cut);
+      over -= cut;
+    }
+  }
+
   /** The warehouse a line ships from: its own, the order's, else the default one. */
   function lineWarehouse(l: SoLine, o: SalesOrder): number | null {
     if (l.warehouse_id) return l.warehouse_id;
@@ -641,11 +656,14 @@ export function createSales(ctx: ModuleContext) {
         if (!isStock(item)) continue;
         const l = line(dl.so_line_id);
         const wh = dl.warehouse_id ?? lineWarehouse(l, o)!;
-        // What this line may take: free stock plus its own reservation in that warehouse.
+        // What this line may take: free stock plus its own reservation in that warehouse. A dispatch fact from manufacturing (its reference
+        // is `eco:...`) is different: the goods have already left the plant, so what other orders have reserved cannot refuse it; only
+        // stock that is not there at all can (production not booked yet), and the other reservations shrink to what is left below.
         const own = reservationOf(l.id);
         const mine = own && own.warehouse_id === wh ? own.qty : 0;
         const key = `${item.id}:${wh}`;
-        const free = inv().onHand(item.id, wh) - (taken.get(key) ?? 0) - reservedQty(item.id, wh) + mine;
+        const left = inv().onHand(item.id, wh) - (taken.get(key) ?? 0);
+        const free = d.external_ref?.startsWith('eco:') ? left : left - reservedQty(item.id, wh) + mine;
         taken.set(key, (taken.get(key) ?? 0) + dl.qty);
         if (dl.qty > free) {
           const code = inv().warehouse(wh).code;
@@ -668,6 +686,7 @@ export function createSales(ctx: ModuleContext) {
         });
         entryId = res.entryId;
         stockLines.forEach(({ dl, wh }, i) => db.run('UPDATE sales_delivery_lines SET cost = ?, warehouse_id = ? WHERE id = ?', [res.values[i], wh, dl.id]));
+        if (d.external_ref?.startsWith('eco:')) for (const k of new Set(stockLines.map(({ dl, wh }) => `${dl.item_id}:${wh}`))) trimReservations(Number(k.split(':')[0]), Number(k.split(':')[1]));
       } else if (!dls.length) fail('sales.nothing_to_deliver', 'Nothing to deliver');
       for (const [lid, q] of perLine) {
         db.run('UPDATE sales_order_lines SET delivered_qty = delivered_qty + ? WHERE id = ?', [q, lid]);

@@ -184,3 +184,36 @@ test('a shipment dispatched by manufacturing becomes a posted delivery and a dra
   const snaps = (await feed()).filter((e) => e.type === 'acc.sales_order.v1' && e.data.code === order.number);
   assert.equal(snaps.at(-1).data.lines[0].delivered_qty, '5', 'the order goes back to manufacturing with what was delivered');
 });
+
+test('goods that left the plant are booked even when other orders reserved them; the reservations shrink to the stock, a shortage is still refused', async () => {
+  const company = (await c.get('/api/eco/company')).companyId as string;
+  const inboxKey = (await c.post('/api/eco/keys', { name: 'gmes-fact', scopes: ['eco.inbox.write'] })).key;
+  const supplier = (await c.post('/api/parties', { kind: 'supplier', name: 'Set Maker' })).id;
+  const customer = (await c.post('/api/parties', { kind: 'customer', name: 'Retail Group' })).id;
+  const tv = (await c.post('/api/items', { sku: 'TV43-R', nameEn: 'TV 43"', nameAr: 'تلفزيون 43', kind: 'product', salePrice: 900000, purchasePrice: 700000 })).id;
+  const wh = (await c.get('/api/inventory/warehouses')).find((w: any) => w.is_default);
+  await c.post('/api/documents', { kind: 'purchase_bill', partyId: supplier, date: '2026-09-01', post: true, lines: [{ itemId: tv, quantity: 10 * U, unitPrice: 700000 }] });
+  const early = await c.post('/api/sales/orders', { customerId: customer, orderDate: '2026-09-20', confirm: true, lines: [{ itemId: tv, quantity: 8 * U, requestedDate: '2026-10-05' }] });
+  const later = await c.post('/api/sales/orders', { customerId: customer, orderDate: '2026-09-21', confirm: true, lines: [{ itemId: tv, quantity: 6 * U, requestedDate: '2026-10-20' }] });
+  const reserved = () => c.app.kernel.db.all<{ so_id: number; qty: number }>('SELECT l.so_id, r.qty FROM sales_reservations r JOIN sales_order_lines l ON l.id = r.so_line_id WHERE r.item_id = ? ORDER BY l.so_id', [tv]);
+  assert.deepEqual(reserved().map((r) => r.qty), [8 * U, 2 * U], 'the first order holds 8, the second the 2 that are left');
+  const { mizanId, newUuidv7 } = await import('../eco-contracts/index.js');
+  const dispatch = async (soId: number, qty: number, seq: number) => {
+    const order = await c.get(`/api/sales/orders/${soId}`);
+    const ev = { specversion: '1.0', id: newUuidv7(), source: `eco://${company}/gmes/plant-1`, type: 'mes.shipment.dispatched.v1', subject: `shipment/${seq}`, time: '2026-10-06T18:00:00Z',
+      datacontenttype: 'application/json', ecoseq: seq, ecocorrelation: `shipment/${seq}`,
+      data: { shipment: { id: newUuidv7(), code: `SO-00000${seq}`, customer: 'Retail Group', customer_party: { id: mizanId(company, 'party', customer), code: 'C' } },
+        container: { id: newUuidv7(), number: `TRK-0000${seq}`, seal: 'S1', type: 'TRUCK' },
+        lines: [{ sales_order: { id: mizanId(company, 'sales_order', soId), code: order.number, line_no: 1 }, item: { id: mizanId(company, 'item', tv), code: 'TV43-R' }, qty: String(qty), uom: 'PCS', warehouse: { id: mizanId(company, 'warehouse', wh.id), code: wh.code }, pallets: 1 }],
+        dispatched_at: '2026-10-06T18:00:00Z', production_date: '2026-10-06', performed_by: { user: 'loader' }, shipping_seq: seq } };
+    return (await c.app.http.inject({ method: 'POST', url: '/eco/v1/inbox', headers: { 'x-eco-key': inboxKey }, payload: { events: [ev] } }).then((r) => JSON.parse(r.body))).results[0];
+  };
+  const r = await dispatch(later.id, 6, 1);
+  assert.equal(r.result, 'applied', 'the second order shipped 6 units that the first order had reserved: the goods are gone, the books follow ' + JSON.stringify(r));
+  const onHand = c.app.kernel.db.get<{ qty: number }>('SELECT qty FROM stock_levels WHERE item_id = ? AND warehouse_id = ?', [tv, wh.id])!.qty;
+  assert.equal(onHand, 4 * U);
+  assert.ok(reserved().reduce((a, x) => a + x.qty, 0) <= onHand, 'nothing is reserved that is not there');
+  assert.deepEqual(reserved().map((x) => [x.so_id, x.qty]), [[early.id, 4 * U]], 'the earlier order keeps what is left');
+  const short = await dispatch(early.id, 5, 2);
+  assert.notEqual(short.result, 'applied', 'more than is in stock is still refused (production not booked)');
+});
