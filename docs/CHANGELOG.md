@@ -3,6 +3,9 @@
 All notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/).
 Every change adds a line under **[Unreleased]** in the same commit.
 
+### Added
+- `GET /api/mfg/gmes-wip?limit=` (up to 100000; default 1000): a long run has more work orders than the default list.
+
 ### Fixed
 - An item snapshot now carries its planning block (material type, buy or make, lead time, order quantities, safety stock, default supplier): before, manufacturing planned every purchase with a lead time of zero.
 
