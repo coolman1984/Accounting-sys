@@ -6,6 +6,9 @@ Every change adds a line under **[Unreleased]** in the same commit.
 ### Added
 - `GET /api/mfg/gmes-wip?limit=` (up to 100000; default 1000): a long run has more work orders than the default list.
 
+### Changed
+- The Horizon demo company is fully invented: no real site, address, product line or group-company codes remain (`demo/horizon-egypt.ts`); its research note keeps only general Egyptian facts.
+
 ### Fixed
 - An item snapshot now carries its planning block (material type, buy or make, lead time, order quantities, safety stock, default supplier): before, manufacturing planned every purchase with a lead time of zero.
 
@@ -20,7 +23,7 @@ Every change adds a line under **[Unreleased]** in the same commit.
 - **Backup rehearsal (WP-X3)** — `POST /api/system/backups` now opens the new copy read-only and reports a rehearsal (structure check, no dangling references, every posted journal entry balances, row counts of the main tables); `POST /api/system/backups/:name/verify` repeats it on any earlier backup. A failed rehearsal is written in the audit line. Same rule as GMES and HR: a copy nobody opened is not a backup.
 - **KPI pack and executive S&OP (WP-M6, API)** — `GET /api/kpi/pack?month=YYYY-MM`: delivery service level (OTD, OTIF, fill rate of the lines due in the month, measured as of the month end or today), forecast accuracy and bias with a lag of one month (plan of the cycle before vs invoiced quantity net of credit notes, per item), sales against the plan in money. A figure that cannot be measured is null, never 0 or 100 %. `GET /api/sop/versions/:id/executive`: demand, budget and supply gap in money per month and the five biggest supply shortfalls with their constraint; demand without any supply plan is counted as unknown, not as short. Turns, DSO/DIO/DPO, margin by model, PPV, production variances and payroll per set are listed as not measured here. No screen yet.
 - **Injectable clock (WP-M7)** — `buildApp(config, modules, { clock })`: every date and timestamp of the server (today's defaults, lock dates, due dates, sessions, event versions) reads `kernel/dates.ts` (`today`, `nowIso`, `nowMs`, `currentDate`), which follows the clock given; without one it is real time. A test fails if a module reads `new Date()` or `Date.now()` directly. The scenario engine uses it to drive simulated days.
-- **Demo company** — a Horizon Electronics Egypt–style TV / phone / tablet factory, 1 Jan – 25 Sep 2026:
+- **Demo company** — Horizon Electronics, an invented TV / phone / tablet factory, 1 Jan – 25 Sep 2026:
   ~300 documents, ~250 receipts/payments/cheques, 90 production orders, 135 employees, imports in USD
   with customs and import VAT, zero-rated exports, withholding, cheques, payroll, depreciation, FX
   revaluation, budget and a reconciled bank statement. Built through the HTTP API by `npm run demo`

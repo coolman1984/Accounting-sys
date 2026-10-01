@@ -1,21 +1,16 @@
-# Demo company — a Horizon Electronics Egypt–style factory
+# Demo company — Horizon Electronics, an invented electronics factory
 
 `npm run demo` (or `start-demo.bat`) builds a company in `data-demo/` from
 `apps/server/src/demo/horizon-egypt.ts`, through the app's own HTTP API, so every figure comes from
 the real engine. `src/test/demo.test.ts` builds the same company in memory and checks that it ties.
 
-**Only the public facts below are real. Every amount, quantity, price, person, local customer and
-local supplier is illustrative** — realistic in size, not company records.
+**The company is invented. Only the general Egyptian facts below are real. Every amount, quantity, price,
+person, customer and supplier is illustrative** — realistic in size, not company records.
 
-## Public facts used (press reports, 2012–2026)
+## General facts used
 
 | Fact | Source |
 |---|---|
-| Plant at Kom Abu Radi industrial zone, El Wasta, Beni Suef; Horizon's first factory in the Middle East & Africa (production from 2013) | [Ahram Online](https://english.ahram.org.eg/NewsContent/3/12/81270/Business/Economy/First-Egyptian-Horizon-factory-starts-production.aspx), [Egypt Independent](https://www.egyptindependent.com/horizon-factory-to-be-established-in-beni-suef/), [Panjiva](https://panjiva.com/Horizon-Electronics-Egypt/88418849) |
-| Products: TVs (up to 98"), monitors, Galaxy A phones (from 2023), tablets | [Tech Review Africa](https://techreviewafrica.com/news/5270/egypts-communications-minister-inspects-horizon-factory-expansion-in-beni-suef), [Daily News Egypt](https://www.dailynewsegypt.com/2025/05/27/egypts-pm-meets-horizon-stresses-importance-of-localising-advanced-tech-industries/) |
-| About 85–90% of TV output exported to 55–60+ countries | same, and [Madison Manor](https://madisonmanor.co.za/blog/horizon-made-in-egypt/) |
-| Education tablets supplied to the Ministry of Education (~700k a year); USD 30m tablet line | [Ecofin](https://www.ecofinagency.com/telecom/0503-42412-egypt-horizon-earmarks-30mln-to-build-learning-tablets-factory-in-beni-suef) |
-| Capacity about 6 million units a year; ~5,000 direct and indirect jobs; total investment about USD 700m | [Egyptian Streets](https://egyptianstreets.com/2024/05/30/egypt-emerges-as-a-smartphone-manufacturing-hub/), [Daily News Egypt 2018](https://www.dailynewsegypt.com/2018/10/28/270m-investments-in-horizons-tv-factory-in-beni-suef/) |
 | Private-sector minimum wage 7,000 EGP (from March 2025) | [SIS](https://sis.gov.eg/en/media-center/news/egypt-raises-minimum-wage-for-private-sector-to-egp-7-000/) |
 | Industrial medium-voltage electricity 1.94 EGP/kWh after the April 2026 rise | [EgyptERA](https://egyptera.org/en/TarrifApril2026.aspx), [Mada Masr](https://www.madamasr.com/en/2026/05/21/news/u/govt-releases-new-electricity-tariffs-revealing-hikes-that-extend-to-egypts-major-power-users/) |
 | USD/EGP around 50–54 during 2026 (51.8 late September) | [Investing.com](https://www.investing.com/currencies/usd-egp-historical-data) |
@@ -25,13 +20,13 @@ local supplier is illustrative** — realistic in size, not company records.
 - **Opening balance sheet** on 1 January (entry marked *opening*, cleared through 3900): land, buildings
   and production lines at historical EGP cost with depreciation already charged, cash, a 1.2 bn loan at
   21%, capital 2.5 bn, retained earnings as the balancing figure, stock counted on 31 December.
-- **Manufacturing**: 5 products (TV 43/55/65", Galaxy A16, Tab A9+) with standard recipes (labour 95,
+- **Manufacturing**: 5 products (TV 43/55/65", phone P16, Tab T9) with standard recipes (labour 95,
   variable overhead 60, fixed overhead 250 EGP an hour); two production orders per product a month
   with small actual usage and hour differences, so the variance report has real numbers.
 - **Imports** from HQ in USD (90 days), customs 2% capitalised as a landed cost, import VAT 14% paid
   at the port (journal to 1150); dollars are bought from the EGP account only when HQ invoices fall due.
 - **Sales**: exports in USD, zero-rated (tax code VAT0-EXP), shipped via an Alexandria staging
-  warehouse to 5 group sales companies; local distributors with 14% VAT, 1% withholding by customers,
+  warehouse to 5 group sales companies (invented); local distributors with 14% VAT, 1% withholding by customers,
   two of them paying by post-dated cheques; government tablet programme at a tender price; a credit
   note for transport damage; a World Cup promotion in May–June.
 - **Overheads** on 8 cost centers: electricity (tariff change in April), contract labour (3% withholding),
