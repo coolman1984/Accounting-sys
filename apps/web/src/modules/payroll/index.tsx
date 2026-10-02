@@ -747,6 +747,47 @@ function NewRunDialog({ open, onClose, last }: { open: boolean; onClose(): void;
   );
 }
 
+interface HrPeriod {
+  id: number; code: string; period: string; run: number; version: number; status: 'booked' | 'reversed'; headcount: number; hours: Record<string, number>; payDate: string; bookedAt: string;
+  entries: { id: number; number: string | null; date: string; memo: string | null; total: number; reversed_by_id: number | null }[]; total: number;
+}
+
+/** Pay that HR-System calculated and approved: its totals per cost centre arrive here and are booked, one balanced journal entry per cost centre. */
+function HrPeriodsPage() {
+  const { t, locale } = useI18n();
+  const { fmt } = useMoney();
+  const { data, isLoading } = useApi<HrPeriod[]>('/payroll/hr-periods');
+  const columns = useMemo<Column<HrPeriod>[]>(
+    () => [
+      { id: 'period', header: t('pay.month'), pinned: true, value: (r) => r.period, render: (r) => <strong>{monthLabel(r.period, locale)}</strong> },
+      { id: 'run', header: t('pay.hrRun'), type: 'number', value: (r) => r.run },
+      { id: 'n', header: t('pay.employees'), type: 'number', value: (r) => r.headcount },
+      { id: 'hours', header: t('pay.hrHours'), type: 'number', value: (r) => (r.hours.regular ?? 0) + (r.hours.overtime_day ?? 0) + (r.hours.overtime_night ?? 0) },
+      { id: 'total', header: t('pay.hrBooked'), type: 'number', value: (r) => r.total, render: (r) => <span className="num">{fmt(r.total)}</span> },
+      { id: 'payDate', header: t('pay.payDate'), type: 'date', value: (r) => r.payDate, render: (r) => formatDate(r.payDate, locale) },
+      { id: 'entries', header: t('pay.hrEntries'), value: (r) => r.entries.length, render: (r) => (
+        <span>{r.entries.slice(0, 1).map((e) => <Link key={e.id} to={`/journal/${e.id}`}>{e.number ?? `#${e.id}`}</Link>)}
+          {r.entries.length > 1 && <> … <Link to={`/journal/${r.entries[r.entries.length - 1].id}`}>{r.entries[r.entries.length - 1].number ?? `#${r.entries[r.entries.length - 1].id}`}</Link> <span className="faint">({r.entries.length})</span></>}</span>) },
+      { id: 'status', header: t('common.status'), type: 'enum', value: (r) => r.status, format: (v) => t('pay.hrStatus.' + v), render: (r) => <Badge tone={r.status === 'booked' ? 'green' : 'neutral'}>{t('pay.hrStatus.' + r.status)}</Badge> },
+    ],
+    [t, fmt, locale],
+  );
+  return (
+    <div className="page">
+      <PageHeader title={t('pay.fromHr')} subtitle={t('pay.fromHrSub')} />
+      <DataGrid
+        id="pay-hr-periods"
+        rows={data}
+        loading={isLoading}
+        columns={columns}
+        rowKey={(r) => r.id}
+        exportName={t('pay.fromHr')}
+        empty={<EmptyState icon={<Wallet size={22} />} title={t('pay.noHr')} text={t('pay.noHrText')} />}
+      />
+    </div>
+  );
+}
+
 function RunsPage() {
   const { t, locale } = useI18n();
   const { fmt } = useMoney();
@@ -1159,11 +1200,13 @@ export const payrollModule: WebModule = {
   id: 'payroll',
   nav: [
     { to: '/payroll/runs', label: 'pay.runs', icon: Wallet, section: 'hr', order: 10, perm: 'payroll.runs.read', app: 'payroll' },
+    { to: '/payroll/hr', label: 'pay.fromHr', icon: Landmark, section: 'hr', order: 15, perm: 'payroll.runs.read', app: 'payroll' },
     { to: '/payroll/employees', label: 'pay.employees', icon: Users, section: 'hr', order: 20, perm: 'payroll.employees.read', app: 'payroll' },
     { to: '/payroll/components', label: 'pay.components', icon: Layers, section: 'hr', order: 30, perm: 'payroll.employees.read', app: 'payroll' },
   ],
   routes: [
     { path: '/payroll/runs', element: <RunsPage /> },
+    { path: '/payroll/hr', element: <HrPeriodsPage />, perm: 'payroll.runs.read', app: 'payroll' },
     { path: '/payroll/runs/:id', element: <RunPage />, perm: 'payroll.runs.read', app: 'payroll' },
     { path: '/payroll/employees', element: <EmployeesPage /> },
     { path: '/payroll/employees/:id', element: <EmployeePage />, perm: 'payroll.employees.read', app: 'payroll' },

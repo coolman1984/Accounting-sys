@@ -5,6 +5,7 @@ import { AppError } from '../../kernel/errors.js';
 import { nowIso } from '../../kernel/dates.js';
 import { parse, zId } from '../../kernel/validate.js';
 import type {} from '../../contracts/eco.js';
+import type {} from '../../contracts/sop.js';
 import { migrations } from './schema.js';
 import { createEco, type EcoInternal, type OutboxRow } from './service.js';
 import { peerView } from './peers.js';
@@ -75,6 +76,14 @@ export const ecoModule: AppModule = {
             planned_qty: parseQty(l.planned_qty),
             constraint_kind: l.constraint,
           });
+        }
+        // the plant's own supply plan is what the S&OP demand plan is compared with (never over a figure a person entered)
+        if (ctx.services.has('sop')) {
+          const rows = d.lines.flatMap((l) => {
+            const local = eco.localId('item', l.item.id);
+            return local == null ? [] : [{ itemId: Number(local), month: l.period, plannedQty: parseQty(l.planned_qty), constraint: l.constraint }];
+          });
+          ctx.services.get('sop').recordSupply(rows, 'itqan', d.code);
         }
         return 'applied';
       },
@@ -211,6 +220,15 @@ export const ecoModule: AppModule = {
       types: z.array(z.string().max(100)).max(50).nullish().transform((v) => v ?? null),
     });
     r.get('/eco/peers', 'eco.settings.manage', () => eco.peers.list().map(peerView));
+    r.post('/eco/peers/:id/retry-parked', 'eco.settings.manage', async ({ params, body, user }) => {
+      const id = parse(zId, params.id);
+      const input = parse(z.object({ eventIds: z.array(z.string().min(1).max(100)).min(1).max(200), reason: z.string().trim().min(3).max(500) }), body);
+      if (new Set(input.eventIds).size !== input.eventIds.length) throw new AppError('eco.retry_duplicates', 'Choose each event once', 400);
+      audit.log({ userId: user.id, action: 'retry_parked_request', entity: 'eco_peer', entityId: id, summary: JSON.stringify(input) });
+      const result = await eco.peers.retryParked(id, input.eventIds);
+      audit.log({ userId: user.id, action: 'retry_parked_result', entity: 'eco_peer', entityId: id, summary: JSON.stringify(result) });
+      return result;
+    });
     r.post('/eco/peers', 'eco.settings.manage', ({ body, user }) => {
       const i = parse(zPeer, body);
       const id = db.tx(() => {

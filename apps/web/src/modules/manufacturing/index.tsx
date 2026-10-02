@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { BookOpen, CheckCircle2, Factory, Gauge, Plus, RefreshCw, Save, Settings2, Trash2, Undo2 } from 'lucide-react';
+import { BookOpen, CheckCircle2, Factory, Gauge, Plus, RefreshCw, Save, Settings2, Trash2, Undo2, Workflow } from 'lucide-react';
 import type { WebModule } from '../../core/registry';
 import { useApi, useApiMutation, useErrorText, useMoney } from '../../core/hooks';
 import { useI18n } from '../../core/i18n';
@@ -982,11 +982,52 @@ function VariancesPage() {
   );
 }
 
+interface ItqanWip { id: number; code: string; sku: string | null; name_en: string | null; name_ar: string | null; planned_qty: number; received_qty: number; scrapped_qty: number; issued_value: number;
+  received_value: number; in_progress: number; variance: number; status: 'open' | 'closed'; updated_at: string }
+
+/** What the plant (Itqan) reports as produced: each work order valued by accounting through work in progress, closed with its variance. */
+function ItqanProductionPage() {
+  const { t, pick } = useI18n();
+  const { data, isLoading } = useApi<ItqanWip[]>('/mfg/gmes-wip', { limit: 5000 });
+  const columns = useMemo<Column<ItqanWip>[]>(
+    () => [
+      { id: 'code', header: t('mfg.itqanOrder'), pinned: true, nowrap: true, value: (r) => r.code, render: (r) => <span style={{ fontWeight: 550 }}>{r.code}</span> },
+      { id: 'item', header: t('docs.item'), type: 'enum', value: (r) => r.sku ?? '', render: (r) => <span>{r.sku} <span className="faint">{pick(r.name_en ?? '', r.name_ar ?? '')}</span></span> },
+      { id: 'status', header: t('common.status'), type: 'enum', value: (r) => r.status, format: (v) => t('mfg.itqanStatus.' + v), render: (r) => <Badge tone={r.status === 'closed' ? 'green' : 'blue'}>{t('mfg.itqanStatus.' + r.status)}</Badge> },
+      { id: 'planned', header: t('mfg.itqanPlanned'), type: 'qty', total: true, value: (r) => r.planned_qty },
+      { id: 'good', header: t('mfg.itqanGood'), type: 'qty', total: true, value: (r) => r.received_qty },
+      { id: 'scrap', header: t('mfg.itqanScrap'), type: 'qty', total: true, value: (r) => r.scrapped_qty },
+      { id: 'yield', header: t('mfg.itqanYield'), type: 'number', value: (r) => (r.received_qty + r.scrapped_qty ? Math.round((r.received_qty * 1000) / (r.received_qty + r.scrapped_qty)) / 10 : 0), format: (v) => `${v}%` },
+      { id: 'issued', header: t('mfg.itqanIssued'), type: 'money', total: true, value: (r) => r.issued_value, render: (r) => <Money v={r.issued_value} /> },
+      { id: 'received', header: t('mfg.itqanReceived'), type: 'money', total: true, value: (r) => r.received_value, render: (r) => <Money v={r.received_value} /> },
+      { id: 'wip', header: t('mfg.itqanWip'), type: 'money', total: true, value: (r) => (r.status === 'open' ? r.in_progress : 0), render: (r) => <Money v={r.status === 'open' ? r.in_progress : 0} /> },
+      { id: 'variance', header: t('mfg.itqanVariance'), type: 'money', total: true, hidden: true, value: (r) => r.variance, render: (r) => <Money v={r.variance} tone /> },
+      { id: 'updated', header: t('common.date'), type: 'date', hidden: true, value: (r) => r.updated_at?.slice(0, 10) },
+    ],
+    [t, pick],
+  );
+  return (
+    <div className="page">
+      <PageHeader title={t('mfg.itqanTitle')} subtitle={t('mfg.itqanSub')} />
+      <DataGrid
+        id="mfg-itqan"
+        rows={data}
+        loading={isLoading}
+        columns={columns}
+        rowKey={(r) => r.id}
+        exportName={t('mfg.itqanTitle')}
+        empty={<EmptyState icon={<Workflow size={22} />} title={t('mfg.itqanNone')} text={t('mfg.itqanNoneText')} />}
+      />
+    </div>
+  );
+}
+
 export const manufacturingModule: WebModule = {
   id: 'manufacturing',
   nav: [
     { to: '/mfg/orders', label: 'mfg.orders', icon: Factory, section: 'production', order: 10, perm: 'mfg.orders.read', app: 'mfg' },
     { to: '/mfg/boms', label: 'mfg.recipes', icon: BookOpen, section: 'production', order: 20, perm: 'mfg.boms.read', app: 'mfg' },
+    { to: '/mfg/itqan', label: 'mfg.itqanTitle', icon: Workflow, section: 'production', order: 15, perm: 'mfg.reports.read', app: 'mfg' },
     { to: '/mfg/variances', label: 'mfg.varianceReport', icon: Gauge, section: 'production', order: 30, perm: 'mfg.reports.read', app: 'mfg' },
   ],
   routes: [
@@ -994,6 +1035,7 @@ export const manufacturingModule: WebModule = {
     { path: '/mfg/orders/:id', element: <OrderPage /> },
     { path: '/mfg/boms', element: <BomsPage /> },
     { path: '/mfg/boms/:id', element: <BomEditor />, perm: 'mfg.boms.read', app: 'mfg' },
+    { path: '/mfg/itqan', element: <ItqanProductionPage />, perm: 'mfg.reports.read', app: 'mfg' },
     { path: '/mfg/variances', element: <VariancesPage /> },
   ],
   commands: [

@@ -112,6 +112,29 @@ test('production facts from manufacturing are valued through work in progress; t
   assert.equal(bal, 0, 'work in progress is empty once the order is closed');
   const level = (item: number) => db.get<{ qty: number }>('SELECT qty FROM stock_levels WHERE item_id = ? AND warehouse_id = ?', [item, main.id])?.qty ?? 0;
   assert.deepEqual([level(board), level(set)], [6 * U, 3 * U]);
+  const saved = { ...w };
+  for (const late of [
+    ev('mes.material.consumed.v1', { work_order: wo, item: ref('item', board, 'BOARD'), qty: '1', uom: 'PCS', warehouse: wh, lot_no: 'BRD-L1', ...op }),
+    ev('mes.production.completed.v1', { work_order: { ...wo, completed_qty_after: '4', scrapped_qty: '1', is_final: false }, item: ref('item', set, 'SET-P'), qty: '1', uom: 'PCS', warehouse: wh, ...op }),
+    ev('mes.production.scrapped.v1', { work_order: wo, qty: '1', uom: 'PCS', reason_code: 'SCRATCH', ...op }),
+  ]) assert.equal((await send(late)).result, 'rejected', 'no late fact may mutate closed WIP');
+  assert.deepEqual({ ...db.get<any>("SELECT * FROM mfg_wip WHERE code = 'WO-1'") }, saved);
+  assert.deepEqual([level(board), level(set)], [6 * U, 3 * U]);
+
+  // A shortage rejects consumption. Closing the order must wait until that exact fact is recovered.
+  const wo2 = { ...wo, id: newUuidv7(), code: 'WO-RECOVERY' };
+  const issue = ev('mes.material.consumed.v1', { work_order: wo2, item: ref('item', board, 'BOARD'), qty: '8', uom: 'PCS', warehouse: wh, lot_no: 'BRD-L1', ...op });
+  const close = ev('mes.work_order.closed.v1', { work_order: { ...wo2, completed_qty: '0', scrapped_qty: '0' }, ...op });
+  assert.equal((await send(issue)).result, 'rejected');
+  assert.equal((await send(close)).code, 'eco.prerequisite_parked');
+  assert.equal(db.get('SELECT 1 FROM mfg_wip WHERE work_order_id = ?', [wo2.id]), undefined, 'failed events roll back their WIP row');
+  await c.post('/api/inventory/receipts', { supplierId: supplier, date: '2026-09-09', warehouseId: main.id, post: true, lines: [{ itemId: board, quantity: 2 * U, unitCost: 1000, lots: [{ lotNo: 'BRD-L1', qty: 2 * U }] }] });
+  assert.equal((await send(issue)).result, 'applied');
+  assert.equal((await send(issue)).result, 'duplicate');
+  assert.equal((await send(close)).result, 'applied');
+  assert.equal((await send(close)).result, 'duplicate');
+  const recovered = db.get<any>('SELECT * FROM mfg_wip WHERE work_order_id = ?', [wo2.id]);
+  assert.deepEqual([recovered.status, recovered.issued_value - recovered.received_value], ['closed', 0]);
 });
 
 test('a payroll period from HR is booked as one balanced entry per cost centre, refused when unbalanced, reversed on request', async () => {
@@ -143,11 +166,15 @@ test('a payroll period from HR is booked as one balanced entry per cost centre, 
   assert.deepEqual([sums.d, sums.c], [128750, 128750]);
   assert.equal((await send(period(good, 1))).result, 'unchanged');
   assert.equal((await c.get('/api/payroll/source')).source, 'hr');
+  const fromHr = (await c.get('/api/payroll/hr-periods')) as any[];
+  assert.equal(fromHr.length, 1);
+  assert.deepEqual([fromHr[0].period, fromHr[0].run, fromHr[0].status, fromHr[0].headcount, fromHr[0].total, fromHr[0].entries.length], ['2026-09', 1, 'booked', 40, 128750, 1], 'the screen lists what HR sent, with its journal entry');
   const blocked = await c.raw('POST', '/api/payroll/runs', { month: '2026-09' });
   assert.equal(blocked.body.error.code, 'payroll.calculated_by_hr');
   assert.equal((await send(period(good, 2, 'reversed'))).result, 'applied');
   const bal = db.get<{ b: number }>("SELECT COALESCE(SUM(debit - credit), 0) b FROM journal_lines WHERE entry_id IN (SELECT id FROM journal_entries WHERE source_type = 'hr_payroll')", [])!.b;
   assert.equal(bal, 0, 'the reversal cancels the booking');
+  assert.equal(((await c.get('/api/payroll/hr-periods')) as any[])[0].status, 'reversed');
 });
 
 test('a shipment dispatched by manufacturing becomes a posted delivery and a draft invoice, once', async () => {

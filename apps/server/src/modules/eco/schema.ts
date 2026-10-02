@@ -155,4 +155,10 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: '003_rejected_dependencies',
+    up: `ALTER TABLE eco_inbox_rejects ADD COLUMN work_order_id TEXT;
+         ALTER TABLE eco_inbox_rejects ADD COLUMN event_seq INTEGER;
+         CREATE INDEX eco_rejected_work_order ON eco_inbox_rejects(source, work_order_id, event_seq);`,
+  },
 ];

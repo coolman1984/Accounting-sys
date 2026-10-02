@@ -292,3 +292,9 @@ SHA-256 of the machine key (the only form receivers keep). A signature older tha
 or a generated tool: a decision for the owner); signing the parsed object (another sender's JSON layout would not match); a clock from the simulation
 (signatures are about the wire: `wallClockMs`).
 **Consequences:** A copied request cannot be replayed later or altered. It does not hide traffic: on a LAN the content is still readable until TLS exists.
+
+## ADR-031 · Targeted immutable peer recovery preserves work-order sequence
+**Status:** Accepted · 2026-10-02
+**Decision:** Managers retry explicitly selected parked original events with a reason; request and result are audited. Replay follows outbox sequence without changing envelopes or the feed cursor. A peer has one running sync/recovery, and earlier parked facts hold later facts of the same work order. Rejected inbound facts retain order ID and sequence so completion and close cannot bypass a rejected issue.
+**Rejected:** a global retry sweep (unrelated exceptions change), rewriting published facts (destroys evidence), or accepting late facts into closed WIP (changes settled values).
+**Consequences:** Repair the business prerequisite first, then recover the relevant original facts in sequence.

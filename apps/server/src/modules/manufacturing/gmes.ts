@@ -62,18 +62,26 @@ export function consumeProduction(ctx: ModuleContext): void {
   };
   const wipOf = (wo: { id: string; code: string; item: { id: string; code: string }; planned_qty: string }): Wip => {
     const cur = db.get<Wip>('SELECT * FROM mfg_wip WHERE work_order_id = ?', [wo.id]);
-    if (cur) return cur;
+    if (cur) {
+      if (cur.planned_qty !== parseQty(wo.planned_qty) || (cur.item_id != null && String(cur.item_id) !== eco.localId('item', wo.item.id)))
+        throw new AppError('mfg.order_mismatch', 'Production facts must retain the released order item and quantity', 409);
+      return cur;
+    }
     const itemId = eco.localId('item', wo.item.id);
     db.insert('mfg_wip', { work_order_id: wo.id, code: wo.code, item_id: itemId == null ? null : Number(itemId), planned_qty: parseQty(wo.planned_qty), updated_at: nowIso() });
     return db.get<Wip>('SELECT * FROM mfg_wip WHERE work_order_id = ?', [wo.id])!;
   };
   const lots = (lot: string | undefined, qty: number) => (lot ? [{ lotNo: lot, qty }] : null);
   const ref = (id: string) => `eco:${id}`.slice(0, 100);
+  const open = (w: Wip) => {
+    if (w.status === 'closed') throw new AppError('mfg.wip_closed', `${w.code} is closed; late production facts need reconciliation`, 409);
+  };
 
   eco.registerConsumer<MaterialConsumedV1>({
     type: 'mes.material.consumed.v1',
     apply(d, env) {
       const w = wipOf(d.work_order);
+      open(w);
       const qty = parseQty(d.qty);
       const value = inv().wipIssue({ date: d.production_date, sourceId: w.id, reference: ref(env.id), memo: `${d.work_order.code}: ${d.item.code} consumed`, itemId: local('item', d.item),
         warehouseId: local('warehouse', d.warehouse), qty, lots: lots(d.lot_no, qty), wipAccountId: account('wip_account_id') });
@@ -86,7 +94,12 @@ export function consumeProduction(ctx: ModuleContext): void {
     type: 'mes.production.completed.v1',
     apply(d, env) {
       const w = wipOf(d.work_order);
+      open(w);
       const qty = parseQty(d.qty);
+      if (parseQty(d.work_order.completed_qty_after) !== w.received_qty + qty || parseQty(d.work_order.scrapped_qty) !== w.scrapped_qty || w.received_qty + w.scrapped_qty + qty > w.planned_qty)
+        throw new AppError('mfg.production_sequence', 'Completion totals do not match applied production facts', 409);
+      if (d.work_order.is_final !== (w.received_qty + w.scrapped_qty + qty === w.planned_qty))
+        throw new AppError('mfg.production_sequence', 'Final completion must exhaust the released order quantity', 409);
       const left = w.issued_value - w.received_value;
       const share = w.planned_qty > 0 ? Math.floor((w.issued_value * qty) / w.planned_qty) : 0;
       const value = d.work_order.is_final ? Math.max(0, left) : Math.max(0, Math.min(share, left));
@@ -101,6 +114,9 @@ export function consumeProduction(ctx: ModuleContext): void {
     type: 'mes.production.scrapped.v1',
     apply(d) {
       const w = wipOf(d.work_order);
+      open(w);
+      if (w.received_qty + w.scrapped_qty + parseQty(d.qty) > w.planned_qty)
+        throw new AppError('mfg.production_sequence', 'Scrap exceeds the remaining released order quantity', 409);
       db.run('UPDATE mfg_wip SET scrapped_qty = scrapped_qty + ?, updated_at = ? WHERE id = ?', [parseQty(d.qty), nowIso(), w.id]);
       return 'applied';
     },
@@ -111,6 +127,8 @@ export function consumeProduction(ctx: ModuleContext): void {
     apply(d, env) {
       const w = wipOf(d.work_order);
       if (w.status === 'closed') return 'unchanged';
+      if (parseQty(d.work_order.completed_qty) !== w.received_qty || parseQty(d.work_order.scrapped_qty) !== w.scrapped_qty)
+        throw new AppError('mfg.production_sequence', 'Close totals do not match applied completion and scrap facts', 409);
       const left = w.issued_value - w.received_value;
       if (left !== 0) {
         const wip = account('wip_account_id'), variance = account('variance_account_id');

@@ -118,3 +118,8 @@ non-obvious cause or a tool behaved unexpectedly.
 - **A reservation is a promise, a dispatch is a fact (2026-09-30).** Refusing a delivery because another order reserved the goods made manufacturing's shipment fact park for ever while the truck had left. Facts are booked; promises shrink.
 
 - **A contract field nobody fills is a silent zero (2026-09-30).** eco.item.v1 had a planning block that GMES consumed but Mizan never published; planning ran with lead time 0 and the scenario showed 90 days of starved lines. Test the producer of every optional block, not only its consumer.
+
+- **Immutable production needs ordered recovery (2026-10-02).** Advancing a feed past a shortage must not let later completion or close bypass that parked work-order fact. Replay the same envelopes after repairing prerequisites; validate reply IDs before acknowledging them. Final completion includes normal scrap in the released quantity; closed WIP refuses late issues, receipts and scrap.
+- **A simulated clock is not a unique filename (2026-10-02).** Several backups may share a timestamp, so append an independent unique ID rather than requiring the clock to advance.
+
+- **A peer lock applies to scheduled passes too (2026-10-02).** The minute timer skips a busy peer; throwing the manual-operation conflict from an unawaited automatic pass would become an unhandled rejection.

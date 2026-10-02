@@ -58,7 +58,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `audit_log`, `role_permissions`, `roles`, `sequences`, `sessions`, `settings`, `user_roles`, `users`
 - **Provides services:** `access`, `audit`, `backup`, `sequences`, `settings`
 - **Events:** emits `system.setup` · listens —
-- **Files:** `auth.ts` (189), `index.ts` (511), `rehearsal.ts` (51), `schema.ts` (95), `settings.ts` (117)
+- **Files:** `auth.ts` (189), `index.ts` (512), `rehearsal.ts` (51), `schema.ts` (95), `settings.ts` (117)
 
 <details><summary>26 routes</summary>
 
@@ -142,9 +142,9 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Role templates:** `integration_admin`
 - **Tables / views:** `eco_ack`, `eco_company`, `eco_inbox`, `eco_inbox_rejects`, `eco_keys`, `eco_outbox`, `eco_peers`, `eco_snapshots`, `eco_supply_plan`, `eco_supply_plans`
 - **Provides services:** `eco`
-- **Files:** `index.ts` (254), `keys.ts` (81), `peers.ts` (198), `schema.ts` (159), `service.ts` (244), `signing.ts` (35)
+- **Files:** `index.ts` (272), `keys.ts` (81), `peers.ts` (232), `schema.ts` (165), `service.ts` (250), `signing.ts` (35)
 
-<details><summary>20 routes</summary>
+<details><summary>21 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -156,6 +156,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | GET | `/api/eco/scopes` | `eco.settings.manage` |
 | POST | `/api/eco/resync` | `eco.settings.manage` |
 | GET | `/api/eco/peers` | `eco.settings.manage` |
+| POST | `/api/eco/peers/:id/retry-parked` | `eco.settings.manage` |
 | POST | `/api/eco/peers` | `eco.settings.manage` |
 | PUT | `/api/eco/peers/:id` | `eco.settings.manage` |
 | DELETE | `/api/eco/peers/:id` | `eco.settings.manage` |
@@ -449,7 +450,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Tables / views:** `sop_cycles`, `sop_demand`, `sop_supply_plan`, `sop_versions`
 - **Provides services:** `sop`
 - **Events:** emits `sop.plan.approved` · listens —
-- **Files:** `eco.ts` (37), `index.ts` (134), `kpi.ts` (109), `schema.ts` (87), `service.ts` (329)
+- **Files:** `eco.ts` (37), `index.ts` (134), `kpi.ts` (109), `schema.ts` (87), `service.ts` (347)
 
 <details><summary>15 routes</summary>
 
@@ -680,7 +681,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Role templates:** `production_planner`
 - **Tables / views:** `bom_lines`, `boms`, `mfg_settings`, `mfg_wip`, `production_order_lines`, `production_orders`
 - **Provides services:** —
-- **Files:** `engine.ts` (184), `gmes.ts` (127), `index.ts` (631)
+- **Files:** `engine.ts` (184), `gmes.ts` (145), `index.ts` (631)
 
 <details><summary>17 routes</summary>
 
@@ -745,9 +746,9 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 - **Duties to split:** `payroll.employees.write × payroll.runs.post`
 - **Tables / views:** `employee_components`, `employees`, `pay_components`, `payroll_account_map`, `payroll_hr_period`, `payroll_lines`, `payroll_runs`, `payroll_settings`
 - **Provides services:** —
-- **Files:** `engine.ts` (184), `hr.ts` (148), `index.ts` (725)
+- **Files:** `engine.ts` (184), `hr.ts` (148), `index.ts` (734)
 
-<details><summary>24 routes</summary>
+<details><summary>25 routes</summary>
 
 | Method | Path | Permission |
 |---|---|---|
@@ -764,6 +765,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | GET | `/api/payroll/runs/:id` | `payroll.runs.read` |
 | GET | `/api/payroll/source` | `payroll.runs.read` |
 | PUT | `/api/payroll/source` | `payroll.settings.manage` |
+| GET | `/api/payroll/hr-periods` | `payroll.runs.read` |
 | GET | `/api/payroll/account-map` | `payroll.settings.manage` |
 | PUT | `/api/payroll/account-map` | `payroll.settings.manage` |
 | POST | `/api/payroll/runs` | `payroll.runs.write` |
@@ -915,9 +917,9 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | `analysis` | `analysis` | `/analysis`, `/analysis/break-even`, `/analysis/trend` | 1 (499 lines) |
 | `budget` | `budget` | `/budgets`, `/budgets/:id`, `/budgets/:id/variance` | 1 (989 lines) |
 | `cashflow` | `cashflow` | `/cashflow`, `/cashflow/plan` | 1 (586 lines) |
-| `manufacturing` | `mfg` | `/mfg/boms`, `/mfg/boms/:id`, `/mfg/orders`, `/mfg/orders/:id`, `/mfg/variances` | 1 (1005 lines) |
+| `manufacturing` | `mfg` | `/mfg/boms`, `/mfg/boms/:id`, `/mfg/itqan`, `/mfg/orders`, `/mfg/orders/:id`, `/mfg/variances` | 1 (1047 lines) |
 | `assets` | `assets` | `/fixed-assets`, `/fixed-assets/:id`, `/fixed-assets/categories`, `/fixed-assets/depreciation`, `/fixed-assets/report` | 1 (925 lines) |
-| `payroll` | `payroll` | `/payroll/components`, `/payroll/employees`, `/payroll/employees/:id`, `/payroll/runs`, `/payroll/runs/:id` | 1 (1177 lines) |
+| `payroll` | `payroll` | `/payroll/components`, `/payroll/employees`, `/payroll/employees/:id`, `/payroll/hr`, `/payroll/runs`, `/payroll/runs/:id` | 1 (1220 lines) |
 | `cheques` | `cheques` | `/cheques/:id`, `/cheques/issued`, `/cheques/new`, `/cheques/portfolio`, `/cheques/received` | 1 (582 lines) |
 | `recurring` | `recurring` | `/recurring`, `/recurring/:id` | 1 (641 lines) |
 | `imports` | `imports` | `/import` | 1 (233 lines) |
@@ -927,5 +929,7 @@ Contracts: `budget.ts`, `catalog.ts`, `co.ts`, `documents.ts`, `eco.ts`, `egypt.
 | `inventory` | `inventory` | `/inventory`, `/inventory/items/:id`, `/inventory/landed-costs`, `/inventory/landed-costs/:id`, `/inventory/landed-costs/:id/edit`, `/inventory/landed-costs/new`, `/inventory/operations`, `/inventory/operations/:id`, `/inventory/operations/:id/edit`, `/inventory/operations/new`, `/inventory/receipts`, `/inventory/receipts/:id`, `/inventory/receipts/:id/edit`, `/inventory/receipts/new`, `/inventory/warehouses`, `/reports/inventory/expiry`, `/reports/inventory/grni`, `/reports/inventory/movement`, `/reports/inventory/profitability`, `/reports/inventory/reorder`, `/reports/inventory/trace`, `/reports/inventory/valuation` | 12 (3254 lines) |
 | `purchasing` | `purchasing` | `/purchasing/lc`, `/purchasing/lc/:id`, `/purchasing/orders`, `/purchasing/orders/:id`, `/purchasing/orders/:id/edit`, `/purchasing/orders/new`, `/purchasing/requisitions`, `/reports/purchasing/on-time`, `/reports/purchasing/open-orders` | 5 (1382 lines) |
 | `pricing` | `pricing` | `/sales/price-lists`, `/sales/price-lists/:id`, `/sales/price-lists/new` | 1 (338 lines) |
+| `sales` | `sd` | `/reports/sales/analysis`, `/reports/sales/backlog`, `/reports/sales/otif`, `/sales/deliveries`, `/sales/deliveries/:id`, `/sales/orders`, `/sales/orders/:id`, `/sales/orders/:id/edit`, `/sales/orders/new` | 2 (722 lines) |
+| `sop` | `sop` | `/kpi`, `/sop`, `/sop/cycles/:id`, `/sop/versions/:id` | 1 (329 lines) |
 | `eco` | `eco` | `/integration` | 1 (372 lines) |
 | `admin` | — | `/access`, `/apps`, `/audit`, `/settings`, `/system/health` | 4 (1318 lines) |

@@ -8,6 +8,7 @@ import { buildApp, type App } from '../app.js';
 import { loadConfig } from '../config.js';
 import { modules } from '../modules/index.js';
 import { rehearse } from '../modules/system/rehearsal.js';
+import { setClock } from '../kernel/dates.js';
 
 /** A backup is only a backup once it has been opened elsewhere and checked (plan 50 WP-X3). */
 describe('backup rehearsal', () => {
@@ -60,6 +61,20 @@ describe('backup rehearsal', () => {
     assert.equal(r2.ok, false);
     assert.match(r2.problems.join(' '), /not a Mizan database/);
     assert.equal(rehearse(join(dir, 'missing.db')).ok, false);
+  });
+  test('manual backups at one fixed instant have distinct rehearsable files', async () => {
+    setClock({ now: () => new Date('2026-10-02T12:00:00.000Z') });
+    try {
+      const first = await call('POST', '/api/system/backups');
+      const bytes = readFileSync(join(dir, 'backups', first.body.name));
+      const second = await call('POST', '/api/system/backups');
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.notEqual(first.body.name, second.body.name);
+      assert.deepEqual(readFileSync(join(dir, 'backups', first.body.name)), bytes, 'later backup cannot overwrite the earlier snapshot');
+      assert.equal(first.body.rehearsal.ok, true);
+      assert.equal(second.body.rehearsal.ok, true);
+    } finally { setClock(); }
   });
 
   test('a copy whose pages are damaged opens but fails the structure check', () => {

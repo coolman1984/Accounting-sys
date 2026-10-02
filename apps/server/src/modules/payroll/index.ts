@@ -675,6 +675,15 @@ export const payrollModule: AppModule = {
     const notFromHr = () => { if (db.get<{ source: string }>('SELECT source FROM payroll_settings WHERE id = 1')!.source === 'hr') conflict('payroll.calculated_by_hr', 'Payroll is calculated by HR-System; it is booked here from its approved periods'); };
     r.get('/payroll/source', 'payroll.runs.read', () => ({ source: db.get<{ source: string }>('SELECT source FROM payroll_settings WHERE id = 1')!.source }));
     r.put('/payroll/source', 'payroll.settings.manage', ({ body }) => { const s = parse(z.object({ source: z.enum(['mizan', 'hr']) }), body).source; db.run('UPDATE payroll_settings SET source = ? WHERE id = 1', [s]); return { source: s }; });
+    // What HR-System calculated and sent (hr.payroll_period.v1): one row per period and run, with the journal entries it booked (one per cost centre).
+    r.get('/payroll/hr-periods', 'payroll.runs.read', () =>
+      db.all<{ id: number; global_id: string; code: string; period: string; run: number; version: number; status: string; entries: string; headcount: number; hours: string; pay_date: string; booked_at: string }>(
+        'SELECT * FROM payroll_hr_period ORDER BY period DESC, run DESC').map((p) => {
+        const entries = (JSON.parse(p.entries) as number[]).map((id) => db.get<{ id: number; number: string | null; date: string; memo: string | null; total: number; reversed_by_id: number | null }>(
+          'SELECT id, number, date, memo, total, reversed_by_id FROM journal_entries WHERE id = ?', [id])).filter((e) => !!e);
+        return { id: p.id, code: p.code, period: p.period, run: p.run, version: p.version, status: p.status, headcount: p.headcount, hours: JSON.parse(p.hours || '{}'), payDate: p.pay_date, bookedAt: p.booked_at,
+          entries, total: entries.reduce((s, e) => s + (e?.total ?? 0), 0) };
+      }));
     r.get('/payroll/account-map', 'payroll.settings.manage', () => { const h = hrPayroll(ctx); return ALL_KEYS.map((k) => ({ key: k, accountId: h.accountFor(k) })); });
     r.put('/payroll/account-map', 'payroll.settings.manage', ({ body }) => {
       const i = parse(z.object({ key: z.enum(ALL_KEYS), accountId: zId }), body);

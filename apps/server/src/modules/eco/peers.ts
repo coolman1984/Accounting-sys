@@ -57,6 +57,7 @@ export function peerView(p: PeerRow) {
  */
 export function createPeers(ctx: ModuleContext, eco: EcoInternal, http: { current: Http }) {
   const { db, secrets } = ctx;
+  const running = new Set<number>();
 
   const get = (id: number) => db.get<PeerRow>('SELECT * FROM eco_peers WHERE id = ?', [id]) ?? notFound('eco_peer', id);
   const list = () => db.all<PeerRow>('SELECT * FROM eco_peers ORDER BY name');
@@ -102,36 +103,53 @@ export function createPeers(ctx: ModuleContext, eco: EcoInternal, http: { curren
     return json;
   }
 
-  const ack = (eventId: string, consumer: string, status: 'parked' | 'skipped', code: string, message: string) =>
+  const ack = (eventId: string, consumer: string, status: 'parked' | 'skipped' | 'applied', code: string, message: string) =>
     db.run(
       `INSERT INTO eco_ack (event_id, consumer, status, code, message, updated_at) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(event_id, consumer) DO UPDATE SET status = excluded.status, code = excluded.code, message = excluded.message, updated_at = excluded.updated_at`,
       [eventId, consumer, status, code, message.slice(0, 1000), nowIso()],
     );
 
-  async function push(p: PeerRow, r: SyncReport) {
+  async function push(p: PeerRow, r: SyncReport, eventIds?: string[]) {
     const wanted = p.types ? new Set(p.types.split(' ')) : null;
+    const retryRows = eventIds ? db.all<OutboxRow>(`SELECT o.* FROM eco_outbox o JOIN eco_ack a ON a.event_id = o.id WHERE a.consumer = ? AND a.status = 'parked' AND o.id IN (${eventIds.map(() => '?').join(',')}) ORDER BY o.seq`, [p.name, ...eventIds]) : null;
+    if (retryRows && retryRows.length !== eventIds!.length) conflict('eco.retry_not_parked', 'Every requested event must be parked for this peer');
     for (;;) {
-      const rows = db.all<OutboxRow>('SELECT * FROM eco_outbox WHERE seq > ? ORDER BY seq LIMIT ?', [p.push_cursor, PAGE]);
+      const rows = retryRows ?? db.all<OutboxRow>('SELECT * FROM eco_outbox WHERE seq > ? ORDER BY seq LIMIT ?', [p.push_cursor, PAGE]);
       if (!rows.length) return;
       const send = rows.filter((x) => !wanted || wanted.has(x.type));
       let results: { id: string | null; result: string; code?: string; message?: string }[] = [];
       if (send.length) {
+        if (send.some((x) => JSON.parse(x.data).work_order)) {
+          for (const ev of send) {
+            const wo = JSON.parse(ev.data).work_order?.id;
+            const held = wo && db.get(`SELECT 1 FROM eco_outbox o JOIN eco_ack a ON a.event_id = o.id WHERE a.consumer = ? AND a.status = 'parked' AND o.seq < ? AND json_extract(o.data, '$.work_order.id') = ? LIMIT 1`, [p.name, ev.seq, wo]);
+            const answer = held ? { results: [{ id: ev.id, result: 'rejected', code: 'eco.prerequisite_parked', message: 'Recover the earlier work-order fact first' }] } : await call(p, 'POST', '/eco/v1/inbox', { events: [eco.toEnvelope(ev)] });
+            if (answer?.results?.length !== 1) throw new Error(`${p.name} did not answer one event`);
+            const res = answer.results[0];
+            if (res?.id !== ev.id) throw new Error(`${p.name} answered for a different event`);
+            results.push(res);
+            ack(ev.id, p.name, OK.has(res.result) ? 'applied' : res.code === 'eco.not_accepted' ? 'skipped' : 'parked', res.code ?? res.result, res.message ?? '');
+          }
+        } else {
         const answer = await call(p, 'POST', '/eco/v1/inbox', { events: send.map((x) => eco.toEnvelope(x)) });
         results = answer?.results ?? [];
         if (results.length !== send.length) throw new Error(`${p.name} answered ${results.length} results for ${send.length} events`);
+        if (results.some((res, i) => res?.id !== send[i]!.id)) throw new Error(`${p.name} answered for a different event`);
+        }
       }
       db.tx(() => {
         send.forEach((ev, i) => {
           const res = results[i]!;
-          if (OK.has(res.result)) r.pushed++;
+          if (OK.has(res.result)) { ack(ev.id, p.name, 'applied', res.result, ''); r.pushed++; }
           else if (res.code === 'eco.not_accepted') (ack(ev.id, p.name, 'skipped', res.code, res.message ?? 'not consumed by this application'), r.skipped++);
           else (ack(ev.id, p.name, 'parked', res.code ?? 'rejected', res.message ?? 'refused'), r.parked++);
         });
+        if (retryRows) return;
         p.push_cursor = rows[rows.length - 1]!.seq;
         db.run('UPDATE eco_peers SET push_cursor = ? WHERE id = ?', [p.push_cursor, p.id]);
       });
-      if (rows.length < PAGE) return;
+      if (retryRows || rows.length < PAGE) return;
     }
   }
 
@@ -165,6 +183,11 @@ export function createPeers(ctx: ModuleContext, eco: EcoInternal, http: { curren
 
   /** One pass with one peer. Never throws: a failure is recorded on the peer and reported. */
   async function sync(id: number): Promise<SyncReport> {
+    if (running.has(id)) conflict('eco.peer_busy', 'This peer already has a sync or recovery in progress');
+    running.add(id);
+    try { return await syncOnce(id); } finally { running.delete(id); }
+  }
+  async function syncOnce(id: number): Promise<SyncReport> {
     const p = get(id);
     const r: SyncReport = { peer: p.name, pushed: 0, parked: 0, skipped: 0, pulled: 0, applied: 0, rejected: 0 };
     if (!p.active) return { ...r, error: 'inactive' };
@@ -182,11 +205,22 @@ export function createPeers(ctx: ModuleContext, eco: EcoInternal, http: { curren
 
   const syncAll = async () => {
     const out: SyncReport[] = [];
-    for (const p of list()) if (p.active) out.push(await sync(p.id));
+    for (const p of list()) if (p.active && !running.has(p.id)) out.push(await sync(p.id));
     return out;
   };
 
-  return { get, list, add, update, remove, sync, syncAll };
+  async function retryParked(id: number, eventIds: string[]) {
+    if (running.has(id)) conflict('eco.peer_busy', 'This peer already has a sync or recovery in progress');
+    running.add(id);
+    try {
+    const p = get(id);
+    if (!p.active || !p.push) conflict('eco.peer_inactive', 'Enable pushing for this peer before retrying');
+    const r: SyncReport = { peer: p.name, pushed: 0, parked: 0, skipped: 0, pulled: 0, applied: 0, rejected: 0 };
+    await push(p, r, eventIds);
+    return r;
+    } finally { running.delete(id); }
+  }
+  return { get, list, add, update, remove, sync, syncAll, retryParked };
 }
 
 export type PeerService = ReturnType<typeof createPeers>;

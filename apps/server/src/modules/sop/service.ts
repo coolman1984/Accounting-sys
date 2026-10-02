@@ -6,7 +6,7 @@ import { DEMAND_PLAN_V1 } from './eco.js';
 import type {} from '../../contracts/sales.js';
 import type {} from '../../contracts/pricing.js';
 import type {} from '../../contracts/budget.js';
-import type { SopApprovedPlan, SopService } from '../../contracts/sop.js';
+import type { SopApprovedPlan, SopService, SopSupplyInput } from '../../contracts/sop.js';
 
 export interface Cycle {
   id: number;
@@ -323,6 +323,24 @@ export function createSop(ctx: ModuleContext) {
     };
   }
 
-  const contract: SopService = { approvedPlan };
+  function recordSupply(input: SopSupplyInput[], source: string, reference: string): number {
+    let written = 0;
+    db.tx(() => {
+      for (const x of input) {
+        if (!MONTH.test(x.month) || !Number.isSafeInteger(x.plannedQty) || x.plannedQty < 0) continue;
+        const r = db.run(
+          `INSERT INTO sop_supply_plan (item_id, month, planned_qty, constraint_type, source, reference, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(item_id, month) DO UPDATE SET planned_qty = excluded.planned_qty, constraint_type = excluded.constraint_type,
+             source = excluded.source, reference = excluded.reference, updated_at = excluded.updated_at
+           WHERE sop_supply_plan.source <> 'manual'`,
+          [x.itemId, x.month, x.plannedQty, x.constraint, source, reference.slice(0, 100), nowIso()],
+        );
+        written += r.changes;
+      }
+    });
+    return written;
+  }
+
+  const contract: SopService = { approvedPlan, recordSupply };
   return { ...contract, cycle, version, rows, monthsOf, createCycle, createVersion, refresh, setOverrides, approve, removeVersion, comparison };
 }

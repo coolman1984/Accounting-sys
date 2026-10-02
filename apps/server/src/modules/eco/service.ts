@@ -151,7 +151,7 @@ export function createEco(ctx: ModuleContext): EcoInternal {
     return null;
   }
 
-  function reject(env: { source?: unknown; id?: unknown; type?: unknown }, code: string, message: string) {
+  function reject(env: { source?: unknown; id?: unknown; type?: unknown; data?: unknown; ecoseq?: unknown }, code: string, message: string) {
     const src = typeof env.source === 'string' ? env.source.slice(0, 200) : '?';
     const id = typeof env.id === 'string' ? env.id.slice(0, 100) : '?';
     const now = nowIso();
@@ -161,6 +161,9 @@ export function createEco(ctx: ModuleContext): EcoInternal {
          attempts = attempts + 1, last_at = excluded.last_at`,
       [src, id, typeof env.type === 'string' ? env.type.slice(0, 100) : null, code, message.slice(0, 1000), now, now],
     );
+    const wo = (env.data as { work_order?: { id?: unknown } } | undefined)?.work_order?.id;
+    if (typeof wo === 'string' && typeof env.ecoseq === 'number')
+      db.run('UPDATE eco_inbox_rejects SET work_order_id = ?, event_seq = ? WHERE source = ? AND event_id = ?', [wo, env.ecoseq, src, id]);
   }
 
   function receive(raw: unknown): InboxOutcome {
@@ -180,6 +183,9 @@ export function createEco(ctx: ModuleContext): EcoInternal {
     try {
       const result = db.tx(() => {
         if (db.get('SELECT 1 FROM eco_inbox WHERE source = ? AND event_id = ?', [env.source, env.id])) return 'duplicate' as const;
+        const wo = (env.data as { work_order?: { id?: string } })?.work_order?.id;
+        if (wo && db.get("SELECT 1 FROM eco_inbox_rejects WHERE source = ? AND work_order_id = ? AND event_id <> ? AND event_seq < ? AND code <> 'eco.not_accepted'", [env.source, wo, env.id, env.ecoseq]))
+          throw new AppError('eco.prerequisite_parked', 'An earlier fact for this work order must be recovered first', 409);
         const res = consumer.apply(env.data, env);
         db.run('INSERT INTO eco_inbox (source, event_id, type, result, received_at) VALUES (?, ?, ?, ?, ?)', [env.source, env.id, env.type, res, nowIso()]);
         db.run('DELETE FROM eco_inbox_rejects WHERE source = ? AND event_id = ?', [env.source, env.id]);

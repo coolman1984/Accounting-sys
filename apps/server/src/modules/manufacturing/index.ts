@@ -525,7 +525,7 @@ export const manufacturingModule: AppModule = {
 
     // ------------------------------------------------------------ recipes
     // production recorded by manufacturing (GMES): what was issued to and received from work in progress, per work order
-    r.get('/mfg/gmes-wip', 'mfg.reports.read', ({ query }) => db.all('SELECT w.*, w.issued_value - w.received_value AS in_progress FROM mfg_wip w ORDER BY w.id DESC LIMIT :limit', { limit: Math.min(100_000, Math.max(1, Number(query.limit) || 1000)) }));
+    r.get('/mfg/gmes-wip', 'mfg.reports.read', ({ query }) => db.all('SELECT w.*, w.issued_value - w.received_value AS in_progress, i.sku, i.name_en, i.name_ar FROM mfg_wip w LEFT JOIN items i ON i.id = w.item_id ORDER BY w.id DESC LIMIT :limit', { limit: Math.min(100_000, Math.max(1, Number(query.limit) || 1000)) }));
     r.get('/mfg/boms', 'mfg.boms.read', () =>
       db
         .all<Bom & { sku: string; name_en: string; name_ar: string; lines: number }>(

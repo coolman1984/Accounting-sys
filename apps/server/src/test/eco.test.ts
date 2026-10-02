@@ -261,6 +261,12 @@ describe('eco — the ecosystem side of Mizan', () => {
     assert.equal(eco.supplyPlan().length, 1);
     assert.equal((await send([envelope('mes.supply_plan.v1', { ...plan, version: 1 })]))[0].result, 'stale');
     assert.equal((await c.get('/api/eco/supply-plan')).length, 1);
+    // S&OP compares its demand with what manufacturing says it can supply, and never overwrites a figure a person entered
+    const supply = async () => (await c.get('/api/sop/supply?from=2026-10&months=2')) as any[];
+    assert.deepEqual((await supply()).map((s) => [s.sku, s.month, s.planned_qty, s.constraint_type, s.source]), [['CHIP', '2026-10', 400500, 'material', 'itqan']]);
+    await c.put('/api/sop/supply', { rows: [{ itemId: chip, month: '2026-10', plannedQty: 777000, constraint: 'none', source: 'manual' }] });
+    assert.equal((await send([envelope('mes.supply_plan.v1', { ...plan, version: 3, lines: [plan.lines[0]] })]))[0].result, 'applied');
+    assert.deepEqual((await supply()).map((s) => [s.planned_qty, s.source]), [[777000, 'manual']], 'a manual figure stays');
   });
 
   test('acks: a consumer reports what became of an event; parked ones are listed as exceptions', async () => {
@@ -339,6 +345,28 @@ describe('eco — the ecosystem side of Mizan', () => {
       assert.equal(calls.find((x) => x.url.endsWith('/inbox'))!.body.events.length, 1);
     });
 
+    test('targeted parked replay uses the original envelope, clears the exception and retains the cursor', async () => {
+      const rows = db().all<any>("SELECT o.* FROM eco_outbox o JOIN eco_ack a ON a.event_id = o.id WHERE a.consumer = 'gmes-plant' AND a.status = 'parked' ORDER BY o.seq");
+      assert.ok(rows.length);
+      const cursor = eco.peers.get(peerId).push_cursor;
+      const original = db().all('SELECT * FROM eco_outbox ORDER BY seq');
+      const sent: any[] = [];
+      answer = (_url, body) => {
+        sent.push(...body.events);
+        return { status: 200, json: { results: body.events.map((e: any) => ({ id: e.id, result: 'applied' })) } };
+      };
+      const route = `/api/eco/peers/${peerId}/retry-parked`;
+      assert.equal((await c.raw('POST', route, { eventIds: ['unknown'], reason: 'Prerequisite repaired' })).status, 409);
+      const recovered = await c.post(route, { eventIds: rows.map((r) => r.id), reason: 'Corrected peer item prerequisite' });
+      assert.equal(recovered.pushed, rows.length);
+      assert.deepEqual(sent, rows.map((r) => eco.toEnvelope(r)));
+      assert.equal(eco.peers.get(peerId).push_cursor, cursor);
+      assert.deepEqual(db().all('SELECT * FROM eco_outbox ORDER BY seq'), original);
+      assert.equal(db().get("SELECT 1 FROM eco_ack WHERE consumer = 'gmes-plant' AND status = 'parked'"), undefined);
+      assert.ok(db().get("SELECT 1 FROM audit_log WHERE action = 'retry_parked_result'"));
+      assert.equal((await c.raw('POST', route, { eventIds: [rows[0].id], reason: 'Already recovered' })).status, 409);
+    });
+
     test('a network failure moves no cursor and is recorded; the next run resumes', async () => {
       await c.post('/api/items', { sku: 'NEW2', nameEn: 'New 2', nameAr: 'جديد ٢', kind: 'product', unit: 'PCS' });
       const cursor = () => db().get<{ push_cursor: number }>('SELECT push_cursor FROM eco_peers WHERE id = ?', [peerId])!.push_cursor;
@@ -348,11 +376,35 @@ describe('eco — the ecosystem side of Mizan', () => {
       assert.match(failed.error!, /503/);
       assert.equal(cursor(), at);
       assert.match(db().get<any>('SELECT last_error FROM eco_peers WHERE id = ?', [peerId])!.last_error, /503/);
+      answer = (_url, body) => ({ status: 200, json: { results: body.events.map(() => ({ id: 'wrong-event', result: 'applied' })) } });
+      assert.match((await eco.peers.sync(peerId)).error!, /different event/);
+      assert.equal(cursor(), at, 'a mismatched acknowledgement cannot advance the cursor');
       answer = (url, body) => (url.endsWith('/inbox') ? { status: 200, json: { results: body.events.map((e: any) => ({ id: e.id, result: 'applied' })) } } : { status: 200, json: { events: [] } });
       const ok = await eco.peers.sync(peerId);
       assert.equal(ok.error, undefined);
       assert.equal(cursor(), outboxCount());
       assert.equal(db().get<any>('SELECT last_error FROM eco_peers WHERE id = ?', [peerId])!.last_error, null);
+    });
+
+    test('the automatic sync pass skips a peer with an in-flight manual sync', async () => {
+      await c.post('/api/items', { sku: 'BUSY1', nameEn: 'Busy peer', nameAr: 'صنف', kind: 'product', unit: 'PCS' });
+      const previous = eco.http.current;
+      let release!: () => void;
+      eco.http.current = async (_url, init) => {
+        if (init.method === 'GET') return { status: 200, json: async () => ({ events: [] }) };
+        await new Promise<void>((resolve) => { release = resolve; });
+        const events = JSON.parse(init.body!).events;
+        return { status: 200, json: async () => ({ results: events.map((e: any) => ({ id: e.id, result: 'applied' })) }) };
+      };
+      const pending = eco.peers.sync(peerId);
+      try {
+        assert.deepEqual(await eco.peers.syncAll(), [], 'the minute timer must not reject a busy peer');
+        await assert.rejects(eco.peers.sync(peerId), /in progress/);
+      } finally {
+        release();
+        await pending;
+        eco.http.current = previous;
+      }
     });
 
     test('pull: its feed goes through our inbox and the outcome is acknowledged to it', async () => {

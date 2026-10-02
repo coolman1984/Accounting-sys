@@ -1,6 +1,7 @@
 import { createReadStream, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppModule } from '../../kernel/modules.js';
 import { AppError, conflict, fail, notFound } from '../../kernel/errors.js';
@@ -100,7 +101,7 @@ export const systemModule: AppModule = {
     services.provide('backup', {
       create(label = 'manual') {
         const stamp = nowIso().replace(/[:T]/g, '-').slice(0, 19);
-        const name = `mizan-${stamp}-${label.replace(/[^\w-]/g, '')}.db`;
+        const name = `mizan-${stamp}-${randomUUID()}-${label.replace(/[^\w-]/g, '')}.db`;
         const file = join(config.backupDir, name);
         db.backupTo(file);
         return { name, size: statSync(file).size };

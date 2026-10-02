@@ -4,6 +4,7 @@ All notable changes, newest first. Format: [Keep a Changelog](https://keepachang
 Every change adds a line under **[Unreleased]** in the same commit.
 
 ### Added
+- **Payroll from HR** screen (GET /api/payroll/hr-periods, page /payroll/hr): every pay run HR-System sent, with its status, headcount and the journal entries Mizan booked (one per cost centre).
 - `GET /api/mfg/gmes-wip?limit=` (up to 100000; default 1000): a long run has more work orders than the default list.
 
 ### Changed
@@ -19,7 +20,14 @@ Every change adds a line under **[Unreleased]** in the same commit.
 
 ## [Unreleased]
 
+### Fixed
+- Parked peer events can be retried by original ID with a reason and audit trail; work-order facts retain sequence, replies must identify their event, and late facts cannot change closed production WIP. Completion and close totals must match applied facts.
+- Backups at the same clock time use unique names, preserving every rehearsed copy.
+
 ### Added
+- **Sales orders, deliveries and sales reports on screen** (`/sales/orders`, `/sales/orders/new`, `/sales/deliveries`, `/reports/sales/otif|backlog|analysis`): create, confirm (with the credit-limit override), deliver all that is open, and read delivery performance, backlog and margin.
+- **S&OP and KPI screens** (`/sop`, `/sop/versions/:id`, `/kpi`): demand, supply and gap per item and month. The supply column is now filled from the plant's `mes.supply_plan.v1` (`SopService.recordSupply`), not only from what a planner types.
+- **Production from Itqan** screen (`/mfg/itqan`): each work order the plant reports with its good and scrapped quantities, cost and variance; `/mfg/gmes-wip` now joins the item.
 - **Backup rehearsal (WP-X3)** — `POST /api/system/backups` now opens the new copy read-only and reports a rehearsal (structure check, no dangling references, every posted journal entry balances, row counts of the main tables); `POST /api/system/backups/:name/verify` repeats it on any earlier backup. A failed rehearsal is written in the audit line. Same rule as GMES and HR: a copy nobody opened is not a backup.
 - **KPI pack and executive S&OP (WP-M6, API)** — `GET /api/kpi/pack?month=YYYY-MM`: delivery service level (OTD, OTIF, fill rate of the lines due in the month, measured as of the month end or today), forecast accuracy and bias with a lag of one month (plan of the cycle before vs invoiced quantity net of credit notes, per item), sales against the plan in money. A figure that cannot be measured is null, never 0 or 100 %. `GET /api/sop/versions/:id/executive`: demand, budget and supply gap in money per month and the five biggest supply shortfalls with their constraint; demand without any supply plan is counted as unknown, not as short. Turns, DSO/DIO/DPO, margin by model, PPV, production variances and payroll per set are listed as not measured here. No screen yet.
 - **Injectable clock (WP-M7)** — `buildApp(config, modules, { clock })`: every date and timestamp of the server (today's defaults, lock dates, due dates, sessions, event versions) reads `kernel/dates.ts` (`today`, `nowIso`, `nowMs`, `currentDate`), which follows the clock given; without one it is real time. A test fails if a module reads `new Date()` or `Date.now()` directly. The scenario engine uses it to drive simulated days.

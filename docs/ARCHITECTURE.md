@@ -330,3 +330,6 @@ lot decisions, production facts, shipments) and receives `hr.payroll_period.v1` 
 (ADR-025). Production facts are booked through a work-in-progress ledger per work order (ADR-026), payroll from HR per period and cost centre
 (ADR-027). Every date of the server reads one injectable clock (ADR-028). The KPI pack and the executive S&OP view (`GET /api/kpi/pack`,
 `GET /api/sop/versions/:id/executive`) read only services. Backups are rehearsed (ADR-029).
+
+### Immutable production recovery
+Peer managers may retry selected parked original event IDs with an audited reason. Recovery preserves envelopes and feed cursors, follows outbox sequence, and holds later facts of the same work order while an earlier fact is parked. The inbox also retains rejected order identity and sequence. Manufacturing verifies completion/close totals and refuses late changes to closed WIP (ADR-031).
